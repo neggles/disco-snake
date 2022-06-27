@@ -1,10 +1,13 @@
 import json
+import logging
 
 import disnake
 from disnake import ApplicationCommandInteraction, Option, OptionType
 from disnake.ext import commands
 
-from helpers import json_manager, checks
+from helpers import checks, json_manager
+
+logger = logging.getLogger(__package__)
 
 
 class Owner(commands.Cog, name="owner"):

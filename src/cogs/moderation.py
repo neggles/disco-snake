@@ -1,16 +1,12 @@
-""""
-Copyright © Krypton 2022 - https://github.com/kkrypt0nn (https://krypton.ninja)
-Description:
-This is a template to create your own discord bot in python.
-
-Version: 4.1
-"""
+import logging
 
 import disnake
 from disnake import ApplicationCommandInteraction, Option, OptionType
 from disnake.ext import commands
 
 from helpers import checks
+
+logger = logging.getLogger(__package__)
 
 
 class Moderation(commands.Cog, name="moderation"):
@@ -62,12 +58,13 @@ class Moderation(commands.Cog, name="moderation"):
                     # Couldn't send a message in the private messages of the user
                     pass
                 await member.kick(reason=reason)
-            except Exception:
+            except Exception as e:
                 embed = disnake.Embed(
                     title="Error!",
                     description="An error occurred while trying to kick the user. Make sure my role is above the role of the user you want to kick.",
                     color=0xE02B2B,
                 )
+                logger.exception(e)
                 await interaction.send(embed=embed)
 
     @commands.slash_command(

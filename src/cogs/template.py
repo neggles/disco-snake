@@ -1,7 +1,11 @@
+import logging
+
 from disnake import ApplicationCommandInteraction
 from disnake.ext import commands
 
 from helpers import checks
+
+logger = logging.getLogger(__package__)
 
 
 # Here we name the cog and create a new class for the cog.

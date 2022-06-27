@@ -5,24 +5,21 @@ import time
 from pathlib import Path
 
 import click
-import logzero
+import logsnake
 from daemonocle.cli import DaemonCLI
 
-from .bot import bot
 from helpers.misc import get_package_root
 
-logfmt = logzero.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
+from .bot import bot
+
+logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(__package__)
 
 PACKAGE_ROOT = get_package_root()
 
-
-DATADIR_PATH = (
-    Path.cwd().joinpath("data")
-    if Path.cwd().joinpath("data").exists() and Path.cwd().joinpath("data").is_dir()
-    else Path.cwd().parent.joinpath("data")
-)
-USERSTATE_PATH = DATADIR_PATH.joinpath("userstate.json")
+DATADIR_PATH = Path.cwd().joinpath("data")
+LOGDIR_PATH = Path.cwd().joinpath("logs")
+USERSTATE_PATH = None
 CONFIG_PATH = None
 
 
@@ -52,7 +49,7 @@ def cb_shutdown(message: str, code: int):
     cls=DaemonCLI,
     daemon_params={
         "name": "disco-snake",
-        "pid_file": "./disco-snake.pid",
+        "pid_file": "./data/disco-snake.pid",
         "shutdown_callback": cb_shutdown,
     },
 )
@@ -62,40 +59,47 @@ def cli(ctx: click.Context):
     """
     Main entrypoint for your application.
     """
-    verbose = 2
-    config_path = DATADIR_PATH.joinpath("config.json")
     global bot
+    global CONFIG_PATH
+    global LOGDIR_PATH
+    global USERSTATE_PATH
+
+    CONFIG_PATH = DATADIR_PATH.joinpath("config.json")
+    USERSTATE_PATH = DATADIR_PATH.joinpath("userstate.json")
+
     # clamp log level to DEBUG
-    loglevel = max(logging.WARNING - (verbose * 10), 10)
-    logging.root = logzero.setup_logger(level=loglevel, isRootLogger=True, formatter=logfmt)
+    logging.root = logsnake.setup_logger(
+        level=logging.INFO,
+        isRootLogger=True,
+        formatter=logfmt,
+        logfile=LOGDIR_PATH.joinpath("disco-snake.log"),
+        fileLoglevel=logging.DEBUG,
+        maxBytes=1024 * 1024 * 5,
+        backupCount=5,
+    )
 
     logger.info("Starting disco-snake")
-    logger.debug("Commandline options:")
-    logger.debug(f"    verbose = {verbose}")
-    logger.debug(f"    config_path = {config_path}")
-    logger.debug(f"Effective log level: {logging.getLevelName(logger.getEffectiveLevel())}")
+    logger.info(f"Effective log level: {logging.getLevelName(logger.getEffectiveLevel())}")
 
     # Load config
-    if config_path.exists():
-        global CONFIG_PATH
-        CONFIG_PATH = config_path
-        config = json.loads(config_path.read_bytes())
+    if CONFIG_PATH.exists():
+        config = json.loads(CONFIG_PATH.read_bytes())
     else:
-        raise FileNotFoundError(f"Config file '{config_path}' not found!")
+        raise FileNotFoundError(f"Config file '{CONFIG_PATH}' not found!")
 
-    # create data directory if it doesn't exist
-    if not DATADIR_PATH.exists():
-        DATADIR_PATH.mkdir(parents=True)
+    # same for logs
+    if not LOGDIR_PATH.exists():
+        LOGDIR_PATH.mkdir(parents=True)
 
     # load userdata
-    if USERSTATE_PATH.exists() and USERSTATE_PATH.is_file():
+    if USERSTATE_PATH.is_file():
         userstate = json.loads(USERSTATE_PATH.read_bytes())
     else:
         logger.info(f"User state file does not exist, creating empty one at {USERSTATE_PATH}")
         userstate = {}
         USERSTATE_PATH.write_text(json.dumps(userstate, indent=4))
 
-    logger.info(f"Loaded configuration from {config_path}")
+    logger.info(f"Loaded configuration from {CONFIG_PATH}")
     logger.debug(f"    {json.dumps(config, indent=4)}")
 
     load_commands()
