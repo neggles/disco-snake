@@ -5,5 +5,6 @@
   "owners": [123456789, 987654321],
   "timezone": "UTC",
   "owner": "user#1234",
-  "repo_url": "https://github.com/neg2led/disco-snake"
+  "repo_url": "https://github.com/neg2led/disco-snake",
+  "statuses": ["video games", "with your heart", "your song"]
 }

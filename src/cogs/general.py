@@ -159,9 +159,39 @@ class General(commands.Cog, name="general"):
                     )  # For some reason the returned content is of type JavaScript
                     embed = disnake.Embed(
                         title="Bitcoin price",
-                        description=f"The current price is {data['bpi']['USD']['rate']} :dollar:",
+                        description=f"The current price is US${data['bpi']['USD']['rate']} :stonks:",
                         color=0x9C84EF,
                     )
+                    embed.set_footer(text="but the real question is, why do you care?")
+                else:
+                    embed = disnake.Embed(
+                        title="Error!",
+                        description="There is something wrong with the API, please try again later",
+                        color=0xE02B2B,
+                    )
+                await interaction.send(embed=embed)
+
+    @commands.slash_command(
+        name="dogecoin",
+        description="Get the current price of dogecoin.",
+    )
+    @checks.not_blacklisted()
+    async def dogecoin(self, interaction: ApplicationCommandInteraction) -> None:
+        """
+        Get the current price of dogecoin.
+        :param interaction: The application command interaction.
+        """
+        # This will prevent your bot from stopping everything when doing a web request - see: https://discordpy.readthedocs.io/en/stable/faq.html#how-do-i-make-a-web-request
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://sochain.com//api/v2/get_price/DOGE/USD") as request:
+                if request.status == 200:
+                    data = await request.json()
+                    embed = disnake.Embed(
+                        title="Dogecoin price",
+                        description=f"The current price is US${data['data']['prices'][0]['price']} :rocket:",
+                        color=0x9C84EF,
+                    )
+                    embed.set_footer(text="...to the mooooooooon!")
                 else:
                     embed = disnake.Embed(
                         title="Error!",
