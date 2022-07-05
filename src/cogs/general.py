@@ -15,7 +15,7 @@ class General(commands.Cog, name="general"):
 
     @commands.slash_command(
         name="botinfo",
-        description="Get some useful (or not) information about the bot.",
+        description="Get some theoretically useful information about the bot.",
     )
     @checks.not_blacklisted()
     async def botinfo(self, interaction: ApplicationCommandInteraction) -> None:
@@ -24,9 +24,10 @@ class General(commands.Cog, name="general"):
         :param interaction: The application command interaction.
         """
         embed = disnake.Embed(description="a really stupid disco(rd) snake(python) bot", color=0x9C84EF)
-        embed.set_author(name="Bot Information")
-        embed.add_field(name="Owner:", value="neggles#1596", inline=True)
-        embed.add_field(name="Python Version:", value=f"{platform.python_version()}", inline=True)
+        embed.set_author(name="Bot Info")
+        embed.add_field(name="Owner:", value=self.bot.config["owner"], inline=True)
+        embed.add_field(name="Running on:", value=f"Python {platform.python_version()}", inline=True)
+        embed.add_field(name="Repo:", value=self.bot.config["repo_url"], inline=False)
         embed.add_field(name="Prefix:", value="/ (Slash Commands)", inline=False)
         embed.set_footer(text=f"Requested by {interaction.author}")
         await interaction.send(embed=embed)

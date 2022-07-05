@@ -1,13 +1,15 @@
+import json
 import logging
 import os
+from pathlib import Path
 import platform
 import random
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import disnake
 from disnake import ApplicationCommandInteraction
-from disnake.activity import ActivityType
 from disnake.ext import commands, tasks
-from disnake.ext.commands import Bot, Context
 
 import exceptions
 
@@ -18,7 +20,20 @@ intents.typing = False
 
 logger = logging.getLogger(__package__)
 
-bot = Bot(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
+
+class DiscoSnake(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # attributes set up in cli.py. this is a dumb way to do this but it works
+        self.config: dict = None
+        self.timezone: ZoneInfo = None
+        self.datadir_path: Path = None
+        self.userstate_path: Path = None
+        self.userstate: dict = None
+
+
+bot = DiscoSnake(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
 
 
 @bot.event
@@ -33,15 +48,28 @@ async def on_ready() -> None:
     logger.info("-------------------")
     if not status_task.is_running():
         status_task.start()
+    if not userstate_task.is_running():
+        userstate_task.start()
 
 
 @tasks.loop(minutes=1.0)
 async def status_task() -> None:
     """
-    Setup the game status task of the bot
+    Set up the bot's status task
     """
     statuses = ["stayin' alive", "stayin' aliiIIiive", "dancing, yeah!", "getting real groovy"]
     await bot.change_presence(activity=disnake.Game(name=f"{random.choice(statuses)}"))
+
+
+@tasks.loop(minutes=3.0)
+async def userstate_task() -> None:
+    """
+    Background task to flush user state to disk
+    """
+    if bot.userstate is not None and bot.userstate_path.is_file():
+        with bot.userstate_path.open("w") as f:
+            json.dump(bot.userstate, f, skipkeys=True, indent=2)
+        logger.debug("Flushed user states to disk")
 
 
 @bot.event
@@ -52,6 +80,26 @@ async def on_message(message: disnake.Message) -> None:
     """
     if message.author == bot.user or message.author.bot:
         return
+
+    autoreplies = bot.userstate["autoreplies"]
+    daily_autoreplies = [x for x in autoreplies if x["type"] == "daily"]
+
+    if message.author.id in [x["user"] for x in daily_autoreplies]:
+        autoreply = next(val for val in daily_autoreplies if val["user"] == message.author.id)
+        index = daily_autoreplies.index(autoreply)
+
+        logger.debug(f"Got message from autoreply target {message.author.name}")
+
+        last_reply: date = datetime.fromisoformat(autoreply["last_reply"]).replace(tzinfo=bot.timezone).date()
+        message_created: date = message.created_at.astimezone(bot.timezone).date()
+        if last_reply < message_created:
+            logger.debug(f"{message.author.name} has not had their daily autoreply yet")
+            await message.reply(autoreply["message"])
+            logger.info(f"Replied to {message.author.name} with their daily autoreply")
+            bot.userstate["autoreplies"][index]["last_reply"] = message_created.isoformat()
+            userstate_task.restart()
+            return
+
     await bot.process_commands(message)
 
 
@@ -99,7 +147,7 @@ async def on_slash_command_error(interaction: ApplicationCommandInteraction, err
 
 
 @bot.event
-async def on_command_completion(context: Context) -> None:
+async def on_command_completion(context: commands.Context) -> None:
     """
     The code in this event is executed every time a normal command has been *successfully* executed
     :param context: The context of the command that has been executed.
@@ -113,7 +161,7 @@ async def on_command_completion(context: Context) -> None:
 
 
 @bot.event
-async def on_command_error(context: Context, error) -> None:
+async def on_command_error(context: commands.Context, error) -> None:
     """
     The code in this event is executed every time a normal valid command catches an error
     :param context: The normal command that failed executing.

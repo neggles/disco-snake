@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import click
@@ -104,10 +105,10 @@ def cli(ctx: click.Context):
     load_commands()
 
     bot.config = config
+    bot.timezone = ZoneInfo(config["timezone"])
     bot.datadir_path = DATADIR_PATH
     bot.userstate_path = USERSTATE_PATH
     bot.userstate = userstate
     bot.run(config["token"])
 
     cb_shutdown("Normal shutdown", 0)
-    sys.exit(0)

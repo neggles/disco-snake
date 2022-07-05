@@ -2,5 +2,8 @@
   "token": "YOUR_BOT_TOKEN_HERE",
   "permissions": "YOUR_BOT_PERMISSIONS_HERE",
   "application_id": "YOUR_APPLICATION_ID_HERE",
-  "owners": [123456789, 987654321]
+  "owners": [123456789, 987654321],
+  "timezone": "UTC",
+  "owner": "user#1234",
+  "repo_url": "https://github.com/neg2led/disco-snake"
 }
