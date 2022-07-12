@@ -1,12 +1,12 @@
 import asyncio
 import logging
 import random
-import re
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import disnake
-from disnake import ApplicationCommandInteraction, Message, MessageInteraction
-from disnake.ext import commands
+from disnake import ApplicationCommandInteraction, DMChannel, Message, MessageInteraction
+from disnake.ext import commands, tasks
 
 from aitextgen import aitextgen
 from disco_snake.bot import DiscoSnake
@@ -63,17 +63,24 @@ class AiSettingsView(disnake.ui.View):
 class AiCog(commands.Cog, name="Ai"):
     def __init__(self, bot: DiscoSnake) -> None:
         super().__init__()
-        self.bot = bot
-        self.lock = asyncio.Lock()
+        self.bot: DiscoSnake = bot
 
+        # somme objects
         self.ai: aitextgen = None
         self.model_name: str = None
         self.model_folder: Path = None
 
+        # ai model generation lock - not sure if needed but
+        self.lock = asyncio.Lock()
+        # response cleanup queue
+        # self.cleanup_queue = asyncio.Queue()
+
+        # load config
         config: dict = bot.config["ai"]
         if config["model_name"] is None:
             raise ValueError("No model name specified in config")
 
+        # set model
         self.model_name = config["model_name"]
         self.model_folder = MODELS_ROOT.joinpath(self.model_name)
         if not self.model_folder.is_dir():
@@ -81,6 +88,7 @@ class AiCog(commands.Cog, name="Ai"):
         if not self.model_folder.joinpath("pytorch_model.bin").is_file():
             raise ValueError(f"Model folder {self.model_folder} does not contain a pytorch_model.bin file")
 
+        # parse other config
         conf_keys = config.keys()
         self.use_gpu: bool = config["use_gpu"] if "use_gpu" in conf_keys else False
         self.verbose: bool = config["verbose"] if "verbose" in conf_keys else False
@@ -128,7 +136,7 @@ class AiCog(commands.Cog, name="Ai"):
         # re.sub(r"<@\d+>", " ", message)
         return message.strip()
 
-    async def respond(self, prompt: str) -> str:
+    async def generate_response(self, prompt: str) -> str:
         if self.ai is None:
             raise ValueError("AI is not initialized")
         logger.info(f"Generating response for '{prompt.replace(NEWLINE, ' ')}'")
@@ -163,6 +171,7 @@ class AiCog(commands.Cog, name="Ai"):
     # Slash Commands
 
     @commands.slash_command(name="ai", description="Manage the AI")
+    @checks.not_blacklisted()
     async def ai_group(self, inter: ApplicationCommandInteraction):
         pass
 
@@ -193,7 +202,7 @@ class AiCog(commands.Cog, name="Ai"):
         embed.add_field(name="Response chance:", value=str(self.response_chance), inline=True)
 
         embed.set_footer(text=f"Requested by {inter.author}", icon_url=inter.author.avatar.url)
-        await inter.send(embed=embed)
+        await inter.send(embed=embed, delete_after=15.0)
 
     @ai_group.sub_command(name="set-model", description="Change the active AI model.")
     @checks.is_owner()
@@ -227,70 +236,46 @@ class AiCog(commands.Cog, name="Ai"):
 
     @ai_params.sub_command(name="temperature", description="Change the AI temperature parameter.")
     @checks.is_owner()
-    @checks.not_blacklisted()
-    async def ai_params_temperature(self, inter, temperature: float) -> None:
+    async def ai_params_temperature(self, inter: ApplicationCommandInteraction, temperature: float) -> None:
         """
         Change the AI parameters.
         :param inter: The application command interaction.
         """
         self.temperature = temperature
-        await inter.send(f"Temperature set to {temperature}")
+        await inter.send(f"Temperature set to {temperature}", delete_after=5.0)
 
     @ai_params.sub_command(name="max-length", description="Change max token length of generated responses.")
     @checks.is_owner()
-    @checks.not_blacklisted()
-    async def ai_params_max_length(self, inter, length: int) -> None:
+    async def ai_params_max_length(self, inter: ApplicationCommandInteraction, length: int) -> None:
         """
         Change the AI parameters.
         :param inter: The application command interaction.
         """
         self.max_length = length
-        await inter.send(f"Max length set to {length}")
+        response = inter.response
+        await inter.send(f"Max length set to {length}", delete_after=5.0)
 
     @ai_params.sub_command(name="max-lines", description="Change max number of lines in generated responses.")
     @checks.is_owner()
-    @checks.not_blacklisted()
-    async def ai_params_max_lines(self, inter, lines: int) -> None:
+    async def ai_params_max_lines(self, inter: ApplicationCommandInteraction, lines: int) -> None:
         """
         Change the AI parameters.
         :param inter: The application command interaction.
         """
         self.max_lines = lines
-        await inter.send(f"Max lines set to {lines}")
+        await inter.response.send_message(f"Max lines set to {lines}", delete_after=5.0)
 
     @ai_params.sub_command(
         name="response-chance", description="Change chance of responding to a non-reply message."
     )
     @checks.is_owner()
-    @checks.not_blacklisted()
-    async def ai_params_response_chance(self, inter, chance: float) -> None:
+    async def ai_params_response_chance(self, inter: ApplicationCommandInteraction, chance: float) -> None:
         """
         Change the AI parameters.
         :param inter: The application command interaction.
         """
         self.response_chance = chance
-        await inter.send(f"Response chance set to {chance}")
-
-    # @commands.slash_command(
-    #     name="generate",
-    #     description="Generates a response to the given message.",
-    #     kwargs={"message": "The message to generate a response for."},
-    # )
-    # @checks.not_blacklisted()
-    # async def generate(self, message: str = None) -> str:
-    #     if self.ai is None:
-    #         raise ValueError("AI is not initialized")
-    #     elif message is not None:
-    #         return self.ai.generate_one(
-    #             prompt=message + "\n",
-    #             temperature=self.temperature,
-    #             max_length=self.max_length,
-    #         )
-    #     else:
-    #         return self.ai.generate_one(
-    #             temperature=self.temperature,
-    #             max_length=self.max_length,
-    #         )
+        await inter.send(f"Response chance set to {chance}", delete_after=5.0)
 
     # Event Listeners
 
@@ -306,12 +291,13 @@ class AiCog(commands.Cog, name="Ai"):
             else False
         )
 
-        if random.random() > float(self.response_chance) and not mentioned:
+        direct = True if isinstance(message.channel, DMChannel) else False
+
+        if random.random() > float(self.response_chance) and not mentioned and not direct:
             return
 
-        async with message.channel.typing():
-            await message.add_reaction(REACT_EMOJI)
-            try:
+        try:
+            async with message.channel.typing():
                 history = await message.channel.history(limit=9).flatten()
                 history.reverse()
                 context = [
@@ -319,20 +305,23 @@ class AiCog(commands.Cog, name="Ai"):
                     for m in history
                     if m.author != self.bot.user and m.id != message.id and len(m.content.strip()) > 2
                 ]
-                context = [x.strip() for x in context if x != ""]
 
                 # make our prompt
                 prompt = "\n".join(context) + "\n" + self.clean_input(message.content)
                 # send it to the AI and get the response
-                response = await self.respond(prompt)
-                # send the response
-                await message.reply(response)
+                response = await self.generate_response(prompt)
+                # if this is a DM, just send the response
+                if direct:
+                    await message.channel.send(response)
+                # otherwise, send it in a reply
+                else:
+                    await message.reply(response)
 
-            except Exception as e:
-                logger.error("Error processing message content")
-                logger.error(e)
-            finally:
-                await message.clear_reaction(REACT_EMOJI)
+        except Exception as e:
+            logger.error("Error processing message content")
+            logger.error(e)
+        finally:
+            logger.debug("Finished processing message content")
         return
 
 

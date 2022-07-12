@@ -107,6 +107,7 @@ def cli(ctx: click.Context):
     bot.datadir_path = DATADIR_PATH
     bot.userstate_path = USERSTATE_PATH
     bot.userstate = userstate
+    bot.reload = config["reload"]
 
     load_commands()
     bot.remove_cog("cogs.canned")
