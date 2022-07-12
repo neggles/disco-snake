@@ -1,10 +1,9 @@
 import json
 import logging
 import os
-from pathlib import Path
 import platform
 import random
-from datetime import date, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import disnake
@@ -16,6 +15,7 @@ import exceptions
 intents = disnake.Intents.default()
 intents.members = True
 intents.presences = True
+intents.message_content = True
 intents.typing = False
 
 logger = logging.getLogger(__package__)
@@ -31,6 +31,12 @@ class DiscoSnake(commands.Bot):
         self.datadir_path: Path = None
         self.userstate_path: Path = None
         self.userstate: dict = None
+
+    def save_userstate(self):
+        if self.userstate is not None and self.userstate_path.is_file():
+            with self.userstate_path.open("w") as f:
+                json.dump(self.userstate, f, skipkeys=True, indent=2)
+            logger.debug("Flushed user states to disk")
 
 
 bot = DiscoSnake(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
@@ -66,10 +72,8 @@ async def userstate_task() -> None:
     """
     Background task to flush user state to disk
     """
-    if bot.userstate is not None and bot.userstate_path.is_file():
-        with bot.userstate_path.open("w") as f:
-            json.dump(bot.userstate, f, skipkeys=True, indent=2)
-        logger.debug("Flushed user states to disk")
+    bot.save_userstate()
+    logger.debug("Flushed userstates to disk")
 
 
 @bot.event
@@ -80,25 +84,6 @@ async def on_message(message: disnake.Message) -> None:
     """
     if message.author == bot.user or message.author.bot:
         return
-
-    autoreplies = bot.userstate["autoreplies"]
-    daily_autoreplies = [x for x in autoreplies if x["type"] == "daily"]
-
-    if message.author.id in [x["user"] for x in daily_autoreplies]:
-        autoreply = next(val for val in daily_autoreplies if val["user"] == message.author.id)
-        index = daily_autoreplies.index(autoreply)
-
-        logger.debug(f"Got message from autoreply target {message.author.name}")
-
-        last_reply: date = datetime.fromisoformat(autoreply["last_reply"]).replace(tzinfo=bot.timezone).date()
-        message_created: date = message.created_at.astimezone(bot.timezone).date()
-        if last_reply < message_created:
-            logger.debug(f"{message.author.name} has not had their daily autoreply yet")
-            await message.reply(autoreply["message"])
-            logger.info(f"Replied to {message.author.name} with their daily autoreply")
-            bot.userstate["autoreplies"][index]["last_reply"] = message_created.isoformat()
-            userstate_task.restart()
-            return
 
     await bot.process_commands(message)
 
