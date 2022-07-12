@@ -281,6 +281,9 @@ class AiCog(commands.Cog, name="Ai"):
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
+        if message.author.bot or message.author == self.bot.user:
+            return
+
         if self.ai is None:
             logger.debug("AI is not initialized but received a message")
             return
