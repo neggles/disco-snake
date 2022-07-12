@@ -13,7 +13,6 @@ logger = logging.getLogger(__package__)
 class Canned(commands.Cog, name="canned-messages"):
     def __init__(self, bot: DiscoSnake) -> None:
         self.bot: DiscoSnake = bot
-        self.timezone: ZoneInfo = bot.timezone or ZoneInfo("UTC")
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
@@ -29,9 +28,9 @@ class Canned(commands.Cog, name="canned-messages"):
 
             logger.debug(f"Got message from autoreply target {message.author.name}")
             last_reply: date = (
-                datetime.fromisoformat(autoreply["last_reply"]).replace(tzinfo=self.timezone).date()
+                datetime.fromisoformat(autoreply["last_reply"]).replace(tzinfo=self.bot.timezone).date()
             )
-            message_created: date = message.created_at.astimezone(self.timezone).date()
+            message_created: date = message.created_at.astimezone(self.bot.timezone).date()
 
             if last_reply < message_created:
                 logger.debug(f"{message.author.name} has not had their daily autoreply yet")

@@ -42,6 +42,11 @@ class DiscoSnake(commands.Bot):
 bot = DiscoSnake(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
 
 
+@bot.message_command_check
+def check_commands(ctx: commands.Context):
+    return ctx.command.qualified_name in bot.config["allowed_commands"]
+
+
 @bot.event
 async def on_ready() -> None:
     """
@@ -179,4 +184,8 @@ async def on_command_error(context: commands.Context, error) -> None:
             color=0xE02B2B,
         )
         await context.send(embed=embed)
-    raise error
+    elif isinstance(error, commands.CommandNotFound):
+        # This is actually fine so lets just pretend everything is okay.
+        return
+    else:
+        raise error

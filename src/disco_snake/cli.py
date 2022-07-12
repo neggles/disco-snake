@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+from traceback import print_exception
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
@@ -31,18 +32,17 @@ def load_commands() -> None:
                 bot.load_extension(f"cogs.{extension}")
                 logger.info(f"Loaded extension '{extension}'")
             except Exception as e:
-                exception = f"{type(e).__name__}: {e}"
+                etype, exc, tb = sys.exc_info()
+                exception = f"{etype}: {exc}"
                 logger.error(f"Failed to load extension {extension}\n{exception}")
+                print_exception(etype, exc, tb)
 
 
 def cb_shutdown(message: str, code: int):
     logger.warning(f"Daemon is stopping: {code}")
-    if bot.userstate is not None and USERSTATE_PATH.is_file():
-        with USERSTATE_PATH.open("w") as f:
-            json.dump(bot.userstate, f, skipkeys=True, indent=4)
-        logger.info("Flushed user states to disk")
+    bot.save_userstate()
     logger.info(message)
-    sys.exit(code)
+    return code
 
 
 @click.command(
@@ -102,13 +102,14 @@ def cli(ctx: click.Context):
     logger.info(f"Loaded configuration from {CONFIG_PATH}")
     logger.debug(f"    {json.dumps(config, indent=4)}")
 
-    load_commands()
-
     bot.config = config
     bot.timezone = ZoneInfo(config["timezone"])
     bot.datadir_path = DATADIR_PATH
     bot.userstate_path = USERSTATE_PATH
     bot.userstate = userstate
+
+    load_commands()
+    bot.remove_cog("cogs.canned")
     bot.run(config["token"])
 
     cb_shutdown("Normal shutdown", 0)
