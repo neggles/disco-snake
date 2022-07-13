@@ -69,7 +69,8 @@ async def status_task() -> None:
     Set up the bot's status task
     """
     statuses = bot.config["statuses"]
-    await bot.change_presence(activity=disnake.Game(name=f"{random.choice(statuses)}"))
+    activity = disnake.Activity(name=random.choice(statuses), type=disnake.ActivityType.listening)
+    await bot.change_presence(activity=activity)
 
 
 @tasks.loop(minutes=3.0)

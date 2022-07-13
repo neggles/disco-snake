@@ -11,6 +11,7 @@
     "model_name": "gpt-neo-125M",
     "use_gpu": true,
     "verbose": true,
+    "context_messages": 10,
     "max_lines": 4,
     "max_length": 80,
     "temperature": 0.9,
