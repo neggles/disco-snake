@@ -9,9 +9,9 @@ import click
 import logsnake
 from daemonocle.cli import DaemonCLI
 
-from helpers.misc import get_package_root
+from helpers.misc import get_package_root, parse_log_level
 
-from .bot import bot
+from disco_snake.bot import bot
 
 logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(__package__)
@@ -22,6 +22,7 @@ DATADIR_PATH = Path.cwd().joinpath("data")
 LOGDIR_PATH = Path.cwd().joinpath("logs")
 USERSTATE_PATH = None
 CONFIG_PATH = None
+MBYTE = 2**20
 
 
 def load_commands() -> None:
@@ -74,18 +75,19 @@ def cli(ctx: click.Context):
         formatter=logfmt,
         logfile=LOGDIR_PATH.joinpath("disco-snake.log"),
         fileLoglevel=logging.DEBUG,
-        maxBytes=1024 * 1024 * 5,
+        maxBytes=5 * MBYTE,
         backupCount=5,
     )
 
     logger.info("Starting disco-snake")
-    logger.info(f"Effective log level: {logging.getLevelName(logger.getEffectiveLevel())}")
-
     # Load config
     if CONFIG_PATH.exists():
         config = json.loads(CONFIG_PATH.read_bytes())
     else:
         raise FileNotFoundError(f"Config file '{CONFIG_PATH}' not found!")
+
+    logger.setLevel(parse_log_level(config["log_level"]))
+    logger.info(f"Effective log level: {logging.getLevelName(logger.getEffectiveLevel())}")
 
     # same for logs
     if not LOGDIR_PATH.exists():
