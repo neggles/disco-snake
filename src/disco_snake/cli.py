@@ -74,10 +74,12 @@ def cli(ctx: click.Context):
         isRootLogger=True,
         formatter=logfmt,
         logfile=LOGDIR_PATH.joinpath("disco-snake.log"),
-        fileLoglevel=logging.DEBUG,
+        fileLoglevel=logging.INFO,
         maxBytes=5 * MBYTE,
         backupCount=5,
     )
+
+    logger.setLevel(logging.DEBUG)
 
     logger.info("Starting disco-snake")
     # Load config

@@ -252,7 +252,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param temperature: The new temperature.
         """
         self.temperature = temperature
-        await inter.send(f"Temperature set to {temperature}", delete_after=5.0, ephemeral=True)
+        await inter.response.send_message(f"Temperature set to {temperature}", delete_after=5.0, ephemeral=True)
 
     @ai_params.sub_command(name="base-length", description="Change max token length of generated responses.")
     @checks.is_owner()
@@ -263,7 +263,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param length: The new base length.
         """
         self.base_length = length
-        await inter.send(f"Base length set to {length}", delete_after=5.0, ephemeral=True)
+        await inter.response.send_message(f"Base length set to {length}", delete_after=5.0, ephemeral=True)
 
     @ai_params.sub_command(name="max-lines", description="Change max number of lines in generated responses.")
     @checks.is_owner()
@@ -287,7 +287,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param chance: The chance of responding to a non-reply message from 0.0 to 1.0
         """
         self.response_chance = chance
-        await inter.send(f"Response chance set to {chance}", delete_after=5.0, ephemeral=True)
+        await inter.response.send_message(f"Response chance set to {chance}", delete_after=5.0, ephemeral=True)
 
     @ai_params.sub_command(
         name="context", description="Change the number of messages used for context in response generation."
@@ -305,7 +305,7 @@ class AiCog(commands.Cog, name="Ai"):
         """
         messages = int(messages)
         self.context_messages = messages
-        await inter.send(f"Prompt context set to {messages}", delete_after=5.0, ephemeral=True)
+        await inter.response.send_message(f"Prompt context set to {messages}", delete_after=5.0, ephemeral=True)
 
     # Event Listeners
 
