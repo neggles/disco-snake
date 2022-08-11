@@ -252,7 +252,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param temperature: The new temperature.
         """
         self.temperature = temperature
-        await inter.response.send_message(f"Temperature set to {temperature}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Temperature set to {temperature}", delete_after=5.0, ephemeral=True)
 
     @ai_params.sub_command(name="base-length", description="Change max token length of generated responses.")
     @checks.is_owner()
@@ -263,7 +263,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param length: The new base length.
         """
         self.base_length = length
-        await inter.response.send_message(f"Base length set to {length}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Base length set to {length}", delete_after=5.0, ephemeral=True)
 
     @ai_params.sub_command(name="max-lines", description="Change max number of lines in generated responses.")
     @checks.is_owner()
@@ -274,7 +274,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param lines: The max number of lines.
         """
         self.max_lines = lines
-        await inter.response.send_message(f"Max lines set to {lines}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Max lines set to {lines}", delete_after=5.0, ephemeral=True)
 
     @ai_params.sub_command(
         name="response-chance", description="Change chance of responding to a non-reply message."
@@ -287,7 +287,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param chance: The chance of responding to a non-reply message from 0.0 to 1.0
         """
         self.response_chance = chance
-        await inter.response.send_message(f"Response chance set to {chance}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Response chance set to {chance}", delete_after=5.0, ephemeral=True)
 
     @ai_params.sub_command(
         name="context", description="Change the number of messages used for context in response generation."
@@ -305,7 +305,7 @@ class AiCog(commands.Cog, name="Ai"):
         """
         messages = int(messages)
         self.context_messages = messages
-        await inter.response.send_message(f"Prompt context set to {messages}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Prompt context set to {messages}", delete_after=5.0, ephemeral=True)
 
     # Event Listeners
 
@@ -344,7 +344,7 @@ class AiCog(commands.Cog, name="Ai"):
                 context = [line for line in context if len(line) > 5 and "```" not in line]
                 # make our prompt
                 prompt = "\n".join(context) + "\n" + message_text
-                self.prompt_queue.put_nowait(message)
+                self.prompt_queue.put_nowait(prompt)
             elif self.prompt_queue.full():
                 logger.debug("Prompt queue is full.")
             return
@@ -479,7 +479,7 @@ class AiCog(commands.Cog, name="Ai"):
         logger.info(f"Trimmed response: '{trimmed_oneline}'")
         return response
 
-    @tasks.loop(seconds=30, reconnect=True)
+    @tasks.loop(seconds=300, reconnect=True)
     async def background_generate(self) -> None:
         """
         Feeds the AI with context from random messages and generates a response.

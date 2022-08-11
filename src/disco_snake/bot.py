@@ -3,7 +3,9 @@ import logging
 import os
 import platform
 import random
+import sys
 from pathlib import Path
+from traceback import print_exception
 from zoneinfo import ZoneInfo
 
 import disnake
@@ -11,6 +13,10 @@ from disnake import ApplicationCommandInteraction
 from disnake.ext import commands, tasks
 
 import exceptions
+from helpers.misc import get_package_root
+
+PACKAGE_ROOT = get_package_root()
+
 
 intents = disnake.Intents.default()
 intents.members = True
@@ -31,6 +37,8 @@ class DiscoSnake(commands.Bot):
         self.datadir_path: Path = None
         self.userstate_path: Path = None
         self.userstate: dict = None
+        self.cogdir_path: Path = None
+        self.extdir_path: Path = None
 
     def save_userstate(self):
         if self.userstate is not None and self.userstate_path.is_file():
@@ -38,13 +46,50 @@ class DiscoSnake(commands.Bot):
                 json.dump(self.userstate, f, skipkeys=True, indent=2)
             logger.debug("Flushed user states to disk")
 
+    def load_userstate(self):
+        if self.userstate_path.is_file():
+            with self.userstate_path.open("r") as f:
+                self.userstate = json.load(f)
+            logger.debug("Loaded user states from disk")
+
+    def available_cogs(self):
+        return [f.stem for f in self.cogdir_path.glob("*.py") if f.stem != "template"]
+
+    def load_cogs(self, override: bool = False):
+        cogs = self.available_cogs()
+        if cogs:
+            for cog in cogs:
+                try:
+                    self.load_extension(f"cogs.{cog}")
+                    logger.info(f"Loaded cog '{cog}'")
+                except Exception as e:
+                    etype, exc, tb = sys.exc_info()
+                    exception = f"{etype}: {exc}"
+                    logger.error(f"Failed to load extension {cog}:\n{exception}")
+                    print_exception(etype, exc, tb)
+        else:
+            logger.info("No cogs found")
+
+    def available_extensions(self):
+        return [f.stem for f in self.extdir_path.glob("*.py") if f.stem != "template"]
+
+    def load_extensions(self):
+        extensions = self.available_extensions()
+        if extensions:
+            for ext in extensions:
+                try:
+                    self.load_extension(f"extensions.{ext}")
+                    logger.info(f"Loaded extension '{ext}'")
+                except Exception as e:
+                    etype, exc, tb = sys.exc_info()
+                    exception = f"{etype}: {exc}"
+                    logger.error(f"Failed to load extension {ext}:\n{exception}")
+                    print_exception(etype, exc, tb)
+        else:
+            logger.info("No extensions found")
+
 
 bot = DiscoSnake(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
-
-
-@bot.message_command_check
-def check_commands(ctx: commands.Context):
-    return ctx.command.qualified_name in bot.config["allowed_commands"]
 
 
 @bot.event

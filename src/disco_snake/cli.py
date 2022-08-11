@@ -16,27 +16,18 @@ from disco_snake.bot import bot
 logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(__package__)
 
-PACKAGE_ROOT = get_package_root()
+LOGDIR_PATH = Path.cwd().joinpath("logs")
 
 DATADIR_PATH = Path.cwd().joinpath("data")
-LOGDIR_PATH = Path.cwd().joinpath("logs")
-USERSTATE_PATH = None
-CONFIG_PATH = None
+CONFIG_PATH = DATADIR_PATH.joinpath("config.json")
+USERSTATE_PATH = DATADIR_PATH.joinpath("userstate.json")
+
+PACKAGE_ROOT = get_package_root()
+
+COGDIR_PATH = PACKAGE_ROOT.joinpath("cogs")
+EXTDIR_PATH = PACKAGE_ROOT.joinpath("extensions")
+
 MBYTE = 2**20
-
-
-def load_commands() -> None:
-    for file in PACKAGE_ROOT.joinpath("cogs").iterdir():
-        if file.suffix == ".py" and file.stem != "template":
-            extension = file.stem
-            try:
-                bot.load_extension(f"cogs.{extension}")
-                logger.info(f"Loaded extension '{extension}'")
-            except Exception as e:
-                etype, exc, tb = sys.exc_info()
-                exception = f"{etype}: {exc}"
-                logger.error(f"Failed to load extension {extension}\n{exception}")
-                print_exception(etype, exc, tb)
 
 
 def cb_shutdown(message: str, code: int):
@@ -61,12 +52,7 @@ def cli(ctx: click.Context):
     Main entrypoint for your application.
     """
     global bot
-    global CONFIG_PATH
-    global LOGDIR_PATH
-    global USERSTATE_PATH
-
-    CONFIG_PATH = DATADIR_PATH.joinpath("config.json")
-    USERSTATE_PATH = DATADIR_PATH.joinpath("userstate.json")
+    ctx.obj = bot
 
     # clamp log level to DEBUG
     logging.root = logsnake.setup_logger(
@@ -110,11 +96,14 @@ def cli(ctx: click.Context):
     bot.timezone = ZoneInfo(config["timezone"])
     bot.datadir_path = DATADIR_PATH
     bot.userstate_path = USERSTATE_PATH
+    bot.cogdir_path = COGDIR_PATH
+    bot.extdir_path = EXTDIR_PATH
     bot.userstate = userstate
     bot.reload = config["reload"]
 
-    load_commands()
-    bot.remove_cog("cogs.canned")
+    bot.load_extensions()
+    bot.load_cogs()
+
     bot.run(config["token"])
 
     cb_shutdown("Normal shutdown", 0)
