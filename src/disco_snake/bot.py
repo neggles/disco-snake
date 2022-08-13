@@ -53,7 +53,11 @@ class DiscoSnake(commands.Bot):
             logger.debug("Loaded user states from disk")
 
     def available_cogs(self):
-        return [f.stem for f in self.cogdir_path.glob("*.py") if f.stem != "template"]
+        return [
+            f.stem
+            for f in self.cogdir_path.glob("*.py")
+            if f.stem != "template" and not f.stem.endswith("_wip")
+        ]
 
     def load_cogs(self, override: bool = False):
         cogs = self.available_cogs()
@@ -71,7 +75,11 @@ class DiscoSnake(commands.Bot):
             logger.info("No cogs found")
 
     def available_extensions(self):
-        return [f.stem for f in self.extdir_path.glob("*.py") if f.stem != "template"]
+        return [
+            f.stem
+            for f in self.extdir_path.glob("*.py")
+            if f.stem != "template" and not f.stem.endswith("_wip")
+        ]
 
     def load_extensions(self):
         extensions = self.available_extensions()
@@ -88,6 +96,28 @@ class DiscoSnake(commands.Bot):
         else:
             logger.info("No extensions found")
 
+    @tasks.loop(minutes=1.0)
+    async def status_task(self) -> None:
+        """
+        Set up the bot's status task
+        """
+        statuses = self.config["statuses"]
+        activity = disnake.Activity(name=random.choice(statuses), type=disnake.ActivityType.listening)
+        await bot.change_presence(activity=activity)
+
+    @status_task.before_loop
+    async def before_status_task(self):
+        print("waiting...")
+        await self.wait_until_ready()
+
+    @tasks.loop(minutes=3.0)
+    async def userstate_task(self) -> None:
+        """
+        Background task to flush user state to disk
+        """
+        bot.save_userstate()
+        logger.debug("Flushed userstates to disk")
+
 
 bot = DiscoSnake(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
 
@@ -102,29 +132,10 @@ async def on_ready() -> None:
     logger.info(f"Python version: {platform.python_version()}")
     logger.info(f"Running on: {platform.system()} {platform.release()} ({os.name})")
     logger.info("-------------------")
-    if not status_task.is_running():
-        status_task.start()
-    if not userstate_task.is_running():
-        userstate_task.start()
-
-
-@tasks.loop(minutes=1.0)
-async def status_task() -> None:
-    """
-    Set up the bot's status task
-    """
-    statuses = bot.config["statuses"]
-    activity = disnake.Activity(name=random.choice(statuses), type=disnake.ActivityType.listening)
-    await bot.change_presence(activity=activity)
-
-
-@tasks.loop(minutes=3.0)
-async def userstate_task() -> None:
-    """
-    Background task to flush user state to disk
-    """
-    bot.save_userstate()
-    logger.debug("Flushed userstates to disk")
+    if not bot.status_task.is_running():
+        bot.status_task.start()
+    if not bot.userstate_task.is_running():
+        bot.userstate_task.start()
 
 
 @bot.event

@@ -1,17 +1,17 @@
 import json
 import logging
 import sys
+from pathlib import Path
 from traceback import print_exception
 from zoneinfo import ZoneInfo
-from pathlib import Path
 
 import click
-import logsnake
+import daemonocle
 from daemonocle.cli import DaemonCLI
 
-from helpers.misc import get_package_root, parse_log_level
-
+import logsnake
 from disco_snake.bot import bot
+from helpers.misc import get_package_root, parse_log_level
 
 logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(__package__)
@@ -37,8 +37,17 @@ def cb_shutdown(message: str, code: int):
     return code
 
 
+class BotDaemon(daemonocle.Daemon):
+    @daemonocle.expose_action
+    def reload(self):
+        """Reload the bot."""
+
+        pass
+
+
 @click.command(
     cls=DaemonCLI,
+    daemon_class=BotDaemon,
     daemon_params={
         "name": "disco-snake",
         "pid_file": "./data/disco-snake.pid",

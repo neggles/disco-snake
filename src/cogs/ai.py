@@ -492,15 +492,12 @@ class AiCog(commands.Cog, name="Ai"):
             logger.debug("Skipping background generation, AI is locked")
             return
 
-        # get a message from the context queue
-        if self.prompt_queue.empty():
-            logger.debug("No queued message to generate from, waiting...")
-            return
+        if not self.prompt_queue.empty():
+            logger.info("Generating background response from queue")
+            return await self.generate_response(prompt=self.prompt_queue.get_nowait())
         else:
-            prompt = self.prompt_queue.get_nowait()
-
-        logger.info("Generating background response from queue")
-        return await self.generate_response(prompt=prompt)
+            # logger.debug("Prompt queue is empty, skipping background generation")
+            return
 
 
 def setup(bot):
