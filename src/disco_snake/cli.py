@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 import click
 import daemonocle
+import uvloop
 from daemonocle.cli import DaemonCLI
 
 import logsnake
@@ -62,6 +63,11 @@ def cli(ctx: click.Context):
     """
     global bot
     ctx.obj = bot
+
+    # have to use a different method on python 3.11 and up because of a change to how asyncio works
+    # not sure how to implement that with disnake, so for now, no uvloop on python 3.11 and up
+    if sys.version_info < (3, 11):
+        uvloop.install()
 
     # clamp log level to DEBUG
     logging.root = logsnake.setup_logger(
