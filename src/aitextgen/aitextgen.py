@@ -17,26 +17,21 @@ from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     AutoTokenizer,
-    GPT2Config,
-    GPT2LMHeadModel,
+    PretrainedConfig,
     GPT2TokenizerFast,
     PreTrainedTokenizerFast,
     Trainer,
     TrainingArguments,
     default_data_collator,
 )
-from transformers.models.gpt2.convert_gpt2_original_tf_checkpoint_to_pytorch import (
-    convert_gpt2_checkpoint_to_pytorch,
-)
 
 from .colab import create_gdrive_folder
 from .TokenDataset import TokenDataset
-from .train_callback import ATGProgressCallback
 from .train_pt import ATGProgressBar, ATGTransformer
-from .utils import download_gpt2, find_index_of_subset, model_max_length, reset_seed, set_seed
+from .utils import model_max_length, reset_seed, set_seed
 
 logger = logging.getLogger("aitextgen")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 STATIC_PATH = resource_filename(__name__, "static")
 
@@ -79,16 +74,13 @@ class aitextgen:
         self,
         model: str = None,
         model_folder: str = None,
-        config: Union[str, GPT2Config] = None,
-        vocab_file: str = None,
-        merges_file: str = None,
+        config: Union[str, PretrainedConfig] = None,
         tokenizer: Union[str, PreTrainedTokenizerFast] = None,
         schema_tokens: List[str] = None,
         schema_return: List[str] = None,
         cache_dir: str = "aitextgen",
         tf_gpt2: str = None,
         to_gpu: bool = False,
-        to_fp16: bool = False,
         verbose: bool = False,
         gradient_checkpointing: bool = False,
         bos_token: str = None,
@@ -113,62 +105,7 @@ class aitextgen:
                 logging.getLogger(module).setLevel(logging.WARN)
             logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
 
-        if tf_gpt2:
-            self.openai_tf_gpt2 = tf_gpt2
-
-            # Download + convert the TF weights if a PyTorch model has not been created
-            if not os.path.isfile(os.path.join(cache_dir, f"pytorch_model_{tf_gpt2}.bin")):
-                assert tf_gpt2 in [
-                    "124M",
-                    "355M",
-                    "774M",
-                    "1558M",
-                ], "Invalid TensorFlow GPT-2 model size."
-
-                logger.info(
-                    f"Downloading the {tf_gpt2} GPT-2 TensorFlow weights/config " + "from Google's servers"
-                )
-
-                download_gpt2(cache_dir, tf_gpt2)
-
-                logger.info(f"Converting the {tf_gpt2} GPT-2 TensorFlow weights to PyTorch.")
-
-                config_path = os.path.join(cache_dir, tf_gpt2, "hparams.json")
-
-                convert_gpt2_checkpoint_to_pytorch(
-                    os.path.join(cache_dir, tf_gpt2),
-                    config_path,
-                    cache_dir,
-                )
-
-                os.rename(
-                    os.path.join(cache_dir, "pytorch_model.bin"),
-                    os.path.join(cache_dir, f"pytorch_model_{tf_gpt2}.bin"),
-                )
-
-                os.rename(
-                    os.path.join(cache_dir, "config.json"),
-                    os.path.join(cache_dir, f"config_{tf_gpt2}.json"),
-                )
-
-            logger.info(f"Loading {tf_gpt2} GPT-2 model from /{cache_dir}.")
-            model = os.path.join(cache_dir, f"pytorch_model_{tf_gpt2}.bin")
-            config = os.path.join(cache_dir, f"config_{tf_gpt2}.json")
-
-            self.model = GPT2LMHeadModel.from_pretrained(model, config=config)
-
-        elif model_folder:
-            # A folder is provided containing pytorch_model.bin and config.json
-            assert os.path.exists(
-                os.path.join(model_folder, "pytorch_model.bin")
-            ), f"There is no pytorch_model.bin in /{model_folder}."
-            assert os.path.exists(
-                os.path.join(model_folder, "config.json")
-            ), f"There is no config.json in /{model_folder}."
-            assert os.path.exists(
-                os.path.join(model_folder, "tokenizer.json")
-            ), f"There is no tokenizer.json in /{model_folder}."
-
+        if model_folder:
             logger.info(f"Loading model from provided weights and config in /{model_folder}.")
             self.model = AutoModelForCausalLM.from_pretrained(model_folder, local_files_only=True)
             self.tokenizer = AutoTokenizer.from_pretrained(model_folder, use_fast=True)
@@ -195,17 +132,6 @@ class aitextgen:
                 )
 
         logger.info(self)
-
-        if gradient_checkpointing or tf_gpt2 in ["355M", "774M", "1558M"]:
-            logger.info("Gradient checkpointing enabled for model training.")
-            setattr(self.model.config, "gradient_checkpointing", True)
-            setattr(self.model.config, "use_cache", False)
-
-        if schema_tokens:
-            setattr(self.model.config, "schema_tokens", schema_tokens)
-
-        if schema_return:
-            setattr(self.model.config, "schema_return", schema_return)
 
         if self.tokenizer is None:
             # Update tokenizer settings (if not set already)
@@ -259,12 +185,6 @@ class aitextgen:
         self.tokenizer.padding_side = "left"
 
         if to_gpu:
-            if to_fp16:
-                logger.warn(
-                    "Currently, FP16 text generation results in random output. "
-                    + "You may want to avoid using to_fp16 for the time being."
-                )
-                self.to_fp16()
             self.to_gpu()
 
     def generate(
@@ -276,11 +196,8 @@ class aitextgen:
         max_length: int = 256,
         temperature: float = 0.7,
         do_sample: bool = True,
-        return_as_list: bool = False,
         seed: int = None,
         pad_token_id: str = None,
-        schema: str = False,
-        normalize_key: bool = True,
         use_cache: bool = True,
         lstrip: bool = True,
         nonempty_output: bool = True,
@@ -306,14 +223,7 @@ class aitextgen:
         and model.
         """
 
-        prompt_text = prompt
-        prompt_tensors = self.tokenizer(text=prompt, return_tensors="pt")
-
-        if prompt:
-            prompt_num_tokens = list(prompt_tensors["input_ids"].shape)[1]
-            assert prompt_num_tokens < model_max_length(
-                self.model.config
-            ), f"The prompt is too large for the model. ({prompt_num_tokens} tokens)"
+        prompt_tensors = self.tokenizer(text=prompt, return_tensors="pt", padding=True).to(self.get_device())
 
         input_ids = prompt_tensors["input_ids"].to(self.get_device()) if prompt else None
 
@@ -321,19 +231,13 @@ class aitextgen:
             prepend_bos = getattr(self.model.config, "line_by_line", None)
 
         if prepend_bos:
-            bos = torch.tensor([[self.tokenizer.bos_token_id]]).to(self.get_device())
-            if prompt:
-                input_ids = torch.cat((bos, input_ids), dim=1)
-            else:
-                input_ids = bos
+            bos = self.tokenizer(self.tokenizer.bos_token, return_tensors="pt").to("cuda:0").input_ids
+            input_ids = torch.cat((bos, input_ids), dim=1)
 
         if seed:
             set_seed(seed)
 
-        if pad_token_id is None:
-            pad_token_id = getattr(self.tokenizer, "pad_token_id", None) or getattr(
-                self.tokenizer, "eos_token_id", None
-            )
+        pad_token_id = pad_token_id if pad_token_id is not None else self.tokenizer.eos_token_id
 
         # prevent an error from using a length greater than the model
         gen_max_length = model_max_length(self.model.config)
@@ -352,103 +256,27 @@ class aitextgen:
                 **kwargs,
             )
 
-            # Schema token handling
-            if schema:
-                schema_tokens = getattr(self.model.config, "schema_tokens")
-                schema_return = getattr(self.model.config, "schema_return", None)
-                schema_tokens_enc = self.tokenizer(text=schema_tokens)["input_ids"]
+            gen_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=skip_special_tokens)
 
-                nonalphanum_pattern = re.compile(r"[\W_]+", re.UNICODE)
+            # Handle stripping tokenization spaces w/ regex
+            if lstrip:
+                gen_texts = [re.sub(r"^\s+", "", text) for text in gen_texts]
 
-                outputs = outputs.tolist()
-                gen_texts = []
-                for output in outputs:
-                    gen_text_dict = {}
-
-                    # Get indices of each schema token within the text
-                    schema_token_indices = [
-                        (schema_tokens[i], find_index_of_subset(output, token_enc))
-                        for i, token_enc in enumerate(schema_tokens_enc)
-                    ]
-
-                    schema_token_indices.sort(key=lambda x: x[1])
-
-                    for i, token_tuple in enumerate(schema_token_indices):
-                        start_index = token_tuple[1]
-                        key = nonalphanum_pattern.sub("", token_tuple[0]) if normalize_key else token_tuple[0]
-                        if start_index == -1:
-                            gen_text_dict[key] = ""
-                        else:
-                            end_index = (
-                                schema_token_indices[i + 1][1] - 1
-                                if i + 1 < len(schema_token_indices)
-                                else None
-                            )
-
-                            gen_text_dict[key] = self.tokenizer.decode(
-                                output[start_index:end_index], skip_special_tokens=True
-                            )
-
-                    # remove fields not in schema_return
-                    if schema_return:
-                        keys = gen_text_dict.keys()
-                        if len(schema_return) == 1:
-                            gen_text_dict = gen_text_dict[schema_return[0]]
-                        for key in keys:
-                            if key not in schema_return:
-                                gen_text_dict.pop(key, None)
-
-                    gen_texts.append(gen_text_dict)
-
-                # Reset seed if used
-                if seed:
-                    reset_seed()
-
-                if not return_as_list:
-                    print(*gen_texts, sep="\n" + "=" * 10 + "\n")
-                    break
+            if nonempty_output:
+                if min_length:
+                    gen_texts = list(filter(lambda x: len(x) > min_length, gen_texts))
                 else:
-                    if n > 1:
-                        return gen_texts
-                    else:
-                        return gen_texts[0]
+                    gen_texts = list(filter(lambda x: len(x) > 0, gen_texts))
 
-            # Typical use case
-            else:
-                gen_texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=skip_special_tokens)
+            # if there is no generated text after cleanup, try again.
+            if len(gen_texts) == 0:
+                continue
 
-                # Handle stripping tokenization spaces w/ regex
-                if lstrip:
-                    gen_texts = [re.sub(r"^\s+", "", text) for text in gen_texts]
+            # Reset seed if used
+            if seed:
+                reset_seed()
 
-                if nonempty_output:
-                    if min_length:
-                        gen_texts = list(filter(lambda x: len(x) > min_length, gen_texts))
-                    else:
-                        gen_texts = list(filter(lambda x: len(x) > 0, gen_texts))
-
-                # if there is no generated text after cleanup, try again.
-                if len(gen_texts) == 0:
-                    continue
-
-                # Reset seed if used
-                if seed:
-                    reset_seed()
-
-                if not return_as_list:
-                    if prompt:
-                        # Bold the prompt if printing to console
-                        gen_texts = [
-                            text.replace(prompt_text, f"\033[1m{prompt_text}\033[0m", 1) for text in gen_texts
-                        ]
-
-                    if n > 1:
-                        print(*gen_texts, sep="\n" + "=" * 10 + "\n")
-                    else:
-                        print(gen_texts[0])
-                    break
-                else:
-                    return gen_texts
+            return gen_texts
 
     def generate_one(self, **kwargs) -> None:
         """

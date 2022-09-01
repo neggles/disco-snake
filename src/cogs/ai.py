@@ -332,29 +332,27 @@ class AiCog(commands.Cog, name="Ai"):
         direct = True if isinstance(message.channel, DMChannel) else False
 
         if random.random() > float(self.response_chance) and not mentioned and not direct:
-            if random.random() > float(0.5) and not self.prompt_queue.full():
-                logger.debug("Adding message to background prompt queue")
-                history = await message.channel.history(limit=max(self.context_messages, 5)).flatten()
-                history.reverse()
-                context = [
-                    self.clean_input(m.content.strip().replace("\n", ", "))
-                    for m in history
-                    if m.id != message.id
-                ]
-                context = [line for line in context if len(line) > 5 and "```" not in line]
-                # make our prompt
-                prompt = "\n".join(context) + "\n" + message_text
-                self.prompt_queue.put_nowait(prompt)
-            elif self.prompt_queue.full():
-                logger.debug("Prompt queue is full.")
+            # if random.random() > float(0.5) and not self.prompt_queue.full():
+            #     logger.debug("Adding message to background prompt queue")
+            #     history = await message.channel.history(limit=max(self.context_messages, 5)).flatten()
+            #     history.reverse()
+            #     context = [
+            #         self.clean_input(m.content.strip().replace("\n", ", "))
+            #         for m in history
+            #         if m.id != message.id
+            #     ]
+            #     context = [line for line in context if len(line) > 5 and "```" not in line]
+            #     # make our prompt
+            #     prompt = "\n".join(context) + "\n" + message_text
+            #     self.prompt_queue.put_nowait(prompt)
+            # elif self.prompt_queue.full():
+            #     logger.debug("Prompt queue is full.")
             return
 
         try:
             async with message.channel.typing():
-                if direct:
-                    history = await message.channel.history(limit=min(self.context_messages, 3)).flatten()
-                else:
-                    history = await message.channel.history(limit=min(self.context_messages, 25)).flatten()
+                hist_limit = min(self.context_messages, 4 if direct is True else 15)
+                history = await message.channel.history(limit=hist_limit).flatten()
                 history.reverse()
                 context = [
                     self.clean_input(m.content.strip().replace("\n", ", "))
@@ -366,6 +364,9 @@ class AiCog(commands.Cog, name="Ai"):
                 prompt = "\n".join(context) + "\n" + message_text
                 # send it to the AI and get the response
                 response = await self.generate_response(prompt)
+
+                logger.debug(f"[on_message] Prompt: {prompt.splitlines()}")
+                logger.debug(f"[on_message] Response: {response.splitlines()}")
 
                 # if this is a DM, just send the response
                 if direct:
