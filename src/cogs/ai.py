@@ -23,6 +23,9 @@ EMBED_COLOR = 0xFF9D0B
 NEWLINE = "\n"
 MBYTE = 2**20
 
+# how long responses to param changes will be kept in the channel
+PARAM_WAIT = 10.0
+
 EMOJI = {
     "huggingface": "🤗",
     "disco": "💃",
@@ -219,12 +222,12 @@ class AiCog(commands.Cog, name="Ai"):
         embed.add_field(name="Base length:", value=str(self.base_length), inline=True)
         embed.add_field(name="Max lines:", value=str(self.max_lines), inline=True)
         embed.add_field(name="Temperature:", value=str(self.temperature), inline=True)
-        embed.add_field(name="Response Rate:", value=str(self.response_chance), inline=True)
+        embed.add_field(name="Response Rate:", value="{:.0%}".format(self.response_chance), inline=True)
         embed.add_field(name="Context:", value=str(self.context_messages) + " Messages", inline=True)
         embed.add_field(name="Instance runs:", value=str(self.instance_runs), inline=True)
 
         embed.set_footer(text=f"Requested by {inter.author}", icon_url=inter.author.avatar.url)
-        await inter.send(embed=embed)
+        await inter.send(embed=embed, delete_after=60)
 
     @ai_group.sub_command(name="set-model", description="Change the active AI model.")
     @checks.is_owner()
@@ -252,7 +255,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param temperature: The new temperature.
         """
         self.temperature = temperature
-        await inter.send(f"Temperature set to {temperature}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Temperature set to {temperature}", delete_after=PARAM_WAIT, ephemeral=True)
 
     @ai_params.sub_command(name="base-length", description="Change max token length of generated responses.")
     @checks.is_owner()
@@ -263,7 +266,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param length: The new base length.
         """
         self.base_length = length
-        await inter.send(f"Base length set to {length}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Base length set to {length}", delete_after=PARAM_WAIT, ephemeral=True)
 
     @ai_params.sub_command(name="max-lines", description="Change max number of lines in generated responses.")
     @checks.is_owner()
@@ -274,7 +277,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param lines: The max number of lines.
         """
         self.max_lines = lines
-        await inter.send(f"Max lines set to {lines}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Max lines set to {lines}", delete_after=PARAM_WAIT, ephemeral=True)
 
     @ai_params.sub_command(
         name="response-chance", description="Change chance of responding to a non-reply message."
@@ -287,7 +290,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param chance: The chance of responding to a non-reply message from 0.0 to 1.0
         """
         self.response_chance = chance
-        await inter.send(f"Response chance set to {chance}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Response chance set to {chance}", delete_after=PARAM_WAIT, ephemeral=True)
 
     @ai_params.sub_command(
         name="context", description="Change the number of messages used for context in response generation."
@@ -305,7 +308,7 @@ class AiCog(commands.Cog, name="Ai"):
         """
         messages = int(messages)
         self.context_messages = messages
-        await inter.send(f"Prompt context set to {messages}", delete_after=5.0, ephemeral=True)
+        await inter.send(f"Prompt context set to {messages}", delete_after=PARAM_WAIT, ephemeral=True)
 
     # Event Listeners
 
@@ -325,32 +328,18 @@ class AiCog(commands.Cog, name="Ai"):
 
         mentioned = (
             True
-            if self.bot.user in message.mentions or self.bot.user.display_name in message.content
+            if self.bot.user in message.mentions
+            or self.bot.user.display_name.lower() in message.content.lower()
             else False
         )
-
         direct = True if isinstance(message.channel, DMChannel) else False
 
-        if random.random() > float(self.response_chance) and not mentioned and not direct:
-            # if random.random() > float(0.5) and not self.prompt_queue.full():
-            #     logger.debug("Adding message to background prompt queue")
-            #     history = await message.channel.history(limit=max(self.context_messages, 5)).flatten()
-            #     history.reverse()
-            #     context = [
-            #         self.clean_input(m.content.strip().replace("\n", ", "))
-            #         for m in history
-            #         if m.id != message.id
-            #     ]
-            #     context = [line for line in context if len(line) > 5 and "```" not in line]
-            #     # make our prompt
-            #     prompt = "\n".join(context) + "\n" + message_text
-            #     self.prompt_queue.put_nowait(prompt)
-            # elif self.prompt_queue.full():
-            #     logger.debug("Prompt queue is full.")
+        if not mentioned and not direct and random.random() > float(self.response_chance):
+            # Don't respond to non-mentions most of the time
             return
 
-        try:
-            async with message.channel.typing():
+        async with message.channel.typing():
+            try:
                 hist_limit = min(self.context_messages, 4 if direct is True else 15)
                 history = await message.channel.history(limit=hist_limit).flatten()
                 history.reverse()
@@ -361,7 +350,7 @@ class AiCog(commands.Cog, name="Ai"):
                 ]
 
                 # make our prompt
-                prompt = "\n".join(context) + "\n" + message_text
+                prompt = "\n".join(context) + "\n<|endoftext|>\n" + message_text + "\n"
                 # send it to the AI and get the response
                 response = await self.generate_response(prompt)
 
@@ -369,18 +358,16 @@ class AiCog(commands.Cog, name="Ai"):
                 logger.debug(f"[on_message] Response: {response.splitlines()}")
 
                 # if this is a DM, just send the response
-                if direct:
-                    await message.channel.send(response)
+                if mentioned:
+                    await message.reply(response)
                 # otherwise, send it in a reply
                 else:
-                    await message.reply(response)
-
-        except Exception as e:
-            logger.error("Error processing message content")
-            logger.error(e)
-        finally:
-            logger.debug("Finished processing message content")
-        return
+                    await message.channel.send(response)
+            except Exception as e:
+                logger.error("Error processing message content")
+                logger.error(e)
+            finally:
+                logger.debug("Finished processing message content")
 
     # AI functions
 
@@ -426,7 +413,6 @@ class AiCog(commands.Cog, name="Ai"):
             logger.info(f"Model {model_name} already set")
         if reinit:
             return await self.ai_init(reinit=True)
-        return
 
     def clean_input(self, message: str) -> str:
         """Process the input message"""
@@ -437,19 +423,22 @@ class AiCog(commands.Cog, name="Ai"):
     async def generate_response(self, prompt: str) -> str:
         if self.ai is None:
             raise ValueError("AI is not initialized")
-        prompt_oneline = " | ".join(prompt.splitlines())
-        logger.info(f"Generating response for '{prompt_oneline}'")
-
         # append a newline at the end if it's missing
         prompt = prompt + "\n" if not prompt.endswith("\n") else prompt
+        prompt_oneline = ", ".join(prompt.splitlines())
 
         num_tokens = len(self.ai.tokenizer(prompt)["input_ids"])
-        logger.debug(f"Number of tokens in prompt: {num_tokens}")
         if num_tokens > 1000:
-            logger.warn("Prompt is too long, dropping lines...")
-            while num_tokens >= 1000:
+            logger.warn(f"{num_tokens} tokens in prompt, truncating to <1000")
+            while num_tokens > 1000:
                 prompt = " ".join(prompt.split(" ")[20:])  # pretty arbitrary
                 num_tokens = len(self.ai.tokenizer(prompt)["input_ids"])
+
+        logger.info(f"[PROMPT][{num_tokens}]:'{prompt_oneline}'")
+
+        # count lines in prompt
+        promptlines = [x.strip() for x in prompt.splitlines() if len(x.strip()) > 0]
+        num_lines = len(promptlines)
 
         # do the generation
         async with self.lock:
@@ -463,21 +452,14 @@ class AiCog(commands.Cog, name="Ai"):
             )
             self.instance_runs += 1
 
-        raw_oneline = " | ".join(response.splitlines()).replace(prompt_oneline + " | ", "")
-        logger.info(f"Raw response: '{raw_oneline}'")
-
-        promptlines = [x.strip() for x in prompt.splitlines() if len(x.strip()) > 0]
-        num_lines = len(promptlines)
-        logger.debug(f"Removing {num_lines} prompt lines from raw response")
-
         resplines = [x.strip() for x in iter(response.splitlines()) if len(x.strip()) > 0]
         resplines = resplines[num_lines:]
 
         response = "\n".join(resplines[: random.randint(1, self.max_lines)])
         if response == "":
-            response = EMOJI["thonk"] + " i don't know what to say " + EMOJI["snake"]
-        trimmed_oneline = "\\n".join(response.splitlines())
-        logger.info(f"Trimmed response: '{trimmed_oneline}'")
+            response = EMOJI["thonk"] + " im confus, try again? " + EMOJI["snake"]
+        trimmed_oneline = ", ".join(response.splitlines())
+        logger.info(f"[RESPONSE][{num_lines}]: '{trimmed_oneline}'")
         return response
 
     @tasks.loop(seconds=300, reconnect=True)
@@ -496,9 +478,7 @@ class AiCog(commands.Cog, name="Ai"):
         if not self.prompt_queue.empty():
             logger.info("Generating background response from queue")
             return await self.generate_response(prompt=self.prompt_queue.get_nowait())
-        else:
-            # logger.debug("Prompt queue is empty, skipping background generation")
-            return
+        return
 
 
 def setup(bot):
