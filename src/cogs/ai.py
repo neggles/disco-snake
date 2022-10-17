@@ -353,8 +353,13 @@ class AiCog(commands.Cog, name="Ai"):
                 prompt = "\n".join(context) + "\n<|endoftext|>\n" + message_text + "\n"
                 # send it to the AI and get the response
                 response = await self.generate_response(prompt)
-
                 logger.debug(f"[on_message] Prompt: {prompt.splitlines()}")
+                if response == "":
+                    if mentioned or direct:
+                        response = EMOJI["thonk"] + " im confus, try again? " + EMOJI["snake"]
+                    else:
+                        logger.debug("[on_message] AI returned empty response")
+                        return
                 logger.debug(f"[on_message] Response: {response.splitlines()}")
 
                 # if this is a DM, just send the response
@@ -456,8 +461,6 @@ class AiCog(commands.Cog, name="Ai"):
         resplines = resplines[num_lines:]
 
         response = "\n".join(resplines[: random.randint(1, self.max_lines)])
-        if response == "":
-            response = EMOJI["thonk"] + " im confus, try again? " + EMOJI["snake"]
         trimmed_oneline = ", ".join(response.splitlines())
         logger.info(f"[RESPONSE][{num_lines}]: '{trimmed_oneline}'")
         return response
