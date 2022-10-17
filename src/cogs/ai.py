@@ -359,6 +359,7 @@ class AiCog(commands.Cog, name="Ai"):
                         response = EMOJI["thonk"] + " im confus, try again? " + EMOJI["snake"]
                     else:
                         logger.debug("[on_message] AI returned empty response")
+                        await message.add_reaction(EMOJI["snake"])
                         return
                 logger.debug(f"[on_message] Response: {response.splitlines()}")
 
