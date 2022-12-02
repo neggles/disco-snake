@@ -1,8 +1,6 @@
 import json
 import logging
 import sys
-from pathlib import Path
-from traceback import print_exception
 from zoneinfo import ZoneInfo
 
 import click
@@ -11,24 +9,34 @@ import uvloop
 from daemonocle.cli import DaemonCLI
 
 import logsnake
+from disco_snake import LOGDIR_PATH, CONFIG_PATH, DATADIR_PATH, USERDATA_PATH, PACKAGE
 from disco_snake.bot import bot
-from helpers.misc import get_package_root, parse_log_level
-
-logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
-logger = logging.getLogger(__package__)
-
-LOGDIR_PATH = Path.cwd().joinpath("logs")
-
-DATADIR_PATH = Path.cwd().joinpath("data")
-CONFIG_PATH = DATADIR_PATH.joinpath("config.json")
-USERSTATE_PATH = DATADIR_PATH.joinpath("userstate.json")
-
-PACKAGE_ROOT = get_package_root()
-
-COGDIR_PATH = PACKAGE_ROOT.joinpath("cogs")
-EXTDIR_PATH = PACKAGE_ROOT.joinpath("extensions")
+from helpers.misc import parse_log_level
 
 MBYTE = 2**20
+
+logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
+# setup root logger
+logging.root = logsnake.setup_logger(
+    level=logging.DEBUG,
+    isRootLogger=True,
+    formatter=logfmt,
+    logfile=LOGDIR_PATH.joinpath(f"{PACKAGE}-debug.log"),
+    fileLoglevel=logging.DEBUG,
+    maxBytes=2 * MBYTE,
+    backupCount=5,
+)
+# setup package logger
+logger = logsnake.setup_logger(
+    level=logging.INFO,
+    isRootLogger=False,
+    name=__package__,
+    formatter=logfmt,
+    logfile=LOGDIR_PATH.joinpath(f"{PACKAGE}.log"),
+    fileLoglevel=logging.INFO,
+    maxBytes=2 * MBYTE,
+    backupCount=5,
+)
 
 
 def cb_shutdown(message: str, code: int):
@@ -42,7 +50,6 @@ class BotDaemon(daemonocle.Daemon):
     @daemonocle.expose_action
     def reload(self):
         """Reload the bot."""
-
         pass
 
 
@@ -51,7 +58,7 @@ class BotDaemon(daemonocle.Daemon):
     daemon_class=BotDaemon,
     daemon_params={
         "name": "disco-snake",
-        "pid_file": "./data/disco-snake.pid",
+        "pid_file": f"{DATADIR_PATH}/disco-snake.pid",
         "shutdown_callback": cb_shutdown,
     },
 )
@@ -69,19 +76,6 @@ def cli(ctx: click.Context):
     if sys.version_info < (3, 11):
         uvloop.install()
 
-    # clamp log level to DEBUG
-    logging.root = logsnake.setup_logger(
-        level=logging.INFO,
-        isRootLogger=True,
-        formatter=logfmt,
-        logfile=LOGDIR_PATH.joinpath("disco-snake.log"),
-        fileLoglevel=logging.INFO,
-        maxBytes=5 * MBYTE,
-        backupCount=5,
-    )
-
-    logger.setLevel(logging.DEBUG)
-
     logger.info("Starting disco-snake")
     # Load config
     if CONFIG_PATH.exists():
@@ -92,28 +86,26 @@ def cli(ctx: click.Context):
     logger.setLevel(parse_log_level(config["log_level"]))
     logger.info(f"Effective log level: {logging.getLevelName(logger.getEffectiveLevel())}")
 
-    # same for logs
+    # create log and data directories if they don't exist
+    if not DATADIR_PATH.exists():
+        DATADIR_PATH.mkdir(parents=True)
     if not LOGDIR_PATH.exists():
         LOGDIR_PATH.mkdir(parents=True)
 
     # load userdata
-    if USERSTATE_PATH.is_file():
-        userstate = json.loads(USERSTATE_PATH.read_bytes())
+    if USERDATA_PATH.is_file():
+        userdata = json.loads(USERDATA_PATH.read_bytes())
     else:
-        logger.info(f"User state file does not exist, creating empty one at {USERSTATE_PATH}")
-        userstate = {}
-        USERSTATE_PATH.write_text(json.dumps(userstate, indent=4))
+        logger.info(f"User state file does not exist, creating empty one at {USERDATA_PATH}")
+        userdata = {}
+        USERDATA_PATH.write_text(json.dumps(userdata, indent=4))
 
     logger.info(f"Loaded configuration from {CONFIG_PATH}")
     logger.debug(f"    {json.dumps(config, indent=4)}")
 
     bot.config = config
     bot.timezone = ZoneInfo(config["timezone"])
-    bot.datadir_path = DATADIR_PATH
-    bot.userstate_path = USERSTATE_PATH
-    bot.cogdir_path = COGDIR_PATH
-    bot.extdir_path = EXTDIR_PATH
-    bot.userstate = userstate
+    bot.userdata = userdata
     bot.reload = config["reload"]
 
     bot.load_extensions()

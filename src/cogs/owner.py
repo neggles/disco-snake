@@ -16,88 +16,38 @@ class Owner(commands.Cog, name="owner"):
 
     @commands.slash_command(
         name="shutdown",
-        description="Make the bot shutdown.",
+        description="Shut down the bot.",
     )
     @checks.is_owner()
-    async def shutdown(self, inter: ApplicationCommandInteraction) -> None:
+    async def shutdown(self, ctx: ApplicationCommandInteraction) -> None:
         """
         Makes the bot shutdown.
         :param interaction: The application command interaction.
         """
         embed = disnake.Embed(description="Shutting down. Bye! :wave:", color=0x9C84EF)
-        await inter.send(embed=embed)
+        await ctx.send(embed=embed)
         await self.bot.close()
 
-    @commands.slash_command(
-        name="say",
-        description="The bot will say anything you want.",
-        options=[
-            Option(
-                name="message",
-                description="The message you want me to repeat.",
-                type=OptionType.string,
-                required=True,
-            )
-        ],
-    )
+    @commands.slash_command(name="blacklist", description="Manage blacklisted users")
     @checks.is_owner()
-    async def say(self, inter: ApplicationCommandInteraction, message: str) -> None:
-        """
-        The bot will say anything you want.
-        :param interaction: The application command interaction.
-        :param message: The message that should be repeated by the bot.
-        """
-        await inter.send(message)
-
-    @commands.slash_command(
-        name="embed",
-        description="The bot will say anything you want, but within embeds.",
-        options=[
-            Option(
-                name="message",
-                description="The message you want me to repeat.",
-                type=OptionType.string,
-                required=True,
-            )
-        ],
-    )
-    @checks.is_owner()
-    async def embed(self, inter: ApplicationCommandInteraction, message: str) -> None:
-        """
-        The bot will say anything you want, but using embeds.
-        :param interaction: The application command interaction.
-        :param message: The message that should be repeated by the bot.
-        """
-        embed = disnake.Embed(description=message, color=0x9C84EF)
-        await inter.send(embed=embed)
-
-    @commands.slash_command(
-        name="blacklist",
-        description="Get the list of all blacklisted users.",
-    )
-    @checks.is_owner()
-    async def blacklist(self, inter: ApplicationCommandInteraction) -> None:
-        """
-        Lets you add or remove a user from not being able to use the bot.
-        :param interaction: The application command interaction.
-        """
+    async def blacklist(self, ctx: ApplicationCommandInteraction) -> None:
         pass
 
     @blacklist.sub_command(
         base="blacklist",
         name="add",
-        description="Lets you add a user from not being able to use the bot.",
+        description="Add a user to the blacklist",
         options=[
             Option(
                 name="user",
-                description="The user you want to add to the blacklist.",
+                description="The user you want to blacklist",
                 type=OptionType.user,
                 required=True,
             )
         ],
     )
     @checks.is_owner()
-    async def blacklist_add(self, inter: ApplicationCommandInteraction, user: disnake.User = None) -> None:
+    async def blacklist_add(self, ctx: ApplicationCommandInteraction, user: disnake.User = None) -> None:
         """
         Lets you add a user from not being able to use the bot.
         :param interaction: The application command interaction.
@@ -113,7 +63,7 @@ class Owner(commands.Cog, name="owner"):
                     description=f"**{user.name}** is already in the blacklist.",
                     color=0xE02B2B,
                 )
-                return await inter.send(embed=embed)
+                return await ctx.send(embed=embed)
             json_manager.add_user_to_blacklist(user_id)
             embed = disnake.Embed(
                 title="User Blacklisted",
@@ -123,31 +73,31 @@ class Owner(commands.Cog, name="owner"):
             with open("blacklist.json") as file:
                 blacklist = json.load(file)
             embed.set_footer(text=f"There are now {len(blacklist['ids'])} users in the blacklist")
-            await inter.send(embed=embed)
+            await ctx.send(embed=embed)
         except Exception as exception:
             embed = disnake.Embed(
                 title="Error!",
                 description=f"An unknown error occurred when trying to add **{user.name}** to the blacklist.",
                 color=0xE02B2B,
             )
-            await inter.send(embed=embed)
+            await ctx.send(embed=embed)
             print(exception)
 
     @blacklist.sub_command(
         base="blacklist",
         name="remove",
-        description="Lets you remove a user from not being able to use the bot.",
+        description="Remove a user from the blacklist",
         options=[
             Option(
                 name="user",
-                description="The user you want to remove from the blacklist.",
+                description="The user you want to un-blacklist",
                 type=OptionType.user,
                 required=True,
             )
         ],
     )
     @checks.is_owner()
-    async def blacklist_remove(self, inter: ApplicationCommandInteraction, user: disnake.User = None):
+    async def blacklist_remove(self, ctx: ApplicationCommandInteraction, user: disnake.User = None):
         """
         Lets you remove a user from not being able to use the bot.
         :param interaction: The application command interaction.
@@ -163,19 +113,19 @@ class Owner(commands.Cog, name="owner"):
             with open("blacklist.json") as file:
                 blacklist = json.load(file)
             embed.set_footer(text=f"There are now {len(blacklist['ids'])} users in the blacklist")
-            await inter.send(embed=embed)
+            await ctx.send(embed=embed)
         except ValueError:
             embed = disnake.Embed(
                 title="Error!", description=f"**{user.name}** is not in the blacklist.", color=0xE02B2B
             )
-            await inter.send(embed=embed)
+            await ctx.send(embed=embed)
         except Exception as exception:
             embed = disnake.Embed(
                 title="Error!",
                 description=f"An unknown error occurred when trying to add **{user.name}** to the blacklist.",
                 color=0xE02B2B,
             )
-            await inter.send(embed=embed)
+            await ctx.send(embed=embed)
             print(exception)
 
     @commands.slash_command(
@@ -183,10 +133,10 @@ class Owner(commands.Cog, name="owner"):
         description="Lets you enable, disable, or reload a cog.",
     )
     @checks.is_owner()
-    async def extensions(self, inter: ApplicationCommandInteraction) -> None:
+    async def extensions(self, ctx: ApplicationCommandInteraction) -> None:
         """
         Lets you enable, disable, or reload a cog.
-        :param inter: The application command interaction.
+        :param ctx: The application command interaction.
         """
         pass
 
@@ -196,13 +146,13 @@ class Owner(commands.Cog, name="owner"):
         description="List all available cogs.",
     )
     @checks.is_owner()
-    async def list_cog(self, inter: ApplicationCommandInteraction) -> None:
+    async def list_cog(self, ctx: ApplicationCommandInteraction) -> None:
         """
         Enable a cog.
         :param interaction: The application command interaction.
         :param name: The name of the cog you would like to load.
         """
-        await inter.response.defer()
+        await ctx.response.defer()
         descr = "Loaded cogs:\n"
         for cog in self.bot.cogs:
             descr += f"> {cog}\n"
@@ -217,7 +167,7 @@ class Owner(commands.Cog, name="owner"):
             description=descr,
             color=0x9C84EF,
         )
-        await inter.send(embed=embed)
+        await ctx.send(embed=embed)
 
     @extensions.sub_command(
         base="cog",
@@ -233,13 +183,13 @@ class Owner(commands.Cog, name="owner"):
         ],
     )
     @checks.is_owner()
-    async def enable_cog(self, inter: ApplicationCommandInteraction, name: str) -> None:
+    async def enable_cog(self, ctx: ApplicationCommandInteraction, name: str) -> None:
         """
         Enable a cog.
         :param interaction: The application command interaction.
         :param name: The name of the cog you would like to load.
         """
-        await inter.response.defer()
+        await ctx.response.defer()
         try:
             cog = self.bot.add_cog(f"cogs.{name}", True)
             if cog is not None:
@@ -248,14 +198,14 @@ class Owner(commands.Cog, name="owner"):
                     description=f"Cog **{name}** loaded successfully.",
                     color=0x9C84EF,
                 )
-                return await inter.send(embed=embed, delete_after=10)
+                return await ctx.send(embed=embed, delete_after=10)
             else:
                 embed = disnake.Embed(
                     title="Error!",
                     description=f"Cog **{name}** failed to load or does not exist.",
                     color=0xE02B2B,
                 )
-                return await inter.send(embed=embed, delete_after=10)
+                return await ctx.send(embed=embed, delete_after=10)
 
         except Exception as e:
             embed = disnake.Embed(
@@ -263,7 +213,7 @@ class Owner(commands.Cog, name="owner"):
                 description=f"An error occurred when trying to unload **{name}**",
                 color=0xE02B2B,
             )
-            await inter.send(embed=embed, delete_after=10)
+            await ctx.send(embed=embed, delete_after=10)
             logger.error(e)
 
     @extensions.sub_command(
@@ -280,13 +230,13 @@ class Owner(commands.Cog, name="owner"):
         ],
     )
     @checks.is_owner()
-    async def disable_cog(self, inter: ApplicationCommandInteraction, name: str) -> None:
+    async def disable_cog(self, ctx: ApplicationCommandInteraction, name: str) -> None:
         """
         Disable a cog.
         :param interaction: The application command interaction.
         :param name: The name of the cog you would like to unload.
         """
-        await inter.response.defer()
+        await ctx.response.defer(ephemeral=True)
 
         try:
             cog: commands.Cog = self.bot.get_cog(f"cogs.{name}")
@@ -297,14 +247,14 @@ class Owner(commands.Cog, name="owner"):
                     description=f"Cog **{name}** unloaded successfully.",
                     color=0x9C84EF,
                 )
-                return await inter.send(embed=embed, delete_after=10)
+                return await ctx.send(embed=embed, ephemeral=True, delete_after=15.0)
             else:
                 embed = disnake.Embed(
                     title="Error!",
                     description=f"Cog **{name}** is not loaded or does not exist.",
                     color=0xE02B2B,
                 )
-                return await inter.send(embed=embed, delete_after=10)
+                return await ctx.send(embed=embed, ephemeral=True, delete_after=15.0)
 
         except Exception as e:
             embed = disnake.Embed(
@@ -312,8 +262,7 @@ class Owner(commands.Cog, name="owner"):
                 description=f"An error occurred when trying to unload **{name}**",
                 color=0xE02B2B,
             )
-            await inter.send(embed=embed, delete_after=10)
-            logger.error(e)
+            return await ctx.send(embed=embed, ephemeral=True)
 
 
 def setup(bot):

@@ -16,6 +16,5 @@
     "max_length": 80,
     "temperature": 0.9,
     "response_chance": 0.01
-  },
-  "allowed_commands": []
+  }
 }

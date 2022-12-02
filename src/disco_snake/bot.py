@@ -4,6 +4,7 @@ import os
 import platform
 import random
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from traceback import print_exception
 from zoneinfo import ZoneInfo
@@ -11,6 +12,7 @@ from zoneinfo import ZoneInfo
 import disnake
 from disnake import ApplicationCommandInteraction
 from disnake.ext import commands, tasks
+from disco_snake import LOGDIR_PATH, DATADIR_PATH, EXTDIR_PATH, COGDIR_PATH, CONFIG_PATH, USERDATA_PATH
 
 import exceptions
 from helpers.misc import get_package_root
@@ -34,30 +36,37 @@ class DiscoSnake(commands.Bot):
         # attributes set up in cli.py. this is a dumb way to do this but it works
         self.config: dict = None
         self.timezone: ZoneInfo = None
-        self.datadir_path: Path = None
-        self.userstate_path: Path = None
-        self.userstate: dict = None
-        self.cogdir_path: Path = None
-        self.extdir_path: Path = None
+        self.datadir_path: Path = DATADIR_PATH
+        self.userdata_path: Path = USERDATA_PATH
+        self.userdata: dict = None
+        self.cogdir_path: Path = COGDIR_PATH
+        self.extdir_path: Path = EXTDIR_PATH
+        self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
 
     def save_userstate(self):
-        if self.userstate is not None and self.userstate_path.is_file():
-            with self.userstate_path.open("w") as f:
-                json.dump(self.userstate, f, skipkeys=True, indent=2)
+        if self.userdata is not None and self.userdata_path.is_file():
+            with self.userdata_path.open("w") as f:
+                json.dump(self.userdata, f, skipkeys=True, indent=2)
             logger.debug("Flushed user states to disk")
 
     def load_userstate(self):
-        if self.userstate_path.is_file():
-            with self.userstate_path.open("r") as f:
-                self.userstate = json.load(f)
+        if self.userdata_path.is_file():
+            with self.userdata_path.open("r") as f:
+                self.userdata = json.load(f)
             logger.debug("Loaded user states from disk")
 
+    def get_uptime(self) -> timedelta:
+        return datetime.now(tz=ZoneInfo("UTC")) - self.start_time
+
     def available_cogs(self):
-        return [
+        cogs = [
             f.stem
             for f in self.cogdir_path.glob("*.py")
             if f.stem != "template" and not f.stem.endswith("_wip")
         ]
+        if isinstance(self.config["disable_cogs"], list):
+            cogs = [x for x in cogs if x not in self.config["disable_cogs"]]
+        return cogs
 
     def load_cogs(self, override: bool = False):
         cogs = self.available_cogs()

@@ -59,10 +59,6 @@ class ModelSelect(disnake.ui.Select):
     def __init__(self):
         model_folders = [x for x in MODELS_ROOT.iterdir() if x.is_dir()]
         options = [disnake.SelectOption(label=x.name, value=x.name) for x in model_folders]
-
-        # The placeholder is what will be shown when no option is chosen
-        # The min and max values indicate we can only pick one of the three options
-        # The options parameter defines the dropdown options. We defined this above
         super().__init__(
             placeholder="Choose an available model:",
             min_values=1,

@@ -20,7 +20,7 @@ class Canned(commands.Cog, name="canned-messages"):
         if message.author == self.bot.user or message.author.bot:
             return
 
-        autoreplies = self.bot.userstate["autoreplies"]
+        autoreplies = self.bot.userdata["autoreplies"]
         daily_autoreplies = [x for x in autoreplies if x["type"] == "daily"]
 
         if message.author.id in [x["user"] for x in daily_autoreplies]:
@@ -39,7 +39,7 @@ class Canned(commands.Cog, name="canned-messages"):
                     logger.info(f"{message.author.name} has lost the diceroll, sending reply")
                     await message.reply(autoreply["message"])
                     daily_autoreplies[index]["last_reply"] = datetime.now().isoformat()
-                    self.bot.userstate["autoreplies"] = daily_autoreplies
+                    self.bot.userdata["autoreplies"] = daily_autoreplies
                     self.bot.save_userstate()
                     return
                 else:

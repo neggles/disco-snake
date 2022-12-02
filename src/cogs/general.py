@@ -1,88 +1,84 @@
 import platform
-import random
 
-import aiohttp
 import disnake
-from disnake import ApplicationCommandInteraction, Option, OptionType
+from disnake import ApplicationCommandInteraction
 from disnake.ext import commands
 
+from disco_snake.bot import DiscoSnake
 from helpers import checks
 
 
 class General(commands.Cog, name="general"):
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: DiscoSnake = bot
 
     @commands.slash_command(
         name="botinfo",
-        description="Get some theoretically useful information about the bot.",
+        description="Get some info about the bot.",
     )
     @checks.not_blacklisted()
-    async def botinfo(self, interaction: ApplicationCommandInteraction) -> None:
+    async def botinfo(self, ctx: ApplicationCommandInteraction) -> None:
         """
         Get some useful (or not) information about the bot.
-        :param interaction: The application command interaction.
+        :param ctx: The application command ctx.
         """
-        embed = disnake.Embed(description="a really stupid disco(rd) snake(python) bot", color=0x9C84EF)
-        embed.set_author(name="Bot Info", icon_url=self.bot.user.avatar.url)
-        embed.add_field(name="Owner:", value=self.bot.config["owner"], inline=True)
-        embed.add_field(name="Running on:", value=f"Python {platform.python_version()}", inline=True)
-        embed.add_field(name="Repo:", value=self.bot.config["repo_url"], inline=False)
-        embed.add_field(name="Prefix:", value="/ (Slash Commands)", inline=False)
-        embed.set_footer(text=f"Requested by {interaction.author}", icon_url=interaction.author.avatar.url)
-        await interaction.send(embed=embed)
+        embed = disnake.Embed(description="a questionably intelligent discord bot", color=0x9C84EF)
+        embed.set_author(name="Info", icon_url=self.bot.user.avatar.url)
+        embed.add_field(name="Owner:", value=self.bot.owner.mention, inline=True)
+        embed.add_field(name="Source repo:", value=self.bot.config["repo_url"], inline=True)
+        embed.add_field(name="Running on", value=f"Python {platform.python_version()}", inline=False)
+        embed.add_field(name="Timezone:", value=str(self.bot.config["timezone"]), inline=True)
+        embed.add_field(name="Uptime:", value=str(self.bot.status), inline=False)
+        embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.avatar.url)
+        await ctx.send(embed=embed)
 
     @commands.slash_command(
         name="serverinfo",
         description="Get some useful (or not) information about the server.",
     )
     @checks.not_blacklisted()
-    async def serverinfo(self, interaction: ApplicationCommandInteraction) -> None:
+    async def serverinfo(self, ctx: ApplicationCommandInteraction) -> None:
         """
         Get some useful (or not) information about the server.
-        :param interaction: The application command interaction.
+        :param ctx: The application command ctx.
         """
-        roles = [role.name for role in interaction.guild.roles]
+        roles = [role.name for role in ctx.guild.roles]
         if len(roles) > 50:
             roles = roles[:50]
             roles.append(f">>>> Displaying[50/{len(roles)}] Roles")
         roles = ", ".join(roles)
 
-        embed = disnake.Embed(title="**Server Name:**", description=f"{interaction.guild}", color=0x9C84EF)
-        embed.set_thumbnail(url=interaction.guild.icon.url)
-        embed.add_field(name="Server ID", value=interaction.guild.id)
-        embed.add_field(name="Member Count", value=interaction.guild.member_count)
-        embed.add_field(name="Text/Voice Channels", value=f"{len(interaction.guild.channels)}")
-        embed.add_field(name=f"Roles ({len(interaction.guild.roles)})", value=roles)
-        embed.set_footer(text=f"Created at: {interaction.guild.created_at}")
-        await interaction.send(embed=embed)
+        embed = disnake.Embed(title="**Server Name:**", description=f"{ctx.guild}", color=0x9C84EF)
+        embed.set_thumbnail(url=ctx.guild.icon.url)
+        embed.add_field(name="Server ID", value=ctx.guild.id)
+        embed.add_field(name="Member Count", value=ctx.guild.member_count)
+        embed.add_field(name="Text/Voice Channels", value=f"{len(ctx.guild.channels)}")
+        embed.add_field(name=f"Roles ({len(ctx.guild.roles)})", value=roles)
+        embed.set_footer(text=f"Created at: {ctx.guild.created_at}")
+        await ctx.send(embed=embed)
 
-    @commands.slash_command(
-        name="ping",
-        description="Check if the bot is alive.",
-    )
+    @commands.slash_command(name="ping", description="ping the bot")
     @checks.not_blacklisted()
-    async def ping(self, interaction: ApplicationCommandInteraction) -> None:
+    async def ping(self, ctx: ApplicationCommandInteraction) -> None:
         """
         Check if the bot is alive.
-        :param interaction: The application command interaction.
+        :param ctx: The application command ctx.
         """
         embed = disnake.Embed(
             title="🏓 Pong!",
-            description=f"The bot latency is {round(self.bot.latency * 1000)}ms.",
+            description=f"Current API latency is {round(self.bot.latency * 1000)}ms",
             color=0x9C84EF,
         )
-        await interaction.send(embed=embed)
+        await ctx.send(embed=embed)
 
     @commands.slash_command(
-        name="invite",
-        description="Get the invite link of the bot to be able to invite it.",
+        name="get-invite", description="Get the bot's invite link to add it to your server."
     )
     @checks.not_blacklisted()
-    async def invite(self, interaction: ApplicationCommandInteraction) -> None:
+    async def invite(self, ctx: ApplicationCommandInteraction) -> None:
         """
         Get the invite link of the bot to be able to invite it.
-        :param interaction: The application command interaction.
+        :param ctx: The command context.
         """
         embed = disnake.Embed(
             description=f"Invite me by clicking [here](https://discordapp.com/oauth2/authorize?&client_id={self.bot.config['application_id']}&scope=bot+applications.commands&permissions={self.bot.config['permissions']}).",
@@ -90,115 +86,10 @@ class General(commands.Cog, name="general"):
         )
         try:
             # To know what permissions to give to your bot, please see here: https://discordapi.com/permissions.html and remember to not give Administrator permissions.
-            await interaction.author.send(embed=embed)
-            await interaction.send("I sent you a private message!")
+            await ctx.author.send(embed=embed)
+            await ctx.send("I sent you a private message!")
         except disnake.Forbidden:
-            await interaction.send(embed=embed)
-
-    @commands.slash_command(
-        name="8ball",
-        description="Ask any question to the bot.",
-        options=[
-            Option(
-                name="question",
-                description="The question you want to ask.",
-                type=OptionType.string,
-                required=True,
-            )
-        ],
-    )
-    @checks.not_blacklisted()
-    async def eight_ball(self, interaction: ApplicationCommandInteraction, question: str) -> None:
-        """
-        Ask any question to the bot.
-        :param interaction: The application command interaction.
-        :param question: The question that should be asked by the user.
-        """
-        answers = [
-            "It is certain.",
-            "It is decidedly so.",
-            "You may rely on it.",
-            "Without a doubt.",
-            "Yes - definitely.",
-            "As I see, yes.",
-            "Most likely.",
-            "Outlook good.",
-            "Yes.",
-            "Signs point to yes.",
-            "Reply hazy, try again.",
-            "Ask again later.",
-            "Better not tell you now.",
-            "Cannot predict now.",
-            "Concentrate and ask again later.",
-            "Don't count on it.",
-            "My reply is no.",
-            "My sources say no.",
-            "Outlook not so good.",
-            "Very doubtful.",
-        ]
-        embed = disnake.Embed(title="**My Answer:**", description=f"{random.choice(answers)}", color=0x9C84EF)
-        embed.set_footer(text=f"The question was: {question}")
-        await interaction.send(embed=embed)
-
-    @commands.slash_command(
-        name="bitcoin",
-        description="Get the current price of bitcoin.",
-    )
-    @checks.not_blacklisted()
-    async def bitcoin(self, interaction: ApplicationCommandInteraction) -> None:
-        """
-        Get the current price of bitcoin.
-        :param interaction: The application command interaction.
-        """
-        # This will prevent your bot from stopping everything when doing a web request - see: https://discordpy.readthedocs.io/en/stable/faq.html#how-do-i-make-a-web-request
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://api.coindesk.com/v1/bpi/currentprice/BTC.json") as request:
-                if request.status == 200:
-                    data = await request.json(
-                        content_type="application/javascript"
-                    )  # For some reason the returned content is of type JavaScript
-                    embed = disnake.Embed(
-                        title="Bitcoin price",
-                        description=f"The current price is US${data['bpi']['USD']['rate']} :stonks:",
-                        color=0x9C84EF,
-                    )
-                    embed.set_footer(text="but the real question is, why do you care?")
-                else:
-                    embed = disnake.Embed(
-                        title="Error!",
-                        description="There is something wrong with the API, please try again later",
-                        color=0xE02B2B,
-                    )
-                await interaction.send(embed=embed)
-
-    @commands.slash_command(
-        name="dogecoin",
-        description="Get the current price of dogecoin.",
-    )
-    @checks.not_blacklisted()
-    async def dogecoin(self, interaction: ApplicationCommandInteraction) -> None:
-        """
-        Get the current price of dogecoin.
-        :param interaction: The application command interaction.
-        """
-        # This will prevent your bot from stopping everything when doing a web request - see: https://discordpy.readthedocs.io/en/stable/faq.html#how-do-i-make-a-web-request
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://sochain.com//api/v2/get_price/DOGE/USD") as request:
-                if request.status == 200:
-                    data = await request.json()
-                    embed = disnake.Embed(
-                        title="Dogecoin price",
-                        description=f"The current price is US${data['data']['prices'][0]['price']} :rocket:",
-                        color=0x9C84EF,
-                    )
-                    embed.set_footer(text="...to the mooooooooon!")
-                else:
-                    embed = disnake.Embed(
-                        title="Error!",
-                        description="There is something wrong with the API, please try again later",
-                        color=0xE02B2B,
-                    )
-                await interaction.send(embed=embed)
+            await ctx.send(embed=embed)
 
 
 def setup(bot):
