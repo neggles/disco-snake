@@ -59,7 +59,7 @@ for handler in logger.handlers:
 class ModelParameters(disnake.ui.Modal):
     def __init__(self):
         components = [disnake.ui.Select(), disnake.ui.Select(), disnake.ui.Select(), disnake.ui.Select()]
-        super().__init__()
+        super().__init__(components=components)
 
     async def callback(self, inter: disnake.ModalInteraction):
         await inter.response.send_message("User input was received!")
