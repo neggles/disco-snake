@@ -10,7 +10,7 @@ from daemonocle.cli import DaemonCLI
 
 import logsnake
 from disco_snake import LOGDIR_PATH, CONFIG_PATH, DATADIR_PATH, USERDATA_PATH, PACKAGE
-from disco_snake.bot import bot
+from disco_snake.bot import DiscoSnake
 from helpers.misc import parse_log_level
 
 MBYTE = 2**20
@@ -37,6 +37,8 @@ logger = logsnake.setup_logger(
     maxBytes=2 * MBYTE,
     backupCount=5,
 )
+
+bot: DiscoSnake = DiscoSnake()
 
 
 def cb_shutdown(message: str, code: int):
@@ -68,8 +70,7 @@ def cli(ctx: click.Context):
     """
     Main entrypoint for your application.
     """
-    global bot
-    ctx.obj = bot
+    ctx.obj: DiscoSnake = bot
 
     # have to use a different method on python 3.11 and up because of a change to how asyncio works
     # not sure how to implement that with disnake, so for now, no uvloop on python 3.11 and up
