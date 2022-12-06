@@ -28,7 +28,7 @@ logging.root = logsnake.setup_logger(
 )
 # setup package logger
 logger = logsnake.setup_logger(
-    level=logging.INFO,
+    level=logging.DEBUG,
     isRootLogger=False,
     name=__package__,
     formatter=logfmt,

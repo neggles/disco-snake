@@ -55,6 +55,17 @@ for handler in logger.handlers:
     t2logger.addHandler(handler)
 
 
+# Modal for adjusting parameters
+class ModelParameters(disnake.ui.Modal):
+    def __init__(self):
+        components = [disnake.ui.Select(), disnake.ui.Select(), disnake.ui.Select(), disnake.ui.Select()]
+        super().__init__()
+
+    async def callback(self, inter: disnake.ModalInteraction):
+        await inter.response.send_message("User input was received!")
+
+
+# Model selection UI
 class ModelSelect(disnake.ui.Select):
     def __init__(self):
         model_folders = [x for x in MODELS_ROOT.iterdir() if x.is_dir()]
@@ -251,7 +262,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param temperature: The new temperature.
         """
         self.temperature = temperature
-        await inter.send(f"Temperature set to {temperature}", delete_after=PARAM_WAIT, ephemeral=True)
+        await inter.send(f"Temperature set to {temperature}", ephemeral=True)
 
     @ai_params.sub_command(name="base-length", description="Change max token length of generated responses.")
     @checks.is_owner()
@@ -262,7 +273,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param length: The new base length.
         """
         self.base_length = length
-        await inter.send(f"Base length set to {length}", delete_after=PARAM_WAIT, ephemeral=True)
+        await inter.send(f"Base length set to {length}", ephemeral=True)
 
     @ai_params.sub_command(name="max-lines", description="Change max number of lines in generated responses.")
     @checks.is_owner()
@@ -273,7 +284,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param lines: The max number of lines.
         """
         self.max_lines = lines
-        await inter.send(f"Max lines set to {lines}", delete_after=PARAM_WAIT, ephemeral=True)
+        await inter.send(f"Max lines set to {lines}", ephemeral=True)
 
     @ai_params.sub_command(
         name="response-chance", description="Change chance of responding to a non-reply message."
@@ -286,7 +297,7 @@ class AiCog(commands.Cog, name="Ai"):
         :param chance: The chance of responding to a non-reply message from 0.0 to 1.0
         """
         self.response_chance = chance
-        await inter.send(f"Response chance set to {chance}", delete_after=PARAM_WAIT, ephemeral=True)
+        await inter.send(f"Response chance set to {chance}", ephemeral=True)
 
     @ai_params.sub_command(
         name="context", description="Change the number of messages used for context in response generation."
@@ -304,7 +315,7 @@ class AiCog(commands.Cog, name="Ai"):
         """
         messages = int(messages)
         self.context_messages = messages
-        await inter.send(f"Prompt context set to {messages}", delete_after=PARAM_WAIT, ephemeral=True)
+        await inter.send(f"Prompt context set to {messages}", ephemeral=True)
 
     # Event Listeners
 
