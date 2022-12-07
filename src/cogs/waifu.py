@@ -25,13 +25,13 @@ logger = logsnake.setup_logger(
     backupCount=5,
 )
 
-SD_DATADIR = DATADIR_PATH.joinpath("sd")
+SD_DATADIR = DATADIR_PATH.joinpath("sd", "waifu")
 SD_DATADIR.mkdir(parents=True, exist_ok=True)
 
-WAIFU_MODEL = DATADIR_PATH.joinpath("models", "waifu-diffusion")
+SD_MODEL = "waifu-diffusion"
 
 
-class SDEmbed(Embed):
+class WaifuEmbed(Embed):
     def __init__(self, prompt: str, image_file: File, requestor: User, *args, **kwargs):
         super().__init__(title=f"{prompt}:", *args, **kwargs)
 
@@ -43,7 +43,7 @@ class SDEmbed(Embed):
 
 
 # Here we name the cog and create a new class for the cog.
-class Journey(commands.Cog, name="journey"):
+class Journey(commands.Cog, name="waifu"):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
         logger.info(f"Loaded {self.qualified_name} cog.")
@@ -54,10 +54,10 @@ class Journey(commands.Cog, name="journey"):
 
     async def pipe_init(
         self,
-        model_name: str = "openjourney",
+        model_name: str = SD_MODEL,
         torch_dtype: torch.dtype = torch.float32,
     ):
-        model_dir = Path(DATADIR_PATH) / "models" / model_name
+        model_dir = DATADIR_PATH.joinpath("models", model_name)
         if not model_dir.exists():
             raise FileNotFoundError(f"Model directory {model_dir} does not exist.")
         logger.info(f"Loading diffusers model from {model_dir}")
@@ -70,7 +70,10 @@ class Journey(commands.Cog, name="journey"):
         return
 
     # Cog slash command group
-    @commands.slash_command(name="journey", description="Generate and edit images with DALL·E")
+    @commands.slash_command(
+        name="waifu", description=f"Generate images with {SD_MODEL}. WARNING: NO CONTENT FILTER"
+    )
+    @checks.not_blacklisted()
     @commands.cooldown(1, 60.0, commands.BucketType.user)
     async def generate(
         self,
@@ -88,7 +91,7 @@ class Journey(commands.Cog, name="journey"):
         logger.info(f"Generating image for {ctx.user.name} from prompt '{prompt}'")
 
         try:
-            result: StableDiffusionPipelineOutput = self.pipe(f"{prompt.strip()}, mdjrny-v4 style")
+            result: StableDiffusionPipelineOutput = self.pipe(prompt.strip(), guidance_scale=6)
         except Exception as e:
             raise e
 
@@ -97,15 +100,15 @@ class Journey(commands.Cog, name="journey"):
         if result.nsfw_content_detected[0] is True:
             logger.info(f"NSFW content detected for {ctx.user.name} from prompt '{prompt}'")
             save_path = save_path.with_suffix(".nsfw.png")
-            logger.info(f"Saving NSFW image to {save_path}")
-            image.save(save_path)
-            await ctx.send("that prompt was too spicy for me to handle...")
-            return
+            # logger.info(f"Saving NSFW image to {save_path}")
+            # image.save(save_path)
+            # await ctx.send("that prompt was too spicy for me to handle...")
+            # return
 
         logger.info(f"Saving image to {save_path}")
         image.save(save_path)
         image_file = File(save_path)
-        await ctx.send(embed=SDEmbed(prompt, image_file, ctx.author))
+        await ctx.send(embed=WaifuEmbed(prompt, image_file, ctx.author))
         return
 
 
