@@ -5,7 +5,7 @@ from datetime import datetime
 import torch
 from diffusers import StableDiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from disnake import Embed, GuildCommandInteraction, User, File
+from disnake import Embed, ApplicationCommandInteraction, User, File
 from disnake.ext import commands
 
 import logsnake
@@ -74,7 +74,7 @@ class Journey(commands.Cog, name="journey"):
     @commands.cooldown(1, 60.0, commands.BucketType.user)
     async def generate(
         self,
-        ctx: GuildCommandInteraction,
+        ctx: ApplicationCommandInteraction,
         prompt: str = commands.Param(description="The prompt to generate an image from."),
     ):
         """
