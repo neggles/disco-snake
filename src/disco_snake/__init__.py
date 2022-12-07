@@ -12,6 +12,9 @@ from helpers.misc import get_package_root
 LOGDIR_PATH = Path.cwd().joinpath("logs")
 DATADIR_PATH = Path.cwd().joinpath("data")
 
+# LOGDIR_PATH = Path(__file__).parent.parent.parent.joinpath("logs")
+# DATADIR_PATH = Path(__file__).parent.parent.parent.joinpath("data")
+
 CONFIG_PATH = DATADIR_PATH.joinpath("config.json")
 USERDATA_PATH = DATADIR_PATH.joinpath("userdata.json")
 BLACKLIST_PATH = DATADIR_PATH.joinpath("blacklist.json")
