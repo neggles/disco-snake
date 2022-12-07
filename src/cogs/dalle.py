@@ -15,7 +15,7 @@ from helpers import checks
 logger = logsnake.setup_logger(
     level=logging.DEBUG,
     isRootLogger=False,
-    name=__package__,
+    name=Path(__file__).stem,
     formatter=logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S"),
     logfile=LOGDIR_PATH.joinpath(f"{Path(__file__).stem}.log"),
     fileLoglevel=logging.DEBUG,
