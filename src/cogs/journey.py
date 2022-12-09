@@ -1,11 +1,14 @@
 import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from io import FileIO
+from asyncio import sleep as async_sleep
 
+import replicate
 import torch
 from diffusers import StableDiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from disnake import Embed, ApplicationCommandInteraction, User, File
+from disnake import ApplicationCommandInteraction, Embed, File, MessageInteraction, User, ButtonStyle, ui
 from disnake.ext import commands
 
 import logsnake
@@ -28,24 +31,82 @@ logger = logsnake.setup_logger(
 SD_DATADIR = DATADIR_PATH.joinpath("sd")
 SD_DATADIR.mkdir(parents=True, exist_ok=True)
 
-WAIFU_MODEL = DATADIR_PATH.joinpath("models", "waifu-diffusion")
+COG_UID = "journey"
+
+
+class Upscaler:
+    def __init__(self, token: str):
+        self._client = replicate.Client(api_token=token)
+        self._model = self._client.models.get("jingyunliang/swinir")
+        self._upscaler = self._model.versions.get(
+            "660d922d33153019e8c263a3bba265de882e7f4f70396546b6c9c8f9d47a021a"
+        )
+
+    async def upscale(self, image: FileIO, large: bool = False) -> str:
+        if large is True:
+            task_type = "Real-World Image Super-Resolution-Large"
+        else:
+            task_type = "Real-World Image Super-Resolution-Medium"
+        result = self._upscaler.predict(image=image, task_type=task_type)
+
+        # wait for prediction to finish
+        while result.status not in ["succeeded", "failed", "canceled"]:
+            async_sleep(0.5)
+            result.reload()
+
+        if result.status in ["failed", "canceled"]:
+            raise RuntimeError(f"Upscaling returned result '{result.status}' :(")
+        return result
 
 
 class SDEmbed(Embed):
-    def __init__(self, prompt: str, image_file: File, requestor: User, *args, **kwargs):
+    def __init__(self, prompt: str, image_file: File | str, requestor: User, *args, **kwargs):
         super().__init__(title=f"{prompt}:", *args, **kwargs)
 
         self.colour = int(requestor.accent_colour) if requestor.accent_colour is not None else 0xFFD01C
 
-        self.set_image(file=image_file)
+        if isinstance(image_file, File):
+            self.set_image(file=image_file)
+        else:
+            self.set_image(url=image_file)
         self.set_author(name=requestor.display_name, icon_url=requestor.avatar.url)
         self.set_footer(text="Powered by Huggingface Diffusers 🤗🧨")
+
+
+class ImageView(ui.View):
+    def __init__(self, upscaler: Upscaler):
+        super().__init__(timeout=180.0)
+        self.upscaler = upscaler
+
+    @ui.button(label="Upscale", style=ButtonStyle.primary, custom_id=f"{COG_UID}_ImageView:upscale")
+    async def upscale_button(self, button: ui.Button, ctx: MessageInteraction):
+        await ctx.response.defer()
+        image = ctx.message.attachments[0].url
+        try:
+            image = await self.upscaler.upscale(image)
+        except RuntimeError as e:
+            await ctx.response.send_message(e)
+            return
+
+        prompt = ctx.message.embeds[0].title
+        prompt = prompt[:-1] if prompt.endswith(":") else prompt
+        self.upscale_button.disabled = True
+        self.upscale_button.label = "Upscaled!"
+        await ctx.response.edit_message(embed=SDEmbed(prompt, image, ctx.message.author), view=self)
+        pass
 
 
 # Here we name the cog and create a new class for the cog.
 class Journey(commands.Cog, name="journey"):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
+        self.replicate_token = self.bot.config["replicate_token"] or None
+        if self.replicate_token is None:
+            logger.warning("No replicate token found in config, disabling upscaling.")
+            self.upscaler = None
+        else:
+            self.upscaler = Upscaler(self.replicate_token)
+
         logger.info(f"Loaded {self.qualified_name} cog.")
 
     async def cog_load(self) -> None:
@@ -105,7 +166,7 @@ class Journey(commands.Cog, name="journey"):
         logger.info(f"Saving image to {save_path}")
         image.save(save_path)
         image_file = File(save_path)
-        await ctx.send(embed=SDEmbed(prompt, image_file, ctx.author))
+        await ctx.send(embed=SDEmbed(prompt, image_file, ctx.author), view=ImageView(self.upscaler))
         return
 
 

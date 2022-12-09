@@ -237,6 +237,9 @@ class aitextgen:
         if seed:
             set_seed(seed)
 
+        return_as_list = kwargs.pop("return_as_list", None)
+        base_length = kwargs.pop("base_length", None)
+
         pad_token_id = pad_token_id if pad_token_id is not None else self.tokenizer.eos_token_id
 
         # prevent an error from using a length greater than the model
@@ -286,76 +289,7 @@ class aitextgen:
         See generate() for more parameters.
         """
 
-        return self.generate(n=1, return_as_list=True, **kwargs)[0]
-
-    def generate_samples(self, n: int = 3, temperatures: List[float] = [0.7, 1.0, 1.2], **kwargs) -> None:
-        """
-        Prints multiple samples to console at specified temperatures.
-        """
-
-        for temperature in temperatures:
-            print("#" * 20 + f"\nTemperature: {temperature}\n" + "#" * 20)
-            self.generate(n=n, temperature=temperature, return_as_list=False, **kwargs)
-
-    def generate_to_file(
-        self,
-        n: int = 20,
-        batch_size: int = 1,
-        destination_path: str = None,
-        sample_delim: str = "=" * 20 + "\n",
-        seed: int = None,
-        **kwargs,
-    ) -> None:
-        """
-        Generates a bulk amount of texts to a file, into a format
-        good for manually inspecting and curating the texts.
-
-        :param n: Number of texts to generate
-        :param batch_size: Number of texts to generate simultaneously, taking
-        advantage of CPU/GPU parallelization.
-        :param destination_path: File name of the file. If None, a timestampped
-        file name is automatically used.
-        :param sample_delim: The text used to delimit each generated text.
-        :param seed: Seed used for the generation. The last part of a file name
-        will be the seed used to reproduce a generation.
-        :param cleanup: Whether to polish the text before returning
-
-        See generate() for more parameters.
-        """
-
-        assert n % batch_size == 0, f"n must be divisible by batch_size ({batch_size})."
-
-        self.model = self.model.eval()
-
-        if destination_path is None:
-            # Create a time-based file name to prevent overwriting.
-            # Use a 8-digit number as the seed, which is the last
-            # numeric part of the file name.
-            if seed is None:
-                seed = randint(10**7, 10**8 - 1)
-
-            destination_path = f"ATG_{datetime.utcnow():%Y%m%d_%H%M%S}_{seed}.txt"
-
-        if seed:
-            set_seed(seed)
-
-        logger.info(f"Generating {n:,} texts to {destination_path}")
-
-        pbar = trange(n)
-        f = open(destination_path, "w", encoding="utf-8")
-
-        for _ in range(n // batch_size):
-            gen_texts = self.generate(n=batch_size, return_as_list=True, **kwargs)
-
-            for gen_text in gen_texts:
-                f.write("{}\n{}".format(gen_text, sample_delim))
-            pbar.update(batch_size)
-
-        pbar.close()
-        f.close()
-
-        if seed:
-            reset_seed()
+        return self.generate(n=1, **kwargs)[0]
 
     def train(
         self,

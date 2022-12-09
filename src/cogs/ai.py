@@ -38,7 +38,7 @@ EMOJI = {
 
 logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
 logger: logging.Logger = logsnake.setup_logger(
-    __name__,
+    name=Path(__file__).stem,
     level=logging.INFO,
     logfile=str(LOGDIR_PATH.joinpath("ai.log").resolve()),
     maxBytes=MBYTE,
@@ -192,7 +192,7 @@ class AiCog(commands.Cog, name="Ai"):
         # to prevent blocking the main thread when changing models or generating text.
         # bonus: model becomes accessible from other cogs! how to handle IPC? queues probably?
         await self.ai_init(reinit=True)
-        await self.background_generate.start()
+        # await self.background_generate.start()
         return await super().cog_load()
 
     async def cog_unload(self) -> None:
