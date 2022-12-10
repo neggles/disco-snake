@@ -18,13 +18,13 @@ MBYTE = 2**20
 logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
 # setup root logger
 logging.root = logsnake.setup_logger(
-    level=logging.DEBUG,
+    level=logging.INFO,
     isRootLogger=True,
     formatter=logfmt,
     logfile=LOGDIR_PATH.joinpath(f"{PACKAGE}-debug.log"),
-    fileLoglevel=logging.DEBUG,
+    fileLoglevel=logging.INFO,
     maxBytes=2 * MBYTE,
-    backupCount=5,
+    backupCount=2,
 )
 # setup package logger
 logger = logsnake.setup_logger(
@@ -33,9 +33,9 @@ logger = logsnake.setup_logger(
     name=__package__,
     formatter=logfmt,
     logfile=LOGDIR_PATH.joinpath(f"{PACKAGE}.log"),
-    fileLoglevel=logging.INFO,
+    fileLoglevel=logging.DEBUG,
     maxBytes=2 * MBYTE,
-    backupCount=5,
+    backupCount=2,
 )
 
 bot: DiscoSnake = DiscoSnake()

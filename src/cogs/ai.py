@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import random
+from functools import partial as partial_func
 from pathlib import Path
-from traceback import format_exc
 from typing import List
 
 import disnake
@@ -16,7 +16,6 @@ from disco_snake.bot import DiscoSnake
 from disco_snake.cli import DATADIR_PATH, LOGDIR_PATH
 from helpers import checks
 from helpers.misc import parse_log_level
-
 
 MODELS_ROOT = DATADIR_PATH.joinpath("models")
 EMBED_COLOR = 0xFF9D0B
@@ -44,12 +43,11 @@ logger: logging.Logger = logsnake.setup_logger(
     maxBytes=MBYTE,
     formatter=logfmt,
     fileLoglevel=logging.DEBUG,
-    backupCount=5,
+    backupCount=2,
 )
 logger.propagate = False
 
 # set up the transformers logger
-t2logging.set_verbosity_info()
 t2logger = t2logging.get_logger("transformers")
 for handler in logger.handlers:
     t2logger.addHandler(handler)
@@ -133,6 +131,8 @@ class AiCog(commands.Cog, name="Ai"):
         self.instance_runs = 0
         self.prompt_queue = asyncio.Queue(maxsize=8)
 
+        self.gpu_executor = bot.gpu_executor  # thread "pool" for GPU operations
+
         # load config
         config: dict = bot.config["ai"]
         if config["model_name"] is None:
@@ -188,15 +188,14 @@ class AiCog(commands.Cog, name="Ai"):
         t2logging.set_verbosity(value)
 
     async def cog_load(self) -> None:
-        # TODO: Refactor model and generation out into a separate module/class that runs in a separate thread,
-        # to prevent blocking the main thread when changing models or generating text.
-        # bonus: model becomes accessible from other cogs! how to handle IPC? queues probably?
-        await self.ai_init(reinit=True)
-        # await self.background_generate.start()
+        await self.ai_init()
         return await super().cog_load()
 
-    async def cog_unload(self) -> None:
-        return await super().cog_unload()
+    async def do_gpu(self, func, *args, **kwargs):
+        funcname = getattr(func, "__name__", "unknown")
+        logger.info(f"Running {funcname} on GPU...")
+        res = await self.bot.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
+        return res
 
     # Slash Commands
 
@@ -388,6 +387,7 @@ class AiCog(commands.Cog, name="Ai"):
         async with self.lock:
             if self.ai is not None and reinit:
                 logger.info("AI reinitialization requested, disposing old AI")
+                await self.do_gpu(self.ai.to_cpu)
                 del self.ai
                 self.ai = None
 
@@ -395,15 +395,15 @@ class AiCog(commands.Cog, name="Ai"):
             if self.ai is None:
                 try:
                     logger.info(f"Initializing AI model {self.model_name}")
-                    self.ai = aitextgen(
+                    self.ai = await self.do_gpu(
+                        aitextgen,
                         model_folder=str(self.model_folder.resolve()),
                         to_gpu=self.use_gpu,
                         verbose=self.verbose,
                     )
                     logger.info("AI model initialized")
                 except Exception as e:
-                    logger.error(f"Error initializing AI model {self.model_name}")
-                    logger.error(f"{format_exc(e)}")
+                    logger.error(f"Error initializing AI model {self.model_name}: {e}")
                     self.ai = None
             else:
                 logger.info("AI model initialized")
@@ -430,7 +430,6 @@ class AiCog(commands.Cog, name="Ai"):
     def clean_input(self, message: str) -> str:
         """Process the input message"""
         message = message.replace(f"<@{self.bot.user.id}> ", "").replace(f"<@!{self.bot.user.id}> ", "")
-        # re.sub(r"<@\d+>", " ", message)
         return message.strip()
 
     async def generate_response(self, prompt: str) -> str:
@@ -455,7 +454,8 @@ class AiCog(commands.Cog, name="Ai"):
 
         # do the generation
         async with self.lock:
-            response: str = self.ai.generate_one(
+            response: str = await self.do_gpu(
+                self.ai.generate_one,
                 prompt=prompt,
                 base_length=num_tokens
                 + self.base_length

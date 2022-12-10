@@ -12,17 +12,7 @@ from disco_snake.bot import DiscoSnake
 from helpers import checks
 
 # setup package logger
-logger = logsnake.setup_logger(
-    level=logging.DEBUG,
-    isRootLogger=False,
-    name=Path(__file__).stem,
-    formatter=logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S"),
-    logfile=LOGDIR_PATH.joinpath(f"{Path(__file__).stem}.log"),
-    fileLoglevel=logging.DEBUG,
-    maxBytes=2 * (2**20),
-    backupCount=5,
-)
-
+logger = logging.getLogger("disco_snake")
 OPENAI_FAVICON_URL = "https://openaiapi-site.azureedge.net/public-assets/d/15b4ef1489/favicon.png"
 
 DALLE_DATADIR = DATADIR_PATH.joinpath("dalle")

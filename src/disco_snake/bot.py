@@ -4,17 +4,19 @@ import os
 import platform
 import random
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from functools import partial as partial_func
 from pathlib import Path
 from traceback import print_exception
 from zoneinfo import ZoneInfo
 
-from disnake import ApplicationCommandInteraction, Message, Embed, Intents, Activity, ActivityType
+from disnake import Activity, ActivityType, ApplicationCommandInteraction, Embed, Intents, Message
 from disnake import __version__ as DISNAKE_VERSION
 from disnake.ext import commands, tasks
-from disco_snake import DATADIR_PATH, EXTDIR_PATH, COGDIR_PATH, USERDATA_PATH
 
 import exceptions
+from disco_snake import COGDIR_PATH, DATADIR_PATH, EXTDIR_PATH, USERDATA_PATH
 from helpers.misc import get_package_root
 
 PACKAGE_ROOT = get_package_root()
@@ -44,6 +46,19 @@ class DiscoSnake(commands.Bot):
         self.cogdir_path: Path = COGDIR_PATH
         self.extdir_path: Path = EXTDIR_PATH
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
+
+        self.executor = ThreadPoolExecutor(
+            max_workers=5, thread_name_prefix="bot"
+        )  # thread pool for blocking code
+        self.gpu_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="bot_gpu"
+        )  # thread "pool" for GPU operations
+
+    async def do(self, func, *args, **kwargs):
+        return await self.loop.run_in_executor(self.executor, partial_func(func, *args, **kwargs))
+
+    async def do_gpu(self, func, *args, **kwargs):
+        return await self.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
 
     def save_userstate(self):
         if self.userdata is not None and self.userdata_path.is_file():
