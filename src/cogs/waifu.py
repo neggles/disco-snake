@@ -45,7 +45,7 @@ logger = logsnake.setup_logger(
     backupCount=2,
 )
 
-SD_DATADIR = DATADIR_PATH.joinpath("sd", "waifu")
+SD_DATADIR = DATADIR_PATH.joinpath("sd", COG_UID)
 SD_DATADIR.mkdir(parents=True, exist_ok=True)
 SD_MODEL = "waifu-diffusion"
 
