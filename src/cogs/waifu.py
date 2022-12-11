@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial as partial_func
 from pathlib import Path
+from time import perf_counter
 
 import torch
 from diffusers import StableDiffusionPipeline
@@ -184,6 +185,9 @@ class Waifu(commands.Cog, name=COG_UID):
         prompt: str = commands.Param(
             description="List of Danbooru tags to generate your waifu with", max_length=240
         ),
+        steps: float = commands.Param(
+            description="Number of steps to run the model for.", default=50.0, min_value=25.0, max_value=100.0
+        ),
     ):
         """
         make an image from a prompt
@@ -199,16 +203,20 @@ class Waifu(commands.Cog, name=COG_UID):
         logger.info(f"Generating image for {ctx.user.name} from prompt '{prompt}'")
 
         try:
+            start_time = perf_counter()
             result: StableDiffusionPipelineOutput = await self.do_gpu(
-                self.pipe, prompt.strip(), guidance_scale=6
+                self.pipe,
+                prompt=f"mdjrny-v4 style {prompt.strip()}",
+                num_inference_steps=round(steps),
+                guidance_scale=7.0,
             )
+            run_duration = perf_counter() - start_time
+            logger.info(f"Generated in {run_duration:.2f}s")
         except Exception as e:
             raise e
 
         SD_DATADIR.joinpath(str(ctx.author.id)).mkdir(parents=True, exist_ok=True)
-        save_path = SD_DATADIR.joinpath(
-            str(ctx.author.id), f"{COG_UID}-{round(datetime.utcnow().timestamp())}.png"
-        )
+        save_path = SD_DATADIR.joinpath(str(ctx.author.id), f"{round(datetime.utcnow().timestamp())}.png")
         image = result.images[0]
         if result.nsfw_content_detected[0] is True:
             logger.info(f"NSFW content detected for {ctx.user.name} from prompt '{prompt}'")

@@ -26,6 +26,7 @@ import logsnake
 from cogs.common import Upscaler
 from disco_snake import DATADIR_PATH, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
+from helpers import checks
 
 COG_UID = "journey"
 
@@ -179,11 +180,15 @@ class Journey(commands.Cog, name=COG_UID):
     @commands.slash_command(
         name="journey", description=f"Generate images with {SD_MODEL}. WARNING: NO CONTENT FILTER"
     )
+    @checks.not_blacklisted()
     @commands.cooldown(1, 40.0, commands.BucketType.user)
     async def generate(
         self,
         ctx: ApplicationCommandInteraction,
         prompt: str = commands.Param(description="Prompt to generate an image from.", max_length=240),
+        steps: float = commands.Param(
+            description="Number of steps to run the model for.", default=50.0, min_value=25.0, max_value=100.0
+        ),
     ):
         """
         make an image from a prompt
@@ -201,7 +206,10 @@ class Journey(commands.Cog, name=COG_UID):
         try:
             start_time = perf_counter()
             result: StableDiffusionPipelineOutput = await self.do_gpu(
-                self.pipe, f"mdjrny-v4 style {prompt.strip()}"
+                self.pipe,
+                prompt=f"mdjrny-v4 style {prompt.strip()}",
+                num_inference_steps=round(steps),
+                guidance_scale=7.0,
             )
             run_duration = perf_counter() - start_time
             logger.info(f"Generated in {run_duration:.2f}s")
@@ -209,9 +217,7 @@ class Journey(commands.Cog, name=COG_UID):
             raise e
 
         SD_DATADIR.joinpath(str(ctx.author.id)).mkdir(parents=True, exist_ok=True)
-        save_path = SD_DATADIR.joinpath(
-            str(ctx.author.id), f"{COG_UID}-{round(datetime.utcnow().timestamp())}.png"
-        )
+        save_path = SD_DATADIR.joinpath(str(ctx.author.id), f"{round(datetime.utcnow().timestamp())}.png")
         image = result.images[0]
         if result.nsfw_content_detected[0] is True:
             logger.info(f"NSFW content detected for {ctx.user.name} from prompt '{prompt}'")
