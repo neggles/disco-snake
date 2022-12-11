@@ -198,12 +198,20 @@ class DiscoSnake(commands.Bot):
             )
             logger.info("A blacklisted user tried to execute a command.")
             return await ctx.send(embed=embed, ephemeral=True)
-        elif isinstance(error, commands.CommandOnCooldown):
+        if isinstance(error, commands.CommandOnCooldown):
+            logger.info(
+                f"User {ctx.author} attempted to use {ctx.application_command.qualified_name} on cooldown."
+            )
             embed = CooldownEmbed(error.retry_after + 1, ctx.author)
-            await ctx.send(embed=embed)
+            await ctx.send(embed=embed, ephemeral=True)
+            return
         elif isinstance(error, commands.MissingPermissions):
+            logger.warn(
+                f"User {ctx.author} attempted to execute {ctx.application_command.qualified_name} without authorization."
+            )
             embed = PermissionEmbed(ctx.author, error.missing_permissions)
-            await ctx.send(embed=embed)
+            await ctx.send(embed=embed, ephemeral=True)
+            return
         elif isinstance(error, commands.MissingRequiredArgument):
             embed = Embed(
                 title="Error!",

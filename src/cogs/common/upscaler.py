@@ -54,12 +54,13 @@ class Upscaler:
             failure = f"Upscaling returned result '{prediction.status}' :("
             self.logger.error(failure)
             raise RuntimeError(failure)
-        self.logger.info(f"Upscaling successful, result URL = {prediction.output}")
+        result_url = f"{prediction.output}"
+        self.logger.info(f"Upscaling successful, result URL = {result_url}")
 
         if download is True:
-            self.logger.info(f"Retrieving {prediction.output.split('/')[-1]}...")
-            ret = self._download(prediction.output)
+            self.logger.info(f"Retrieving {result_url.split('/')[-1]}...")
+            ret = download_file(url=result_url)
         else:
-            ret = prediction.output
+            ret = result_url
 
         return ret

@@ -2,9 +2,10 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial as partial_func
+from pathlib import Path
 
 import torch
-from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+from diffusers import StableDiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import logging as d2logging
 from disnake import (
@@ -24,7 +25,6 @@ import logsnake
 from cogs.common import Upscaler
 from disco_snake import DATADIR_PATH, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
-from disco_snake.embeds import CooldownEmbed, PermissionEmbed
 
 COG_UID = "journey"
 
@@ -85,21 +85,24 @@ class ImageView(ui.View):
 
         embed: SDEmbed = ctx.message.embeds[0]
         src_url = embed.image.url
-        src_filename = embed.image.url.split("/")[-1]
+        src_name = Path(embed.image.url.split("/")[-1])
 
         try:
             upscaled = await self.bot.do(self.upscaler.upscale, url=src_url, download=True)
-            upscaled_filename = src_filename.split(".")[0:-1] + "_upscaled." + src_filename.split(".")[-1]
-            image_file = File(upscaled, filename=upscaled_filename)
+            upscaled_name = str(src_name.stem + "_upscaled" + src_name.suffix)
+            SD_DATADIR.joinpath(upscaled_name).write_bytes(upscaled.read())
+            upscaled.seek(0)
 
-            embed.title = embed.title.strip(":") + " (Upscaled):"
+            image_file = File(upscaled, filename=upscaled_name)
+
+            embed.title = f"{embed.title.strip(':')} (Upscaled):"
             embed.set_image(file=image_file)
             embed.set_footer(text="Powered by Huggingface Diffusers 🤗🧨 and Replicate.com 🧬")
         except Exception as e:
             await ctx.followup.send(f"Upscale failed: {e}")
             logger.error(e)
         finally:
-            await ctx.edit_original_response(embed=embed, view=None)
+            await ctx.edit_original_response(embed=embed, attachments=None, view=None)
             self.stop()
             return
 
@@ -218,27 +221,6 @@ class Journey(commands.Cog, name=COG_UID):
             embed=SDEmbed(prompt, image_file, ctx.author), view=ImageView(self.bot, self.upscaler)
         )
         return
-
-    # Error handling
-    async def cog_slash_command_error(self, ctx: ApplicationCommandInteraction, error: Exception) -> None:
-        if isinstance(error, commands.CommandOnCooldown):
-            logger.info(
-                f"User {ctx.author} attempted to use {ctx.application_command.qualified_name} on cooldown."
-            )
-            embed = CooldownEmbed(error.retry_after + 1, ctx.author)
-            await ctx.send(embed=embed, ephemeral=True)
-            return
-        elif isinstance(error, commands.MissingPermissions):
-            logger.warn(
-                f"User {ctx.author} attempted to execute {ctx.application_command.qualified_name} without authorization."
-            )
-            embed = PermissionEmbed(ctx.author, error.missing_permissions)
-            await ctx.send(embed=embed, ephemeral=True)
-            return
-        else:
-            logger.error(f"Unhandled error in {ctx.application_command.qualified_name}: {error}")
-            await ctx.send(f"Unhandled error in {ctx.application_command.qualified_name}")
-            raise error
 
 
 def setup(bot):
