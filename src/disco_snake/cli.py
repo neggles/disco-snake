@@ -62,6 +62,7 @@ class BotDaemon(daemonocle.Daemon):
         "name": "disco-snake",
         "pid_file": f"{DATADIR_PATH}/disco-snake.pid",
         "shutdown_callback": cb_shutdown,
+        "stop_timeout": 60,
     },
 )
 @click.version_option(package_name="disco-snake")

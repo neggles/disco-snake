@@ -4,7 +4,7 @@ from datetime import datetime
 from functools import partial as partial_func
 
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import logging as d2logging
 from disnake import (
@@ -54,9 +54,11 @@ class SDEmbed(Embed):
         self.colour = requestor.colour if isinstance(requestor, Member) else Colour(0xFFD01C)
 
         if isinstance(image_file, File):
+            logger.debug(f"Setting image from file: {image_file.filename}")
             self.set_image(file=image_file)
             self._image_filename = image_file.filename
         else:
+            logger.debug(f"Setting image from url: {image_file}")
             self.set_image(url=image_file)
             self._image_filename = image_file.split("/")[-1]
         self.set_author(name=requestor.display_name, icon_url=requestor.avatar.url)
@@ -66,50 +68,45 @@ class SDEmbed(Embed):
 class ImageView(ui.View):
     def __init__(self, bot: DiscoSnake, upscaler: Upscaler = None):
         super().__init__(timeout=None)
-        self.bot = bot
+        self.bot: DiscoSnake = bot
         self.upscaler = upscaler
         if upscaler is None:
             self.upscale_button.disabled = True
             self.upscale_button.label = "❌ No Upscaler"
 
-    @ui.button(
-        label="Upscale",
-        style=ButtonStyle.primary,
-        custom_id=f"{COG_UID}_ImageView:upscale",
-        inline=True,
-        row=1,
-    )
+    @ui.button(label="Upscale", style=ButtonStyle.blurple, custom_id=f"{COG_UID}_ImageView:upscale")
     async def upscale_button(self, button: ui.Button, ctx: MessageInteraction):
-        ctx.response.defer()
+        await ctx.response.defer()
 
-        button.disabled = True
+        self.upscale_button.disabled = True
+        self.upscale_button.label = "Upscaling..."
+        self.upscale_button.style = ButtonStyle.danger
+        await ctx.edit_original_response(view=self)
+
         embed: SDEmbed = ctx.message.embeds[0]
         src_url = embed.image.url
         src_filename = embed.image.url.split("/")[-1]
 
         try:
-            upscaled = await self.bot.do(self.upscaler.upscale, src_url, download=True)
+            upscaled = await self.bot.do(self.upscaler.upscale, url=src_url, download=True)
             upscaled_filename = src_filename.split(".")[0:-1] + "_upscaled." + src_filename.split(".")[-1]
             image_file = File(upscaled, filename=upscaled_filename)
 
-            button.label = "Upscaled!"
             embed.title = embed.title.strip(":") + " (Upscaled):"
             embed.set_image(file=image_file)
             embed.set_footer(text="Powered by Huggingface Diffusers 🤗🧨 and Replicate.com 🧬")
         except Exception as e:
-            await ctx.followup.send(e)
+            await ctx.followup.send(f"Upscale failed: {e}")
             logger.error(e)
         finally:
             await ctx.edit_original_response(embed=embed, view=None)
             self.stop()
             return
 
-    @ui.button(
-        label="Retry", style=ButtonStyle.secondary, custom_id=f"{COG_UID}_ImageView:retry", inline=True, row=1
-    )
+    @ui.button(label="Retry", style=ButtonStyle.green, custom_id=f"{COG_UID}_ImageView:retry")
     async def retry_button(self, button: ui.Button, ctx: MessageInteraction):
         await ctx.response.defer()
-        await self.bot.get_slash_command("journey").callback(ctx)
+        await self.bot.get_slash_command("journey").invoke(ctx.message.interaction)
         self.stop()
         return
 
@@ -153,9 +150,7 @@ class Journey(commands.Cog, name=COG_UID):
         return res
 
     async def cog_load(self) -> None:
-        logger.info("Loading diffusers model...")
         await self.pipe_init(SD_MODEL, torch.float32)
-        logger.info("Loaded diffusers model successfully.")
         self.loading = False
         return await super().cog_load()
 
@@ -166,9 +161,13 @@ class Journey(commands.Cog, name=COG_UID):
         logger.info(f"Loading diffusers model from {model_dir}")
 
         self.pipe: StableDiffusionPipeline = await self.do_gpu(
-            StableDiffusionPipeline.from_pretrained, model_dir, torch_dtype=torch_dtype, local_files_only=True
+            StableDiffusionPipeline.from_pretrained,
+            model_dir,
+            torch_dtype=torch_dtype,
+            local_files_only=True,
+            safety_checker=lambda images, **kwargs: (images, [False] * len(images)),
         )
-        self.pipe.safety_checker = lambda images, **kwargs: (images, [False] * len(images))
+        # self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.to("cuda")
         logger.info(f"Loaded diffusers model {model_name} successfully.")
 
@@ -188,8 +187,11 @@ class Journey(commands.Cog, name=COG_UID):
         if not prompt:
             await ctx.send("i can't generate an image from nothing...", ephemeral=True)
             return
-        await ctx.response.defer()
+        if self.pipe is None:
+            await ctx.send("Pipeline is not ready yet, please try again in a few seconds.", ephemeral=True)
+            return
 
+        await ctx.response.defer()
         logger.info(f"Generating image for {ctx.user.name} from prompt '{prompt}'")
 
         try:
@@ -206,26 +208,37 @@ class Journey(commands.Cog, name=COG_UID):
             save_path = save_path.with_suffix(".nsfw.png")
             logger.info(f"Saving NSFW image to {save_path}")
             image.save(save_path)
-            await ctx.send("that prompt was too spicy for me to handle...")
+            await ctx.edit_original_response("that prompt was too spicy for me to handle...")
             return
 
         logger.info(f"Saving image to {save_path}")
         image.save(save_path)
-        image_file = File(save_path)
-        await ctx.send(embed=SDEmbed(prompt, image_file, ctx.author), view=ImageView(self.bot, self.upscaler))
+        image_file = File(fp=save_path, filename=save_path.name)
+        await ctx.edit_original_response(
+            embed=SDEmbed(prompt, image_file, ctx.author), view=ImageView(self.bot, self.upscaler)
+        )
         return
 
     # Error handling
     async def cog_slash_command_error(self, ctx: ApplicationCommandInteraction, error: Exception) -> None:
         if isinstance(error, commands.CommandOnCooldown):
+            logger.info(
+                f"User {ctx.author} attempted to use {ctx.application_command.qualified_name} on cooldown."
+            )
             embed = CooldownEmbed(error.retry_after + 1, ctx.author)
-            await ctx.send(embed=embed)
+            await ctx.send(embed=embed, ephemeral=True)
             return
         elif isinstance(error, commands.MissingPermissions):
+            logger.warn(
+                f"User {ctx.author} attempted to execute {ctx.application_command.qualified_name} without authorization."
+            )
             embed = PermissionEmbed(ctx.author, error.missing_permissions)
-            await ctx.send(embed=embed)
+            await ctx.send(embed=embed, ephemeral=True)
             return
-        pass
+        else:
+            logger.error(f"Unhandled error in {ctx.application_command.qualified_name}: {error}")
+            await ctx.send(f"Unhandled error in {ctx.application_command.qualified_name}")
+            raise error
 
 
 def setup(bot):

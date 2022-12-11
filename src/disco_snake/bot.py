@@ -48,8 +48,6 @@ class DiscoSnake(commands.Bot):
         self.extdir_path: Path = EXTDIR_PATH
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
 
-        self.startup_complete = False  # whether or not the bot has finished loading
-
         self.executor = ThreadPoolExecutor(
             max_workers=5, thread_name_prefix="bot"
         )  # thread pool for blocking code
@@ -112,34 +110,11 @@ class DiscoSnake(commands.Bot):
         else:
             logger.info("No cogs found")
 
-    @property
-    def pending_cogs(self):
-        count = 0
-        for cog in self.cogs.items():
-            loading = getattr(cog, "loading", False)
-            logger.info(f"Cog {cog} is loading: {loading}")
-            if loading:
-                count += 1
-        logger.debug(f"{count} cogs are still loading")
-        return count
-
-    @tasks.loop(seconds=5)
-    async def startup_task(self) -> None:
-        """
-        Background task to check if all cogs have finished loading
-        """
-        if self.pending_cogs == 0:
-            self.startup_complete = True
-            self.startup_task.cancel()
-            logger.info("All cogs loaded")
-
     @tasks.loop(minutes=1.0)
     async def status_task(self) -> None:
         """
         Set up the bot's status task
         """
-        if not self.startup_complete:
-            pass
         statuses = self.config["statuses"]
         activity = Activity(name=random.choice(statuses), type=ActivityType.listening)
         await self.change_presence(activity=activity)
@@ -166,9 +141,6 @@ class DiscoSnake(commands.Bot):
         logger.info(f"Python version: {platform.python_version()}")
         logger.info(f"Running on: {platform.system()} {platform.release()} ({os.name})")
         logger.info("-------------------")
-        if (not self.startup_complete) and (not self.startup_task.is_running()):
-            await self.change_presence(activity=Activity(name="Starting up...", type=ActivityType.unknown))
-            self.startup_task.start()
         if not self.status_task.is_running():
             self.status_task.start()
         if not self.userstate_task.is_running():
