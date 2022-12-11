@@ -1,1 +1,3 @@
-from .upscaler import AsyncUpscaler, Upscaler
+from .upscaler import Upscaler
+
+__all__ = "Upscaler"

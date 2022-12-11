@@ -118,6 +118,7 @@ class AiCog(commands.Cog, name="Ai"):
     def __init__(self, bot: DiscoSnake) -> None:
         super().__init__()
         self.bot: DiscoSnake = bot
+        self.loading = True  # set to false when cog is ready
 
         # somme objects
         self.ai: aitextgen = None
@@ -192,7 +193,9 @@ class AiCog(commands.Cog, name="Ai"):
         return await super().cog_load()
 
     async def do_gpu(self, func, *args, **kwargs):
-        funcname = getattr(func, "__name__", "unknown")
+        funcname = getattr(func, "__name__", None)
+        if funcname is None:
+            funcname = getattr(func.__class__, "__name__", "unknown")
         logger.info(f"Running {funcname} on GPU...")
         res = await self.bot.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
         return res
@@ -402,11 +405,13 @@ class AiCog(commands.Cog, name="Ai"):
                         verbose=self.verbose,
                     )
                     logger.info("AI model initialized")
+                    self.loading = False
                 except Exception as e:
                     logger.error(f"Error initializing AI model {self.model_name}: {e}")
                     self.ai = None
             else:
                 logger.info("AI model initialized")
+                self.loading = False
 
     async def set_model(self, model_name: str, reinit: bool = False) -> None:
         """

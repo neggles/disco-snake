@@ -2,9 +2,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial as partial_func
-from io import BytesIO, FileIO
 
-import requests
 import torch
 from diffusers import StableDiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
@@ -26,6 +24,7 @@ import logsnake
 from cogs.common import Upscaler
 from disco_snake import DATADIR_PATH, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
+from disco_snake.embeds import CooldownEmbed, PermissionEmbed
 
 COG_UID = "journey"
 
@@ -73,29 +72,29 @@ class ImageView(ui.View):
             self.upscale_button.disabled = True
             self.upscale_button.label = "❌ No Upscaler"
 
-    @ui.button(label="Upscale", style=ButtonStyle.primary, custom_id=f"{COG_UID}_ImageView:upscale")
+    @ui.button(
+        label="Upscale",
+        style=ButtonStyle.primary,
+        custom_id=f"{COG_UID}_ImageView:upscale",
+        inline=True,
+        row=1,
+    )
     async def upscale_button(self, button: ui.Button, ctx: MessageInteraction):
-        # disable the upscale button
-        button.disabled = True
-        button.label = "Upscaling..."
-        await ctx.response.edit_message(view=self)
+        ctx.response.defer()
 
+        button.disabled = True
         embed: SDEmbed = ctx.message.embeds[0]
         src_url = embed.image.url
         src_filename = embed.image.url.split("/")[-1]
 
         try:
-            upscaled_url = await self.bot.do(self.upscaler.upscale, src_url)
+            upscaled = await self.bot.do(self.upscaler.upscale, src_url, download=True)
+            upscaled_filename = src_filename.split(".")[0:-1] + "_upscaled." + src_filename.split(".")[-1]
+            image_file = File(upscaled, filename=upscaled_filename)
+
             button.label = "Upscaled!"
-
-            res = requests.get(upscaled_url)
-            res.raise_for_status()
-            image_file = File(BytesIO(res.content), filename=src_filename)
+            embed.title = embed.title.strip(":") + " (Upscaled):"
             embed.set_image(file=image_file)
-
-            prompt = embed.title[:-1] if embed.title.endswith(":") else embed.title
-            embed.title = f"{prompt} (Upscaled):"
-
             embed.set_footer(text="Powered by Huggingface Diffusers 🤗🧨 and Replicate.com 🧬")
         except Exception as e:
             await ctx.followup.send(e)
@@ -105,12 +104,22 @@ class ImageView(ui.View):
             self.stop()
             return
 
+    @ui.button(
+        label="Retry", style=ButtonStyle.secondary, custom_id=f"{COG_UID}_ImageView:retry", inline=True, row=1
+    )
+    async def retry_button(self, button: ui.Button, ctx: MessageInteraction):
+        await ctx.response.defer()
+        await self.bot.get_slash_command("journey").callback(ctx)
+        self.stop()
+        return
+
 
 # Here we name the cog and create a new class for the cog.
 class Journey(commands.Cog, name=COG_UID):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
         self.pipe: StableDiffusionPipeline = None  # type: ignore
+        self.loading = True  # set to false once the pipe is loaded
 
         self.executor = ThreadPoolExecutor(
             max_workers=5, thread_name_prefix=f"{COG_UID}"
@@ -129,10 +138,16 @@ class Journey(commands.Cog, name=COG_UID):
         logger.info(f"Loaded {self.qualified_name} cog.")
 
     async def do(self, func, *args, **kwargs):
+        funcname = getattr(func, "__name__", None)
+        if funcname is None:
+            funcname = getattr(func.__class__, "__name__", "unknown")
+        logger.info(f"Running {funcname} in background thread...")
         return await self.bot.loop.run_in_executor(self.executor, partial_func(func, *args, **kwargs))
 
     async def do_gpu(self, func, *args, **kwargs):
-        funcname = getattr(func, "__name__", "unknown")
+        funcname = getattr(func, "__name__", None)
+        if funcname is None:
+            funcname = getattr(func.__class__, "__name__", "unknown")
         logger.info(f"Running {funcname} on GPU...")
         res = await self.bot.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
         return res
@@ -141,6 +156,7 @@ class Journey(commands.Cog, name=COG_UID):
         logger.info("Loading diffusers model...")
         await self.pipe_init(SD_MODEL, torch.float32)
         logger.info("Loaded diffusers model successfully.")
+        self.loading = False
         return await super().cog_load()
 
     async def pipe_init(self, model_name: str, torch_dtype: torch.dtype):
@@ -178,7 +194,7 @@ class Journey(commands.Cog, name=COG_UID):
 
         try:
             result: StableDiffusionPipelineOutput = await self.do_gpu(
-                self.pipe, f"{prompt.strip()}, mdjrny-v4 style"
+                self.pipe, f"mdjrny-v4 style, {prompt.strip()}"
             )
         except Exception as e:
             raise e
@@ -198,6 +214,18 @@ class Journey(commands.Cog, name=COG_UID):
         image_file = File(save_path)
         await ctx.send(embed=SDEmbed(prompt, image_file, ctx.author), view=ImageView(self.bot, self.upscaler))
         return
+
+    # Error handling
+    async def cog_slash_command_error(self, ctx: ApplicationCommandInteraction, error: Exception) -> None:
+        if isinstance(error, commands.CommandOnCooldown):
+            embed = CooldownEmbed(error.retry_after + 1, ctx.author)
+            await ctx.send(embed=embed)
+            return
+        elif isinstance(error, commands.MissingPermissions):
+            embed = PermissionEmbed(ctx.author, error.missing_permissions)
+            await ctx.send(embed=embed)
+            return
+        pass
 
 
 def setup(bot):

@@ -18,11 +18,11 @@ MBYTE = 2**20
 logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
 # setup root logger
 logging.root = logsnake.setup_logger(
-    level=logging.INFO,
+    level=logging.DEBUG,
     isRootLogger=True,
     formatter=logfmt,
     logfile=LOGDIR_PATH.joinpath(f"{PACKAGE}-debug.log"),
-    fileLoglevel=logging.INFO,
+    fileLoglevel=logging.DEBUG,
     maxBytes=2 * MBYTE,
     backupCount=2,
 )
@@ -38,7 +38,7 @@ logger = logsnake.setup_logger(
     backupCount=2,
 )
 
-bot: DiscoSnake = DiscoSnake()
+bot: DiscoSnake = None  # type: ignore
 
 
 def cb_shutdown(message: str, code: int):
@@ -70,6 +70,8 @@ def cli(ctx: click.Context):
     """
     Main entrypoint for your application.
     """
+    global bot
+    bot = DiscoSnake()
     ctx.obj: DiscoSnake = bot
 
     # have to use a different method on python 3.11 and up because of a change to how asyncio works
@@ -109,9 +111,8 @@ def cli(ctx: click.Context):
     bot.userdata = userdata
     bot.reload = config["reload"]
 
-    bot.load_extensions()
+    # We add one to pending_cogs while the add method is running, so that we can wait for it to finish
     bot.load_cogs()
-
     bot.run(config["token"])
 
     cb_shutdown("Normal shutdown", 0)

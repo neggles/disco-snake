@@ -2,13 +2,19 @@ import asyncio
 from enum import Enum
 from io import BytesIO, FileIO
 from logging import Logger
+from os import PathLike
+from pathlib import Path
+from typing import Union
 
 import replicate
 import requests
 from PIL import Image
+from disco_snake import DATADIR_PATH, LOGDIR_PATH
 
 UPSCALER_MODEL = "jingyunliang/swinir"
 UPSCALER_VERSION = "660d922d33153019e8c263a3bba265de882e7f4f70396546b6c9c8f9d47a021a"
+
+MOD_DATADIR = DATADIR_PATH.joinpath("sd", "upscaler")
 
 
 class UpscaleType(Enum):
@@ -28,12 +34,18 @@ class Upscaler:
         self.upscaler = self.client.models.get(UPSCALER_MODEL).versions.get(UPSCALER_VERSION)
         self.logger = logger
 
-    def upscale(self, image_file: str, type: UpscaleType = UpscaleType.LARGE) -> str:
-        # with Image.open(image_file) as image:
-        #     self.logger.info(f"Upscaling {image.size} image with task {type.name}")
+    def _download(url: str) -> BytesIO:
+        response = requests.get(url)
+        response.raise_for_status()
+        return BytesIO(response.content)
+
+    def upscale(
+        self, url: str, type: UpscaleType = UpscaleType.LARGE, download: bool = False
+    ) -> Union[FileIO, str]:
+        self.logger.info(f"Upscaling {url}...")
 
         prediction = self.client.predictions.create(
-            version=self.upscaler, input={"image": image_file, "task_type": type.value}
+            version=self.upscaler, input={"image": url, "task_type": type.value}
         )
         self.logger.info("Prediction submitted, waiting for it to finish...")
         prediction.wait()
@@ -42,33 +54,12 @@ class Upscaler:
             failure = f"Upscaling returned result '{prediction.status}' :("
             self.logger.error(failure)
             raise RuntimeError(failure)
-        self.logger.info(f"Upscaling finished successfully: {prediction.output}")
-        return prediction.output
+        self.logger.info(f"Upscaling successful, result URL = {prediction.output}")
 
+        if download is True:
+            self.logger.info(f"Retrieving {prediction.output.split('/')[-1]}...")
+            ret = self._download(prediction.output)
+        else:
+            ret = prediction.output
 
-class AsyncUpscaler:
-    def __init__(self, token: str, logger: Logger):
-        self.client = replicate.Client(api_token=token)
-        self.upscaler = self.client.models.get(UPSCALER_MODEL).versions.get(UPSCALER_VERSION)
-        self.logger = logger
-
-    async def upscale(self, image_file: FileIO, type: UpscaleType = UpscaleType.LARGE) -> str:
-        with Image.open(image_file) as image:
-            self.logger.info(f"Upscaling {image.size} image with task {type.name}")
-
-        prediction = self.client.predictions.create(
-            version=self.upscaler, input={"image": image_file, "task_type": type.value}
-        )
-
-        # wait for prediction to finish
-        self.logger.info("Prediction submitted, waiting for it to finish...")
-        while prediction.status not in ["succeeded", "failed", "canceled"]:
-            await asyncio.sleep(1.0)
-            prediction.reload()
-
-        if prediction.status in ["failed", "canceled"]:
-            failure = f"Upscaling returned result '{prediction.status}' :("
-            self.logger.error(failure)
-            raise RuntimeError(failure)
-        self.logger.info(f"Upscaling finished successfully : {prediction.output}")
-        return prediction.output
+        return ret

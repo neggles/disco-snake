@@ -111,6 +111,7 @@ class Waifu(commands.Cog, name=COG_UID):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
         self.pipe: StableDiffusionPipeline = None  # type: ignore
+        self.loading = True  # set to false once the pipe is loaded
 
         self.executor = ThreadPoolExecutor(
             max_workers=5, thread_name_prefix=f"{COG_UID}"
@@ -129,10 +130,16 @@ class Waifu(commands.Cog, name=COG_UID):
         logger.info(f"Loaded {self.qualified_name} cog.")
 
     async def do(self, func, *args, **kwargs):
+        funcname = getattr(func, "__name__", None)
+        if funcname is None:
+            funcname = getattr(func.__class__, "__name__", "unknown")
+        logger.info(f"Running {funcname} in background thread...")
         return await self.bot.loop.run_in_executor(self.executor, partial_func(func, *args, **kwargs))
 
     async def do_gpu(self, func, *args, **kwargs):
-        funcname = getattr(func, "__name__", "unknown")
+        funcname = getattr(func, "__name__", None)
+        if funcname is None:
+            funcname = getattr(func.__class__, "__name__", "unknown")
         logger.info(f"Running {funcname} on GPU...")
         res = await self.bot.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
         return res
@@ -141,6 +148,7 @@ class Waifu(commands.Cog, name=COG_UID):
         logger.info("Loading diffusers model...")
         await self.pipe_init(SD_MODEL, torch.float32)
         logger.info("Loaded diffusers model successfully.")
+        self.loading = False
         return await super().cog_load()
 
     async def pipe_init(self, model_name: str, torch_dtype: torch.dtype):
@@ -161,7 +169,7 @@ class Waifu(commands.Cog, name=COG_UID):
         name="waifu", description=f"Generate waifus with {SD_MODEL}. WARNING: NO CONTENT FILTER"
     )
     @checks.not_blacklisted()
-    @commands.cooldown(1, 30.0, commands.BucketType.user)
+    @commands.cooldown(1, 40.0, commands.BucketType.user)
     async def generate(
         self,
         ctx: ApplicationCommandInteraction,

@@ -11,12 +11,13 @@ from pathlib import Path
 from traceback import print_exception
 from zoneinfo import ZoneInfo
 
-from disnake import Activity, ActivityType, ApplicationCommandInteraction, Embed, Intents, Message
+from disnake import Activity, ActivityType, ApplicationCommandInteraction, Embed, Intents, Message, File
 from disnake import __version__ as DISNAKE_VERSION
 from disnake.ext import commands, tasks
 
 import exceptions
 from disco_snake import COGDIR_PATH, DATADIR_PATH, EXTDIR_PATH, USERDATA_PATH
+from disco_snake.embeds import CooldownEmbed, PermissionEmbed
 from helpers.misc import get_package_root
 
 PACKAGE_ROOT = get_package_root()
@@ -47,6 +48,8 @@ class DiscoSnake(commands.Bot):
         self.extdir_path: Path = EXTDIR_PATH
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
 
+        self.startup_complete = False  # whether or not the bot has finished loading
+
         self.executor = ThreadPoolExecutor(
             max_workers=5, thread_name_prefix="bot"
         )  # thread pool for blocking code
@@ -55,10 +58,19 @@ class DiscoSnake(commands.Bot):
         )  # thread "pool" for GPU operations
 
     async def do(self, func, *args, **kwargs):
+        funcname = getattr(func, "__name__", None)
+        if funcname is None:
+            funcname = getattr(func.__class__, "__name__", "unknown")
+        logger.info(f"Running {funcname} in background thread...")
         return await self.loop.run_in_executor(self.executor, partial_func(func, *args, **kwargs))
 
     async def do_gpu(self, func, *args, **kwargs):
-        return await self.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
+        funcname = getattr(func, "__name__", None)
+        if funcname is None:
+            funcname = getattr(func.__class__, "__name__", "unknown")
+        logger.info(f"Running {funcname} on GPU...")
+        res = await self.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
+        return res
 
     def save_userstate(self):
         if self.userdata is not None and self.userdata_path.is_file():
@@ -100,33 +112,34 @@ class DiscoSnake(commands.Bot):
         else:
             logger.info("No cogs found")
 
-    def available_extensions(self):
-        return [
-            f.stem
-            for f in self.extdir_path.glob("*.py")
-            if f.stem != "template" and not f.stem.endswith("_wip")
-        ]
+    @property
+    def pending_cogs(self):
+        count = 0
+        for cog in self.cogs.items():
+            loading = getattr(cog, "loading", False)
+            logger.info(f"Cog {cog} is loading: {loading}")
+            if loading:
+                count += 1
+        logger.debug(f"{count} cogs are still loading")
+        return count
 
-    def load_extensions(self):
-        extensions = self.available_extensions()
-        if extensions:
-            for ext in extensions:
-                try:
-                    self.load_extension(f"extensions.{ext}")
-                    logger.info(f"Loaded extension '{ext}'")
-                except Exception as e:
-                    etype, exc, tb = sys.exc_info()
-                    exception = f"{etype}: {exc}"
-                    logger.error(f"Failed to load extension {ext}:\n{exception}")
-                    print_exception(etype, exc, tb)
-        else:
-            logger.info("No extensions found")
+    @tasks.loop(seconds=5)
+    async def startup_task(self) -> None:
+        """
+        Background task to check if all cogs have finished loading
+        """
+        if self.pending_cogs == 0:
+            self.startup_complete = True
+            self.startup_task.cancel()
+            logger.info("All cogs loaded")
 
     @tasks.loop(minutes=1.0)
     async def status_task(self) -> None:
         """
         Set up the bot's status task
         """
+        if not self.startup_complete:
+            pass
         statuses = self.config["statuses"]
         activity = Activity(name=random.choice(statuses), type=ActivityType.listening)
         await self.change_presence(activity=activity)
@@ -153,6 +166,9 @@ class DiscoSnake(commands.Bot):
         logger.info(f"Python version: {platform.python_version()}")
         logger.info(f"Running on: {platform.system()} {platform.release()} ({os.name})")
         logger.info("-------------------")
+        if (not self.startup_complete) and (not self.startup_task.is_running()):
+            await self.change_presence(activity=Activity(name="Starting up...", type=ActivityType.unknown))
+            self.startup_task.start()
         if not self.status_task.is_running():
             self.status_task.start()
         if not self.userstate_task.is_running():
@@ -168,21 +184,34 @@ class DiscoSnake(commands.Bot):
 
         await self.process_commands(message)
 
-    async def on_slash_command(self, interaction: ApplicationCommandInteraction) -> None:
+    async def on_slash_command(self, inter: ApplicationCommandInteraction) -> None:
         """
         The code in this event is executed every time a slash command has been *successfully* executed
-        :param interaction: The slash command that has been executed.
+        :param inter: The slash command that has been executed.
         """
         logger.info(
-            f"Executed {interaction.data.name} command in {interaction.guild.name} (ID: {interaction.guild.id}) by {interaction.author} (ID: {interaction.author.id})"
+            f"Executed {inter.data.name} command in {inter.guild.name} (ID: {inter.guild.id}) by {inter.author} (ID: {inter.author.id})"
         )
 
-    async def on_slash_command_error(
-        self, interaction: ApplicationCommandInteraction, error: Exception
-    ) -> None:
+    async def on_slash_command_error(self, inter: ApplicationCommandInteraction, error) -> None:
+        return await self.on_command_error(inter, error)
+
+    async def on_command_completion(self, ctx: commands.Context) -> None:
         """
-        The code in this event is executed every time a valid slash command catches an error
-        :param interaction: The slash command that failed executing.
+        The code in this event is executed every time a normal command has been *successfully* executed
+        :param ctx: The ctx of the command that has been executed.
+        """
+        full_command_name = ctx.command.qualified_name
+        split = full_command_name.split(" ")
+        executed_command = str(split[0])
+        logger.info(
+            f"Executed {executed_command} command in {ctx.guild.name} (ID: {ctx.message.guild.id}) by {ctx.message.author} (ID: {ctx.message.author.id})"
+        )
+
+    async def on_command_error(self, ctx: commands.Context, error) -> None:
+        """
+        The code in this event is executed every time a normal valid command catches an error
+        :param ctx: The normal command that failed executing.
         :param error: The error that has been faced.
         """
         if isinstance(error, exceptions.UserBlacklisted):
@@ -196,56 +225,13 @@ class DiscoSnake(commands.Bot):
                 title="Error!", description="You are blacklisted from using the bot.", color=0xE02B2B
             )
             logger.info("A blacklisted user tried to execute a command.")
-            return await interaction.send(embed=embed, ephemeral=True)
-        elif isinstance(error, commands.errors.MissingPermissions):
-            embed = Embed(
-                title="Error!",
-                description="You are missing the permission(s) `"
-                + ", ".join(error.missing_permissions)
-                + "` to execute this command!",
-                color=0xE02B2B,
-            )
-            logger.info("A blacklisted user tried to execute a command.")
-            return await interaction.send(embed=embed, ephemeral=True)
-        raise error
-
-    async def on_command_completion(self, context: commands.Context) -> None:
-        """
-        The code in this event is executed every time a normal command has been *successfully* executed
-        :param context: The context of the command that has been executed.
-        """
-        full_command_name = context.command.qualified_name
-        split = full_command_name.split(" ")
-        executed_command = str(split[0])
-        logger.info(
-            f"Executed {executed_command} command in {context.guild.name} (ID: {context.message.guild.id}) by {context.message.author} (ID: {context.message.author.id})"
-        )
-
-    async def on_command_error(self, context: commands.Context, error) -> None:
-        """
-        The code in this event is executed every time a normal valid command catches an error
-        :param context: The normal command that failed executing.
-        :param error: The error that has been faced.
-        """
-        if isinstance(error, commands.CommandOnCooldown):
-            minutes, seconds = divmod(error.retry_after, 60)
-            hours, minutes = divmod(minutes, 60)
-            hours = hours % 24
-            embed = Embed(
-                title="Hey, please slow down!",
-                description=f"You can use this command again in {f'{round(hours)} hours' if round(hours) > 0 else ''} {f'{round(minutes)} minutes' if round(minutes) > 0 else ''} {f'{round(seconds)} seconds' if round(seconds) > 0 else ''}.",
-                color=0xE02B2B,
-            )
-            await context.send(embed=embed)
+            return await ctx.send(embed=embed, ephemeral=True)
+        elif isinstance(error, commands.CommandOnCooldown):
+            embed = CooldownEmbed(error.retry_after + 1, ctx.author)
+            await ctx.send(embed=embed)
         elif isinstance(error, commands.MissingPermissions):
-            embed = Embed(
-                title="Error!",
-                description="You are missing the permission(s) `"
-                + ", ".join(error.missing_permissions)
-                + "` to execute this command!",
-                color=0xE02B2B,
-            )
-            await context.send(embed=embed)
+            embed = PermissionEmbed(ctx.author, error.missing_permissions)
+            await ctx.send(embed=embed)
         elif isinstance(error, commands.MissingRequiredArgument):
             embed = Embed(
                 title="Error!",
@@ -253,7 +239,7 @@ class DiscoSnake(commands.Bot):
                 description=str(error).capitalize(),
                 color=0xE02B2B,
             )
-            await context.send(embed=embed)
+            await ctx.send(embed=embed)
         elif isinstance(error, commands.CommandNotFound):
             # This is actually fine so lets just pretend everything is okay.
             return
