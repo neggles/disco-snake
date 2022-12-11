@@ -43,7 +43,7 @@ bot: DiscoSnake = None  # type: ignore
 
 def cb_shutdown(message: str, code: int):
     logger.warning(f"Daemon is stopping: {code}")
-    bot.save_userstate()
+    bot.save_userdata()
     logger.info(message)
     return code
 

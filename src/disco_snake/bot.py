@@ -11,14 +11,14 @@ from pathlib import Path
 from traceback import print_exception
 from zoneinfo import ZoneInfo
 
-from disnake import Activity, ActivityType, ApplicationCommandInteraction, Embed, Intents, Message, File
+from disnake import Activity, ActivityType, ApplicationCommandInteraction, Embed, Intents, Message, Guild
 from disnake import __version__ as DISNAKE_VERSION
 from disnake.ext import commands, tasks
 
 import exceptions
 from disco_snake import COGDIR_PATH, DATADIR_PATH, EXTDIR_PATH, USERDATA_PATH
 from disco_snake.embeds import CooldownEmbed, PermissionEmbed
-from helpers.misc import get_package_root
+from helpers.misc import get_package_root, filename_filter
 
 PACKAGE_ROOT = get_package_root()
 
@@ -47,6 +47,7 @@ class DiscoSnake(commands.Bot):
         self.cogdir_path: Path = COGDIR_PATH
         self.extdir_path: Path = EXTDIR_PATH
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
+        self.home_guild: Guild = None  # set in on_ready
 
         self.executor = ThreadPoolExecutor(
             max_workers=5, thread_name_prefix="bot"
@@ -70,17 +71,34 @@ class DiscoSnake(commands.Bot):
         res = await self.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
         return res
 
-    def save_userstate(self):
+    def save_userdata(self):
         if self.userdata is not None and self.userdata_path.is_file():
             with self.userdata_path.open("w") as f:
                 json.dump(self.userdata, f, skipkeys=True, indent=2)
             logger.debug("Flushed user states to disk")
 
-    def load_userstate(self):
+    def load_userdata(self):
         if self.userdata_path.is_file():
             with self.userdata_path.open("r") as f:
                 self.userdata = json.load(f)
             logger.debug("Loaded user states from disk")
+
+    def save_guild_metadata(self, guild_id: int):
+        guild = self.get_guild(guild_id)
+        memberlist = []
+        for member in guild.members:
+            memberlist.append(
+                {
+                    "id": member.id,
+                    "name": member.name,
+                    "display_name": member.display_name,
+                    "avatar": str(member.avatar.url) if member.avatar else None,
+                    "is_bot": member.bot,
+                    "is_system": member.system,
+                }
+            )
+        with (self.datadir_path / "guilds" / f"{guild_id}-members.json").open("w") as f:
+            json.dump(memberlist, f, skipkeys=True, indent=2)
 
     def get_uptime(self) -> timedelta:
         return datetime.now(tz=ZoneInfo("UTC")) - self.start_time
@@ -125,12 +143,12 @@ class DiscoSnake(commands.Bot):
         await self.wait_until_ready()
 
     @tasks.loop(minutes=3.0)
-    async def userstate_task(self) -> None:
+    async def userdata_task(self) -> None:
         """
         Background task to flush user state to disk
         """
-        self.save_userstate()
-        logger.debug("Flushed userstates to disk")
+        self.save_userdata()
+        logger.debug("Flushed userdatas to disk")
 
     async def on_ready(self) -> None:
         """
@@ -141,10 +159,14 @@ class DiscoSnake(commands.Bot):
         logger.info(f"Python version: {platform.python_version()}")
         logger.info(f"Running on: {platform.system()} {platform.release()} ({os.name})")
         logger.info("-------------------")
+        if self.home_guild is None:
+            logger.info("Saving home guild metadata to disk")
+            self.home_guild = self.get_guild(self.config["home_guild"])
+            self.save_guild_metadata(self.home_guild.id)
         if not self.status_task.is_running():
             self.status_task.start()
-        if not self.userstate_task.is_running():
-            self.userstate_task.start()
+        if not self.userdata_task.is_running():
+            self.userdata_task.start()
 
     async def on_message(self, message: Message) -> None:
         """
@@ -199,15 +221,13 @@ class DiscoSnake(commands.Bot):
             logger.info("A blacklisted user tried to execute a command.")
             return await ctx.send(embed=embed, ephemeral=True)
         if isinstance(error, commands.CommandOnCooldown):
-            logger.info(
-                f"User {ctx.author} attempted to use {ctx.application_command.qualified_name} on cooldown."
-            )
+            logger.info(f"User {ctx.author} attempted to use {ctx.command.qualified_name} on cooldown.")
             embed = CooldownEmbed(error.retry_after + 1, ctx.author)
             await ctx.send(embed=embed, ephemeral=True)
             return
         elif isinstance(error, commands.MissingPermissions):
             logger.warn(
-                f"User {ctx.author} attempted to execute {ctx.application_command.qualified_name} without authorization."
+                f"User {ctx.author} attempted to execute {ctx.command.qualified_name} without authorization."
             )
             embed = PermissionEmbed(ctx.author, error.missing_permissions)
             await ctx.send(embed=embed, ephemeral=True)

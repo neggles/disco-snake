@@ -88,8 +88,8 @@ class ImageView(ui.View):
 
         try:
             upscaled = await self.bot.do(self.upscaler.upscale, url=src_url, download=True)
-            upscaled_name = str(src_name.stem + "_upscaled" + src_name.suffix)
-            SD_DATADIR.joinpath(upscaled_name).write_bytes(upscaled.read())
+            upscaled_name = str(src_name.stem + "-upscaled" + src_name.suffix)
+            SD_DATADIR.joinpath(str(ctx.author.id), upscaled_name).write_bytes(upscaled.read())
             upscaled.seek(0)
 
             image_file = File(upscaled, filename=upscaled_name)
@@ -205,7 +205,10 @@ class Waifu(commands.Cog, name=COG_UID):
         except Exception as e:
             raise e
 
-        save_path = SD_DATADIR.joinpath(f"{ctx.author.id}_{round(datetime.utcnow().timestamp())}.png")
+        SD_DATADIR.joinpath(str(ctx.author.id)).mkdir(parents=True, exist_ok=True)
+        save_path = SD_DATADIR.joinpath(
+            str(ctx.author.id), f"{COG_UID}-{round(datetime.utcnow().timestamp())}.png"
+        )
         image = result.images[0]
         if result.nsfw_content_detected[0] is True:
             logger.info(f"NSFW content detected for {ctx.user.name} from prompt '{prompt}'")

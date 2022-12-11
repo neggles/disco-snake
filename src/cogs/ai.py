@@ -163,9 +163,6 @@ class AiCog(commands.Cog, name="Ai"):
         self.temperature: float = config["temperature"] if "temperature" in conf_keys else 0.9
         self.response_chance: float = config["response_chance"] if "response_chance" in conf_keys else 0.5
         self.context_messages: int = config["context_messages"] if "context_messages" in conf_keys else 9
-        self.warmup_channels: List[int] = (
-            config["warmup_channels"] if "warmup_channels" in conf_keys else None
-        )
 
     @property
     def verbose(self) -> bool:

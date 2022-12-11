@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial as partial_func
 from pathlib import Path
+from time import perf_counter
 
 import torch
 from diffusers import StableDiffusionPipeline
@@ -89,8 +90,8 @@ class ImageView(ui.View):
 
         try:
             upscaled = await self.bot.do(self.upscaler.upscale, url=src_url, download=True)
-            upscaled_name = str(src_name.stem + "_upscaled" + src_name.suffix)
-            SD_DATADIR.joinpath(upscaled_name).write_bytes(upscaled.read())
+            upscaled_name = str(src_name.stem + "-upscaled" + src_name.suffix)
+            SD_DATADIR.joinpath(str(ctx.author.id), upscaled_name).write_bytes(upscaled.read())
             upscaled.seek(0)
 
             image_file = File(upscaled, filename=upscaled_name)
@@ -198,13 +199,19 @@ class Journey(commands.Cog, name=COG_UID):
         logger.info(f"Generating image for {ctx.user.name} from prompt '{prompt}'")
 
         try:
+            start_time = perf_counter()
             result: StableDiffusionPipelineOutput = await self.do_gpu(
-                self.pipe, f"mdjrny-v4 style, {prompt.strip()}"
+                self.pipe, f"mdjrny-v4 style {prompt.strip()}"
             )
+            run_duration = perf_counter() - start_time
+            logger.info(f"Generated in {run_duration:.2f}s")
         except Exception as e:
             raise e
 
-        save_path = SD_DATADIR.joinpath(f"{ctx.author.id}_{round(datetime.utcnow().timestamp())}.png")
+        SD_DATADIR.joinpath(str(ctx.author.id)).mkdir(parents=True, exist_ok=True)
+        save_path = SD_DATADIR.joinpath(
+            str(ctx.author.id), f"{COG_UID}-{round(datetime.utcnow().timestamp())}.png"
+        )
         image = result.images[0]
         if result.nsfw_content_detected[0] is True:
             logger.info(f"NSFW content detected for {ctx.user.name} from prompt '{prompt}'")

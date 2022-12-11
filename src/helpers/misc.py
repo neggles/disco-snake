@@ -28,3 +28,10 @@ def parse_log_level(level: Union[str, int]) -> int:
             raise ValueError(f"Unable to parse loglevel: {level}")
     else:
         return level
+
+
+FILENAME_CHARS = set("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+-._ ")
+
+
+def filename_filter(s: str) -> str:
+    return "".join(filter(lambda x: x in FILENAME_CHARS, s))
