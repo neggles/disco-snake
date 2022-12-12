@@ -51,27 +51,43 @@ SD_MODEL = "openjourney"
 
 
 class SDEmbed(Embed):
-    def __init__(self, prompt: str, image_file: File | str, requestor: User | Member, *args, **kwargs):
-        super().__init__(title=f"{prompt}:", *args, **kwargs)
-        self.colour = requestor.colour if isinstance(requestor, Member) else Colour(0xFFD01C)
-
-        if isinstance(image_file, File):
-            logger.debug(f"Setting image from file: {image_file.filename}")
-            self.set_image(file=image_file)
-            self._image_filename = image_file.filename
-        else:
-            logger.debug(f"Setting image from url: {image_file}")
-            self.set_image(url=image_file)
-            self._image_filename = image_file.split("/")[-1]
-        self.set_author(name=requestor.display_name, icon_url=requestor.avatar.url)
-        self.set_footer(text="Powered by Huggingface Diffusers 🤗🧨")
+    def __init__(
+        self,
+        prompt: str,
+        image: File,
+        author: User | Member,
+        nsfw: bool = False,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(
+            description=prompt,
+            colour=author.colour if isinstance(author, Member) else Colour(0xFFD01C),
+            *args,
+            **kwargs,
+        )
+        logger.debug(
+            f"Creating {COG_UID} SDEmbed with image {image.filename} and nsfw={nsfw}"
+            + f"for user {author.display_name} ({author.id})"
+        )
+        try:
+            self._imagename = image.filename
+            image.spoiler = nsfw
+            self.set_image(file=image)
+            self.set_author(name=author.display_name, icon_url=author.display_avatar.url)
+            self.set_footer(text="Powered by Huggingface Diffusers 🤗🧨")
+        except Exception as e:
+            logger.error(e)
+            raise e
 
 
 class ImageView(ui.View):
-    def __init__(self, bot: DiscoSnake, upscaler: Upscaler = None):
+    def __init__(self, bot: DiscoSnake, author: User | Member, upscaler: Upscaler = None, **kwargs):
         super().__init__(timeout=None)
         self.bot: DiscoSnake = bot
         self.upscaler = upscaler
+        self.author = author
+        self.kwargs = kwargs
         if upscaler is None:
             self.upscale_button.disabled = True
             self.upscale_button.label = "❌ No Upscaler"
@@ -82,7 +98,6 @@ class ImageView(ui.View):
 
         self.upscale_button.disabled = True
         self.upscale_button.label = "Upscaling..."
-        self.upscale_button.style = ButtonStyle.danger
         await ctx.edit_original_response(view=self)
 
         embed: SDEmbed = ctx.message.embeds[0]
@@ -95,25 +110,52 @@ class ImageView(ui.View):
             SD_DATADIR.joinpath(str(ctx.author.id), upscaled_name).write_bytes(upscaled.read())
             upscaled.seek(0)
 
-            image_file = File(upscaled, filename=upscaled_name)
-
-            embed.title = f"{embed.title.strip(':')} (Upscaled):"
-            embed.set_image(file=image_file)
-            embed.set_footer(text="Powered by Huggingface Diffusers 🤗🧨 and Replicate.com 🧬")
+            image = File(upscaled, filename=upscaled_name)
+            embed.set_image(file=image).set_footer(
+                text="Powered by Huggingface Diffusers 🤗🧨 and Replicate.com 🧬"
+            )
+            self.upscale_button.label = "✔️ Upscaled"
         except Exception as e:
             await ctx.followup.send(f"Upscale failed: {e}")
+            self.upscale_button.label = "❌ Failed"
+            self.upscale_button.style = ButtonStyle.red
             logger.error(e)
         finally:
-            await ctx.edit_original_response(embed=embed, attachments=None, view=None)
-            self.stop()
+            await ctx.edit_original_response(embed=embed, attachments=None, view=self)
             return
 
     @ui.button(label="Retry", style=ButtonStyle.green, custom_id=f"{COG_UID}_ImageView:retry")
     async def retry_button(self, button: ui.Button, ctx: MessageInteraction):
         await ctx.response.defer()
-        await self.bot.get_slash_command("journey").invoke(ctx.message.interaction)
-        self.stop()
-        return
+        try:
+            upscale_state = self.upscale_button.disabled
+            self.upscale_button.disabled = True
+            self.retry_button.disabled = True
+            self.retry_button.label = "Retrying..."
+            self.retry_button.style = ButtonStyle.grey
+            await ctx.edit_original_response(view=self)
+
+            # restore upscale button in case of failure
+            self.upscale_button.disabled = upscale_state
+
+            # Generate new embed
+            logger.info(f"Retrying {COG_UID} generation for {ctx.author.display_name} ({ctx.author.id})")
+            logger.debug(f"ctx: {ctx.__dict__}")
+            logger.debug(f"kwargs: {self.kwargs}")
+            embed = await self.bot.cogs[COG_UID].generate_embed(author=self.author, **self.kwargs)
+
+            self.retry_button.label = "Complete"
+            self.retry_button.style = ButtonStyle.green
+            await ctx.followup.send(
+                embed=embed,
+                view=ImageView(bot=self.bot, upscaler=self.upscaler, author=ctx.author, **self.kwargs),
+            )
+        except Exception as e:
+            await ctx.followup.send(f"Retry failed: {e}")
+            logger.error(e)
+        finally:
+            await ctx.edit_original_response(view=self)
+            return
 
 
 # Here we name the cog and create a new class for the cog.
@@ -176,13 +218,47 @@ class Journey(commands.Cog, name=COG_UID):
         self.pipe.to("cuda")
         logger.info(f"Loaded diffusers model {model_name} successfully.")
 
+    async def generate_embed(self, prompt, steps, author: User | Member, **kwargs):
+        if not prompt:
+            raise ValueError("i can't generate an image from nothing...")
+        if self.pipe is None:
+            raise ValueError("Pipeline is not ready yet, please try again in a few seconds.")
+
+        try:
+            start_time = perf_counter()
+            result: StableDiffusionPipelineOutput = await self.do_gpu(
+                self.pipe,
+                prompt=f"mdjrny-v4 style {prompt.strip()}",
+                num_inference_steps=round(steps),
+                **kwargs,
+            )
+            run_duration = perf_counter() - start_time
+            logger.info(f"Generated in {run_duration:.2f}s")
+        except Exception as e:
+            logger.error(e)
+            raise e
+
+        SD_DATADIR.joinpath(str(author.id)).mkdir(parents=True, exist_ok=True)
+        save_path = SD_DATADIR.joinpath(str(author.id), f"{round(datetime.utcnow().timestamp())}.png")
+        image = result.images[0]
+        nsfw = result.nsfw_content_detected[0]
+        if nsfw is True:
+            logger.info(f"NSFW content detected for {author.name} from prompt '{prompt}'")
+            save_path = save_path.with_suffix(".nsfw.png")
+
+        logger.info(f"Saving image to {save_path}")
+        image.save(save_path)
+        image = File(fp=save_path, filename=save_path.name)
+        embed = SDEmbed(prompt, image, author, nsfw)
+        return embed
+
     # Cog slash command group
     @commands.slash_command(
         name="journey", description=f"Generate images with {SD_MODEL}. WARNING: NO CONTENT FILTER"
     )
     @checks.not_blacklisted()
     @commands.cooldown(1, 40.0, commands.BucketType.user)
-    async def generate(
+    async def generate_command(
         self,
         ctx: ApplicationCommandInteraction,
         prompt: str = commands.Param(description="Prompt to generate an image from.", max_length=240),
@@ -203,35 +279,16 @@ class Journey(commands.Cog, name=COG_UID):
         await ctx.response.defer()
         logger.info(f"Generating image for {ctx.user.name} from prompt '{prompt}'")
 
-        try:
-            start_time = perf_counter()
-            result: StableDiffusionPipelineOutput = await self.do_gpu(
-                self.pipe,
-                prompt=f"mdjrny-v4 style {prompt.strip()}",
-                num_inference_steps=round(steps),
-                guidance_scale=7.0,
-            )
-            run_duration = perf_counter() - start_time
-            logger.info(f"Generated in {run_duration:.2f}s")
-        except Exception as e:
-            raise e
-
-        SD_DATADIR.joinpath(str(ctx.author.id)).mkdir(parents=True, exist_ok=True)
-        save_path = SD_DATADIR.joinpath(str(ctx.author.id), f"{round(datetime.utcnow().timestamp())}.png")
-        image = result.images[0]
-        if result.nsfw_content_detected[0] is True:
-            logger.info(f"NSFW content detected for {ctx.user.name} from prompt '{prompt}'")
-            save_path = save_path.with_suffix(".nsfw.png")
-            logger.info(f"Saving NSFW image to {save_path}")
-            image.save(save_path)
-            await ctx.edit_original_response("that prompt was too spicy for me to handle...")
-            return
-
-        logger.info(f"Saving image to {save_path}")
-        image.save(save_path)
-        image_file = File(fp=save_path, filename=save_path.name)
+        embed = await self.generate_embed(prompt, steps, ctx.author)
         await ctx.edit_original_response(
-            embed=SDEmbed(prompt, image_file, ctx.author), view=ImageView(self.bot, self.upscaler)
+            embed=embed,
+            view=ImageView(
+                bot=self.bot,
+                upscaler=self.upscaler,
+                author=ctx.author,
+                prompt=prompt,
+                steps=steps,
+            ),
         )
         return
 
