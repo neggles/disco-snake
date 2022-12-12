@@ -2,6 +2,11 @@ from random import choice as random_choice
 from typing import Union, List
 
 from disnake import Colour, Embed, File, Member, User
+from disnake.ext.commands import (
+    CommandNotFound,
+    MissingPermissions,
+    MissingRequiredArgument,
+)
 from humanize import naturaldelta as fuzzydelta
 
 from disco_snake import DATADIR_PATH
@@ -49,8 +54,8 @@ DENIED_GIF_PATH = DATADIR_PATH.joinpath("misc", "magic-word-2.gif")
 DENIED_GIF = File(DENIED_GIF_PATH, filename=DENIED_GIF_PATH.name)
 
 
-class PermissionEmbed(Embed):
-    def __init__(self, author: Union[User, Member] = None, permissions: List[str] = None):
+class MissingPermissionsEmbed(Embed):
+    def __init__(self, author: Union[User, Member] = None, error: MissingPermissions = None):
         super().__init__(
             title="ah ah ah!",
             description="you didn't say the magic word!",
@@ -59,6 +64,28 @@ class PermissionEmbed(Embed):
         self.set_image(file=DENIED_GIF)
 
         if author is not None:
-            self.set_footer(text=f"Requested by {author.display_name}", icon_url=author.display_avatar.url)
-        if permissions is not None:
-            self.add_field(name="Required permissions", value=", ".join(permissions))
+            self.set_footer(text=f"Triggered by {author.display_name}", icon_url=author.display_avatar.url)
+        if error is not None:
+            self.add_field(name="Required permissions", value=", ".join(error.missing_permissions))
+
+
+class MissingRequiredArgumentEmbed(Embed):
+    def __init__(self, author: Union[User, Member] = None, error: MissingRequiredArgument = None):
+        super().__init__(
+            title="Error!",
+            description="Missing required argument: " + error.param.name,
+            color=0xE02B2B,
+        )
+        if author is not None:
+            self.set_footer(text=f"Triggered by {author.display_name}", icon_url=author.display_avatar.url)
+
+
+class NotFoundEmbed(Embed):
+    def __init__(self, author: Union[User, Member] = None, error: CommandNotFound = None):
+        super().__init__(
+            title="Error!",
+            description=f"{error.args} not found!",
+            color=0xE02B2B,
+        )
+        if author is not None:
+            self.set_footer(text=f"Triggered by {author.display_name}", icon_url=author.display_avatar.url)

@@ -17,7 +17,7 @@ from disnake.ext import commands, tasks
 
 import exceptions
 from disco_snake import COGDIR_PATH, DATADIR_PATH, EXTDIR_PATH, USERDATA_PATH
-from disco_snake.embeds import CooldownEmbed, PermissionEmbed
+from disco_snake.embeds import CooldownEmbed, MissingPermissionsEmbed, MissingRequiredArgumentEmbed
 from helpers.misc import get_package_root, filename_filter
 
 PACKAGE_ROOT = get_package_root()
@@ -178,17 +178,17 @@ class DiscoSnake(commands.Bot):
 
         await self.process_commands(message)
 
-    async def on_slash_command(self, inter: ApplicationCommandInteraction) -> None:
+    async def on_slash_command(self, ctx: ApplicationCommandInteraction) -> None:
         """
         The code in this event is executed every time a slash command has been *successfully* executed
-        :param inter: The slash command that has been executed.
+        :param ctx: The slash command that has been executed.
         """
         logger.info(
-            f"Executed {inter.data.name} command in {inter.guild.name} (ID: {inter.guild.id}) by {inter.author} (ID: {inter.author.id})"
+            f"Executed {ctx.data.name} command in {ctx.guild.name} (ID: {ctx.guild.id}) by {ctx.author} (ID: {ctx.author.id})"
         )
 
-    async def on_slash_command_error(self, inter: ApplicationCommandInteraction, error) -> None:
-        return await self.on_command_error(inter, error)
+    async def on_slash_command_error(self, ctx: ApplicationCommandInteraction, error) -> None:
+        return await self.on_command_error(ctx, error)
 
     async def on_command_completion(self, ctx: commands.Context) -> None:
         """
@@ -208,40 +208,38 @@ class DiscoSnake(commands.Bot):
         :param ctx: The normal command that failed executing.
         :param error: The error that has been faced.
         """
-        if isinstance(error, exceptions.UserBlacklisted):
-            """
-            The code here will only execute if the error is an instance of 'UserBlacklisted', which can occur when using
-            the @checks.is_owner() check in your command, or you can raise the error by yourself.
-
-            'hidden=True' will make so that only the user who execute the command can see the message
-            """
-            embed = Embed(
-                title="Error!", description="You are blacklisted from using the bot.", color=0xE02B2B
-            )
-            logger.info("A blacklisted user tried to execute a command.")
-            return await ctx.send(embed=embed, ephemeral=True)
         if isinstance(error, commands.CommandOnCooldown):
             logger.info(f"User {ctx.author} attempted to use {ctx.command.qualified_name} on cooldown.")
             embed = CooldownEmbed(error.retry_after + 1, ctx.author)
-            await ctx.send(embed=embed, ephemeral=True)
-            return
+            return await ctx.send(embed=embed, ephemeral=True)
+
+        elif isinstance(error, exceptions.UserBlacklisted):
+            logger.info(f"User {ctx.author} attempted to use {ctx.command.qualified_name} on cooldown.")
+            embed = CooldownEmbed(error.retry_after + 1, ctx.author)
+            return await ctx.send(embed=embed, ephemeral=True)
+
+        elif isinstance(error, exceptions.UserNotOwner):
+            embed = Embed(
+                title="Error!",
+                description="This command requires admin permissions. soz bb xoxo <3",
+                color=0xE02B2B,
+            )
+            logger.info("A non-owner user tried to execute an owner command.")
+            return await ctx.send(embed=embed, ephemeral=True)
+
         elif isinstance(error, commands.MissingPermissions):
             logger.warn(
                 f"User {ctx.author} attempted to execute {ctx.command.qualified_name} without authorization."
             )
-            embed = PermissionEmbed(ctx.author, error.missing_permissions)
-            await ctx.send(embed=embed, ephemeral=True)
-            return
+            embed = MissingPermissionsEmbed(ctx.author, error.missing_permissions)
+            return await ctx.send(embed=embed, ephemeral=True)
         elif isinstance(error, commands.MissingRequiredArgument):
-            embed = Embed(
-                title="Error!",
-                # We need to capitalize because the command arguments have no capital letter in the code.
-                description=str(error).capitalize(),
-                color=0xE02B2B,
+            logger.info(
+                f"User {ctx.author} attempted to execute {ctx.command.qualified_name} without the required arguments"
             )
-            await ctx.send(embed=embed)
+            embed = MissingRequiredArgumentEmbed(ctx.author, error.param.name)
+            return await ctx.send(embed=embed)
         elif isinstance(error, commands.CommandNotFound):
             # This is actually fine so lets just pretend everything is okay.
             return
-        else:
-            raise error
+        raise error

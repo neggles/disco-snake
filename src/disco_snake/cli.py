@@ -7,6 +7,9 @@ import click
 import daemonocle
 import uvloop
 from daemonocle.cli import DaemonCLI
+from rich.logging import RichHandler
+from rich.pretty import install as install_pretty
+from rich.traceback import install as install_traceback
 
 import logsnake
 from disco_snake import LOGDIR_PATH, CONFIG_PATH, DATADIR_PATH, USERDATA_PATH, PACKAGE
@@ -37,6 +40,10 @@ logger = logsnake.setup_logger(
     maxBytes=2 * MBYTE,
     backupCount=2,
 )
+
+# install rich traceback handler
+install_pretty()
+install_traceback(show_locals=True)
 
 bot: DiscoSnake = None  # type: ignore
 
@@ -78,6 +85,7 @@ def cli(ctx: click.Context):
     # have to use a different method on python 3.11 and up because of a change to how asyncio works
     # not sure how to implement that with disnake, so for now, no uvloop on python 3.11 and up
     if sys.version_info < (3, 11):
+        logger.info("installing uvloop...")
         uvloop.install()
 
     logger.info("Starting disco-snake")
@@ -112,7 +120,6 @@ def cli(ctx: click.Context):
     bot.userdata = userdata
     bot.reload = config["reload"]
 
-    # We add one to pending_cogs while the add method is running, so that we can wait for it to finish
     bot.load_cogs()
     bot.run(config["token"])
 

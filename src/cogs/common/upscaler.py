@@ -1,15 +1,11 @@
-import asyncio
 from enum import Enum
 from io import BytesIO, FileIO
 from logging import Logger
-from os import PathLike
-from pathlib import Path
 from typing import Union
 
 import replicate
 import requests
-from PIL import Image
-from disco_snake import DATADIR_PATH, LOGDIR_PATH
+from disco_snake import DATADIR_PATH
 
 UPSCALER_MODEL = "jingyunliang/swinir"
 UPSCALER_VERSION = "660d922d33153019e8c263a3bba265de882e7f4f70396546b6c9c8f9d47a021a"
