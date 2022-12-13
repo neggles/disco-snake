@@ -1,0 +1,14 @@
+Copyright (c) 2022, Andrew Powers-Holmes
+
+Unless otherwise marked or stated in a license file located in a lower-level directory, code in
+this repository/project is licensed under the GNU Affero General Public License, Version 3.0.
+
+Parts of this project are covered under the BSD 3-Clause license - see src/ailogger/LICENSE
+Parts of this project are covered under the MIT license - see src/aitextgen/LICENSE
+
+Other parts of this program may be licensed under other licenses; this will be indicated
+in SPDX tags, or a LICENSE file in one of the relevant source file's parent folders.
+
+A LICENSE file applies to all files, folders, and subfolders within the parent directory
+of the LICENSE file unless otherwise indicated within that file, or overriden by a LICENSE
+file further down the tree.
