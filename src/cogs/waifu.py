@@ -24,7 +24,7 @@ from disnake.ext import commands
 
 import logsnake
 from cogs.common import Upscaler
-from disco_snake import DATADIR_PATH, LOGDIR_PATH
+from disco_snake import DATADIR_PATH, LOGDIR_PATH, LOG_FORMAT
 from disco_snake.bot import DiscoSnake
 from helpers import checks
 
@@ -38,17 +38,32 @@ logger = logsnake.setup_logger(
     level=logging.DEBUG,
     isRootLogger=False,
     name=COG_UID,
-    formatter=logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S"),
+    formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
     logfile=LOGDIR_PATH.joinpath(f"{COG_UID}.log"),
     fileLoglevel=logging.DEBUG,
     maxBytes=2 * (2**20),
     backupCount=2,
 )
+# set up the diffusers logger
+d2logger = d2logging.get_logger("diffusers")
+for handler in logger.handlers:
+    if handler not in d2logger.handlers:
+        d2logger.addHandler(handler)
 
 SD_DATADIR = DATADIR_PATH.joinpath("sd", COG_UID)
 SD_DATADIR.mkdir(parents=True, exist_ok=True)
 SD_MODEL = "waifu-diffusion"
 TORCH_DTYPE = torch.float32
+
+PARAM_DISPLAY = {
+    "model": "Model",
+    "prompt": "Prompt",
+    "negative_prompt": "Antiprompt",
+    "num_inference_steps": "Steps",
+    "guidance_scale": "Guidance",
+    "width": "Width",
+    "height": "Height",
+}
 
 
 class SDEmbed(Embed):
@@ -57,23 +72,29 @@ class SDEmbed(Embed):
         prompt: str,
         image: File,
         author: User | Member,
-        nsfw: bool = False,
-        *args,
+        nsfw: bool,
+        model_params: dict,
         **kwargs,
     ):
         super().__init__(
             description=prompt,
             colour=author.colour if isinstance(author, Member) else Colour(0xFFD01C),
-            *args,
             **kwargs,
         )
         logger.debug(
-            f"Creating {COG_UID} SDEmbed with image {image.filename} and nsfw={nsfw}"
+            f"Creating {COG_UID} SDEmbed with image {image.filename} and nsfw={nsfw} "
             + f"for user {author.display_name} ({author.id})"
         )
         try:
-            self._imagename = image.filename
             image.spoiler = nsfw
+
+            if model_params is not None:
+                for key, val in model_params.items():
+                    if val is None:
+                        self.add_field(name=PARAM_DISPLAY[key], value="None", inline=True)
+                    elif isinstance(val, (int, float, str)):
+                        self.add_field(name=PARAM_DISPLAY[key], value=val, inline=True)
+
             self.set_image(file=image)
             self.set_author(name=author.display_name, icon_url=author.display_avatar.url)
             self.set_footer(text="Powered by Huggingface Diffusers 🤗🧨")
@@ -83,12 +104,20 @@ class SDEmbed(Embed):
 
 
 class ImageView(ui.View):
-    def __init__(self, bot: DiscoSnake, author: User | Member, upscaler: Upscaler = None, **kwargs):
+    def __init__(
+        self,
+        bot: DiscoSnake,
+        author: User | Member,
+        prompt: str,
+        model_params: dict = None,
+        upscaler: Upscaler = None,
+    ):
         super().__init__(timeout=None)
         self.bot: DiscoSnake = bot
         self.upscaler = upscaler
         self.author = author
-        self.kwargs = kwargs
+        self.prompt = prompt
+        self.model_params = model_params
         if upscaler is None:
             self.upscale_button.disabled = True
             self.upscale_button.label = "❌ No Upscaler"
@@ -96,16 +125,20 @@ class ImageView(ui.View):
     @ui.button(label="Upscale", style=ButtonStyle.blurple, custom_id=f"{COG_UID}_ImageView:upscale")
     async def upscale_button(self, button: ui.Button, ctx: MessageInteraction):
         await ctx.response.defer()
-
-        self.upscale_button.disabled = True
-        self.upscale_button.label = "Upscaling..."
-        await ctx.edit_original_response(view=self)
-
-        embed: SDEmbed = ctx.message.embeds[0]
-        src_url = embed.image.url
-        src_name = Path(embed.image.url.split("/")[-1])
-
         try:
+            # Disable the upscale button while the upscale is in progress
+            self.upscale_button.disabled = True
+            self.retry_button.disabled = True
+            self.upscale_button.label = "Upscaling..."
+            await ctx.edit_original_response(view=self)
+
+            # Restore the retry button in case the upscale fails
+            self.retry_button.disabled = False
+
+            embed: SDEmbed = ctx.message.embeds[0]
+            src_url = embed.image.url
+            src_name = Path(embed.image.url.split("/")[-1])
+
             upscaled = await self.bot.do(self.upscaler.upscale, url=src_url, download=True)
             upscaled_name = str(src_name.stem + "-upscaled" + src_name.suffix)
             SD_DATADIR.joinpath(str(ctx.author.id), upscaled_name).write_bytes(upscaled.read())
@@ -129,6 +162,7 @@ class ImageView(ui.View):
     async def retry_button(self, button: ui.Button, ctx: MessageInteraction):
         await ctx.response.defer()
         try:
+            # Switch into disabled states to prevent double-clicking and race conditions
             upscale_state = self.upscale_button.disabled
             self.upscale_button.disabled = True
             self.retry_button.disabled = True
@@ -136,20 +170,29 @@ class ImageView(ui.View):
             self.retry_button.style = ButtonStyle.grey
             await ctx.edit_original_response(view=self)
 
-            # restore upscale button in case of failure
+            # restore upscale button value in case of failure
             self.upscale_button.disabled = upscale_state
 
             # Generate new embed
             logger.info(f"Retrying {COG_UID} generation for {ctx.author.display_name} ({ctx.author.id})")
-            logger.debug(f"ctx: {ctx.__dict__}")
-            logger.debug(f"kwargs: {self.kwargs}")
-            embed = await self.bot.cogs[COG_UID].generate_embed(author=self.author, **self.kwargs)
+            embed = await self.bot.cogs[COG_UID].generate_embed(
+                prompt=self.prompt, author=ctx.author, model_params=self.model_params
+            )
 
+            # Update button state to reflect completion
             self.retry_button.label = "Complete"
             self.retry_button.style = ButtonStyle.green
+
+            # Send new message with new embed
             await ctx.followup.send(
                 embed=embed,
-                view=ImageView(bot=self.bot, upscaler=self.upscaler, author=ctx.author, **self.kwargs),
+                view=ImageView(
+                    bot=self.bot,
+                    upscaler=self.upscaler,
+                    author=ctx.author,
+                    prompt=self.prompt,
+                    model_params=self.model_params,
+                ),
             )
         except Exception as e:
             await ctx.followup.send(f"Retry failed: {e}")
@@ -219,38 +262,48 @@ class Waifu(commands.Cog, name=COG_UID):
         self.pipe.to("cuda")
         logger.info(f"Loaded diffusers model {model_name} successfully.")
 
-    async def generate_embed(self, prompt, steps, author: User | Member, **kwargs):
+    async def generate_embed(self, prompt: str, author: User | Member, model_params: dict):
         if not prompt:
             raise ValueError("i can't generate an image from nothing...")
         if self.pipe is None:
             raise ValueError("Pipeline is not ready yet, please try again in a few seconds.")
+
+        logger.info(
+            "\n".join(
+                [f"Generating image for {author.name}:", f"Prompt: {prompt}", f"Params: {model_params}"]
+            )
+        )
+
+        negative_prompt = model_params.pop("negative_prompt", None)
+        if negative_prompt is not None:
+            negative_prompt = f"mdjrny-v4 style {negative_prompt.strip()}"
 
         try:
             start_time = perf_counter()
             result: StableDiffusionPipelineOutput = await self.do_gpu(
                 self.pipe,
                 prompt=f"mdjrny-v4 style {prompt.strip()}",
-                num_inference_steps=round(steps),
-                **kwargs,
+                negative_prompt=negative_prompt,
+                **model_params,
             )
             run_duration = perf_counter() - start_time
             logger.info(f"Generated in {run_duration:.2f}s")
+            image = result.images[0]
+            nsfw = result.nsfw_content_detected[0]
         except Exception as e:
             logger.error(e)
             raise e
 
         SD_DATADIR.joinpath(str(author.id)).mkdir(parents=True, exist_ok=True)
         save_path = SD_DATADIR.joinpath(str(author.id), f"{round(datetime.utcnow().timestamp())}.png")
-        image = result.images[0]
-        nsfw = result.nsfw_content_detected[0]
         if nsfw is True:
             logger.info(f"NSFW content detected for {author.name} from prompt '{prompt}'")
             save_path = save_path.with_suffix(".nsfw.png")
-
         logger.info(f"Saving image to {save_path}")
         image.save(save_path)
+
         image = File(fp=save_path, filename=save_path.name)
-        embed = SDEmbed(prompt, image, author, nsfw)
+        embed = SDEmbed(prompt=prompt, image=image, author=author, nsfw=nsfw, model_params=model_params)
         return embed
 
     # Cog slash command group
@@ -262,9 +315,15 @@ class Waifu(commands.Cog, name=COG_UID):
     async def generate_command(
         self,
         ctx: ApplicationCommandInteraction,
-        prompt: str = commands.Param(description="Prompt to generate an image from.", max_length=240),
+        prompt: str = commands.Param(
+            description="Prompt to generate an image from.",
+            max_length=240,
+        ),
         steps: float = commands.Param(
-            description="Number of steps to run the model for.", default=50.0, min_value=25.0, max_value=100.0
+            description="Number of steps to run the model for.",
+            default=50.0,
+            min_value=25.0,
+            max_value=100.0,
         ),
         guidance: float = commands.Param(
             description="Higher values follow the prompt more closely at the expense of image quality.",
@@ -273,7 +332,9 @@ class Waifu(commands.Cog, name=COG_UID):
             max_value=25.0,
         ),
         negative: str = commands.Param(
-            description="Negative prompt to steer the model away from", max_length=240, default=None
+            description="Negative prompt to steer the model away from",
+            default="",
+            max_length=240,
         ),
     ):
         """
@@ -287,21 +348,24 @@ class Waifu(commands.Cog, name=COG_UID):
             return
 
         await ctx.response.defer()
-        logger.info(f"Generating image for {ctx.user.name} from prompt '{prompt}'")
-
-        generate_args = {
-            "prompt": prompt,
-            "steps": steps,
-            "author": ctx.author,
-            "guidance_scale": guidance,
+        model_params = {
+            "num_inference_steps": round(steps),
+            "guidance_scale": round(guidance, 2),
         }
-        if negative is not None:
-            generate_args["negative_prompt"] = negative
 
-        embed = await self.generate_embed(**generate_args)
+        if negative != "":
+            model_params["negative_prompt"]: negative
+
+        embed = await self.generate_embed(prompt=prompt, author=ctx.author, model_params=model_params)
         await ctx.edit_original_response(
             embed=embed,
-            view=ImageView(bot=self.bot, upscaler=self.upscaler, **generate_args),
+            view=ImageView(
+                bot=self.bot,
+                upscaler=self.upscaler,
+                author=ctx.author,
+                prompt=prompt,
+                model_params=model_params,
+            ),
         )
         return
 

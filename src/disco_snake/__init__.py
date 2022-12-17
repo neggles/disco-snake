@@ -12,6 +12,8 @@ from helpers.misc import get_package_root
 LOGDIR_PATH = Path.cwd().joinpath("logs")
 DATADIR_PATH = Path.cwd().joinpath("data")
 
+LOG_FORMAT = "%(color)s[%(levelname)1.1s %(asctime)s][%(name)s][%(module)s:%(funcName)s:%(lineno)d]%(end_color)s %(message)s"
+
 # LOGDIR_PATH = Path(__file__).parent.parent.parent.joinpath("logs")
 # DATADIR_PATH = Path(__file__).parent.parent.parent.joinpath("data")
 

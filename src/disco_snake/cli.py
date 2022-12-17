@@ -12,13 +12,13 @@ from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
 import logsnake
-from disco_snake import LOGDIR_PATH, CONFIG_PATH, DATADIR_PATH, USERDATA_PATH, PACKAGE
+from disco_snake import LOGDIR_PATH, CONFIG_PATH, DATADIR_PATH, USERDATA_PATH, PACKAGE, LOG_FORMAT
 from disco_snake.bot import DiscoSnake
 from helpers.misc import parse_log_level
 
 MBYTE = 2**20
 
-logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
+logfmt = logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
 # setup root logger
 logging.root = logsnake.setup_logger(
     level=logging.DEBUG,

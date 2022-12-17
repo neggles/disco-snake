@@ -13,7 +13,7 @@ from transformers.utils import logging as t2logging
 import logsnake
 from aitextgen import aitextgen
 from disco_snake.bot import DiscoSnake
-from disco_snake.cli import DATADIR_PATH, LOGDIR_PATH
+from disco_snake.cli import DATADIR_PATH, LOGDIR_PATH, LOG_FORMAT
 from helpers import checks
 from helpers.misc import parse_log_level
 
@@ -35,7 +35,7 @@ EMOJI = {
     "thonk": "🤔",
 }
 
-logfmt = logsnake.LogFormatter(datefmt="%Y-%m-%d %H:%M:%S")
+logfmt = logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
 logger: logging.Logger = logsnake.setup_logger(
     name=Path(__file__).stem,
     level=logging.INFO,

@@ -24,7 +24,7 @@ PACKAGE_ROOT = get_package_root()
 
 BOT_INTENTS = Intents.all()
 BOT_INTENTS.typing = False
-BOT_INTENTS.presences = True
+BOT_INTENTS.presences = False
 BOT_INTENTS.members = True
 BOT_INTENTS.message_content = True
 
@@ -224,7 +224,9 @@ class DiscoSnake(commands.Bot):
                 description="This command requires admin permissions. soz bb xoxo <3",
                 color=0xE02B2B,
             )
-            logger.info("A non-owner user tried to execute an owner command.")
+            logger.warn(
+                f"User {ctx.author} attempted to execute {ctx.command.qualified_name} without authorization."
+            )
             return await ctx.send(embed=embed, ephemeral=True)
 
         elif isinstance(error, commands.MissingPermissions):
@@ -241,5 +243,9 @@ class DiscoSnake(commands.Bot):
             return await ctx.send(embed=embed)
         elif isinstance(error, commands.CommandNotFound):
             # This is actually fine so lets just pretend everything is okay.
+            logger.info(
+                f"User {ctx.author} attempted to execute a non-existent command: {ctx.message.content}"
+            )
             return
+        logger.warn(f"Error in command {ctx}: {error}")
         raise error
