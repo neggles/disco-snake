@@ -48,6 +48,7 @@ logger = logsnake.setup_logger(
 SD_DATADIR = DATADIR_PATH.joinpath("sd", COG_UID)
 SD_DATADIR.mkdir(parents=True, exist_ok=True)
 SD_MODEL = "openjourney"
+TORCH_DTYPE = torch.float32
 
 
 class SDEmbed(Embed):
@@ -197,7 +198,7 @@ class Journey(commands.Cog, name=COG_UID):
         return res
 
     async def cog_load(self) -> None:
-        await self.pipe_init(SD_MODEL, torch.float32)
+        await self.pipe_init(SD_MODEL, TORCH_DTYPE)
         self.loading = False
         return await super().cog_load()
 
@@ -265,6 +266,15 @@ class Journey(commands.Cog, name=COG_UID):
         steps: float = commands.Param(
             description="Number of steps to run the model for.", default=50.0, min_value=25.0, max_value=100.0
         ),
+        guidance: float = commands.Param(
+            description="Higher values follow the prompt more closely at the expense of image quality.",
+            default=7.5,
+            min_value=1.0,
+            max_value=25.0,
+        ),
+        negative: str = commands.Param(
+            description="Negative prompt to steer the model away from", max_length=240, default=None
+        ),
     ):
         """
         make an image from a prompt
@@ -279,16 +289,19 @@ class Journey(commands.Cog, name=COG_UID):
         await ctx.response.defer()
         logger.info(f"Generating image for {ctx.user.name} from prompt '{prompt}'")
 
-        embed = await self.generate_embed(prompt, steps, ctx.author)
+        generate_args = {
+            "prompt": prompt,
+            "steps": steps,
+            "author": ctx.author,
+            "guidance_scale": guidance,
+        }
+        if negative is not None:
+            generate_args["negative_prompt"] = negative
+
+        embed = await self.generate_embed(**generate_args)
         await ctx.edit_original_response(
             embed=embed,
-            view=ImageView(
-                bot=self.bot,
-                upscaler=self.upscaler,
-                author=ctx.author,
-                prompt=prompt,
-                steps=steps,
-            ),
+            view=ImageView(bot=self.bot, upscaler=self.upscaler, **generate_args),
         )
         return
 
