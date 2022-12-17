@@ -276,6 +276,7 @@ class Waifu(commands.Cog, name=COG_UID):
 
         negative_prompt = model_params.pop("negative_prompt", None)
         if negative_prompt is not None:
+            model_params["negative_prompt"] = negative_prompt
             negative_prompt = f"mdjrny-v4 style {negative_prompt.strip()}"
 
         try:
