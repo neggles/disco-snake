@@ -328,9 +328,9 @@ class Waifu(commands.Cog, name=COG_UID):
         ),
         guidance: float = commands.Param(
             description="Higher values follow the prompt more closely at the expense of image quality.",
-            default=7.5,
+            default=9.6,
             min_value=1.0,
-            max_value=25.0,
+            max_value=30.0,
         ),
         negative: str = commands.Param(
             description="Negative prompt to steer the model away from",
