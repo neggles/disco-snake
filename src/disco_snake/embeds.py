@@ -39,7 +39,7 @@ def cooldown_msg() -> str:
 
 
 class CooldownEmbed(Embed):
-    def __init__(self, cooldown: int, target: Union[User, Member, None] = None, *args, **kwargs):
+    def __init__(self, cooldown: int, target: User | Member, *args, **kwargs):
         kwargs.update(
             title=cooldown_msg(),
             colour=target.colour if isinstance(target, Member) else Colour(0xFF6600),
