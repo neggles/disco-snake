@@ -28,6 +28,11 @@ from disco_snake import DATADIR_PATH, LOGDIR_PATH, LOG_FORMAT
 from disco_snake.bot import DiscoSnake
 from helpers import checks
 
+try:
+    import xformers
+except ImportError:
+    xformers = None
+
 COG_UID = "journey"
 
 # set diffusers logger to info
@@ -53,7 +58,6 @@ for handler in logger.handlers:
 SD_DATADIR = DATADIR_PATH.joinpath("sd", COG_UID)
 SD_DATADIR.mkdir(parents=True, exist_ok=True)
 SD_MODEL = "openjourney"
-TORCH_DTYPE = torch.float32
 
 PARAM_DISPLAY = {
     "model": "Model",
@@ -74,6 +78,7 @@ class SDEmbed(Embed):
         author: User | Member,
         nsfw: bool,
         model_params: dict,
+        run_duration: float = None,
         **kwargs,
     ):
         super().__init__(
@@ -94,6 +99,9 @@ class SDEmbed(Embed):
                         self.add_field(name=PARAM_DISPLAY[key], value="None", inline=True)
                     elif isinstance(val, (int, float, str)):
                         self.add_field(name=PARAM_DISPLAY[key], value=val, inline=True)
+
+            if run_duration is not None:
+                self.add_field(name="Runtime", value=f"{run_duration:.2f}s", inline=True)
 
             self.set_image(file=image)
             self.set_author(name=author.display_name, icon_url=author.display_avatar.url)
@@ -214,6 +222,13 @@ class Journey(commands.Cog, name=COG_UID):
         )  # thread pool for blocking code
         self.gpu_executor = bot.gpu_executor  # thread "pool" for GPU operations
 
+        self.torch_device = self.bot.config["diffusers"]["torch_device"] or "cpu"
+        dtype_str = self.bot.config["diffusers"]["torch_dtype"] or "float32"
+        self.torch_dtype: torch.dtype = getattr(torch, dtype_str)
+
+        logger.debug(f"{COG_UID} cog using torch device {self.torch_device} and dtype {self.torch_dtype}")
+        logger.debug(f"Diffusers model: models/{SD_MODEL}")
+
         # Retrieve the replicate token from the config for upscaling
         self.replicate_token = self.bot.config["replicate_token"] or None
         if self.replicate_token is None:
@@ -241,11 +256,11 @@ class Journey(commands.Cog, name=COG_UID):
         return res
 
     async def cog_load(self) -> None:
-        await self.pipe_init(SD_MODEL, TORCH_DTYPE)
+        await self.pipe_init(SD_MODEL)
         self.loading = False
         return await super().cog_load()
 
-    async def pipe_init(self, model_name: str, torch_dtype: torch.dtype):
+    async def pipe_init(self, model_name: str):
         model_dir = DATADIR_PATH.joinpath("models", model_name)
         if not model_dir.exists():
             raise FileNotFoundError(f"Model directory {model_dir} does not exist.")
@@ -254,11 +269,14 @@ class Journey(commands.Cog, name=COG_UID):
         self.pipe: StableDiffusionPipeline = await self.do_gpu(
             StableDiffusionPipeline.from_pretrained,
             model_dir,
-            torch_dtype=torch_dtype,
+            torch_dtype=self.torch_dtype,
             local_files_only=True,
             safety_checker=lambda images, **kwargs: (images, [False] * len(images)),
         )
-        self.pipe.to("cuda")
+        self.pipe = self.pipe.to(self.torch_device)
+        if xformers is not None:
+            await self.do_gpu(self.pipe.enable_xformers_memory_efficient_attention)
+
         logger.info(f"Loaded diffusers model {model_name} successfully.")
 
     async def generate_embed(self, prompt: str, author: User | Member, model_params: dict):
@@ -273,18 +291,10 @@ class Journey(commands.Cog, name=COG_UID):
             )
         )
 
-        negative_prompt = model_params.pop("negative_prompt", None)
-        if negative_prompt is not None:
-            model_params["negative_prompt"] = negative_prompt
-            negative_prompt = f"mdjrny-v4 style {negative_prompt.strip()}"
-
         try:
             start_time = perf_counter()
             result: StableDiffusionPipelineOutput = await self.do_gpu(
-                self.pipe,
-                prompt=f"mdjrny-v4 style {prompt.strip()}",
-                negative_prompt=negative_prompt,
-                **model_params,
+                self.pipe, prompt=f"mdjrny-v4 style {prompt.strip()}", **model_params
             )
             run_duration = perf_counter() - start_time
             logger.info(f"Generated in {run_duration:.2f}s")
@@ -303,7 +313,14 @@ class Journey(commands.Cog, name=COG_UID):
         image.save(save_path)
 
         image = File(fp=save_path, filename=save_path.name)
-        embed = SDEmbed(prompt=prompt, image=image, author=author, nsfw=nsfw, model_params=model_params)
+        embed = SDEmbed(
+            prompt=prompt,
+            image=image,
+            author=author,
+            nsfw=nsfw,
+            model_params=model_params,
+            run_duration=run_duration,
+        )
         return embed
 
     # Cog slash command group

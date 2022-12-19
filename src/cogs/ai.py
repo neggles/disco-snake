@@ -3,17 +3,17 @@ import logging
 import random
 from functools import partial as partial_func
 from pathlib import Path
-from typing import List
 
 import disnake
+import torch
 from disnake import ApplicationCommandInteraction, DMChannel, Message, MessageInteraction
-from disnake.ext import commands, tasks
+from disnake.ext import commands
 from transformers.utils import logging as t2logging
 
 import logsnake
 from aitextgen import aitextgen
 from disco_snake.bot import DiscoSnake
-from disco_snake.cli import DATADIR_PATH, LOGDIR_PATH, LOG_FORMAT
+from disco_snake.cli import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from helpers import checks
 from helpers.misc import parse_log_level
 
@@ -130,8 +130,6 @@ class AiCog(commands.Cog, name="Ai"):
 
         # ai model generation settings
         self.instance_runs = 0
-        self.prompt_queue = asyncio.Queue(maxsize=8)
-
         self.gpu_executor = bot.gpu_executor  # thread "pool" for GPU operations
 
         # load config
@@ -158,6 +156,12 @@ class AiCog(commands.Cog, name="Ai"):
 
         # parse other config
         self.use_gpu: bool = config["use_gpu"] if "use_gpu" in conf_keys else False
+        self.torch_device: int = config["torch_device"] if "torch_device" in conf_keys else "cpu"
+
+        self.torch_device = config["torch_device"] if "torch_device" in conf_keys else "cpu"
+        dtype_str = config["torch_dtype"] if "torch_dtype" in conf_keys else "float32"
+        self.torch_dtype: torch.dtype = getattr(torch, dtype_str)
+
         self.base_length: int = config["base_length"] if "base_length" in conf_keys else 100
         self.max_lines: int = config["max_lines"] if "max_lines" in conf_keys else 5
         self.temperature: float = config["temperature"] if "temperature" in conf_keys else 0.9
@@ -223,7 +227,7 @@ class AiCog(commands.Cog, name="Ai"):
         else:
             embed.add_field(name="Initialized:", value="No", inline=True)
             embed.add_field(name="Running on:", value="N/A", inline=True)
-        embed.add_field(name="Use GPU:", value="Yes" if self.use_gpu else "No", inline=True)
+        embed.add_field(name="Tensor Type:", value=str(self.torch_dtype), inline=True)
         embed.add_field(name="Log level:", value=str(self._log_level), inline=True)
         embed.add_field(name="Base length:", value=str(self.base_length), inline=True)
         embed.add_field(name="Max lines:", value=str(self.max_lines), inline=True)
@@ -398,7 +402,8 @@ class AiCog(commands.Cog, name="Ai"):
                     self.ai = await self.do_gpu(
                         aitextgen,
                         model_folder=str(self.model_folder.resolve()),
-                        to_gpu=self.use_gpu,
+                        torch_device=self.torch_device,
+                        to_fp16=True if self.torch_dtype == torch.float16 else False,
                         verbose=self.verbose,
                     )
                     logger.info("AI model initialized")
@@ -474,24 +479,6 @@ class AiCog(commands.Cog, name="Ai"):
         trimmed_oneline = ", ".join(response.splitlines())
         logger.info(f"[RESPONSE][{num_lines}]: '{trimmed_oneline}'")
         return response
-
-    @tasks.loop(seconds=300, reconnect=True)
-    async def background_generate(self) -> None:
-        """
-        Feeds the AI with context from random messages and generates a response.
-        Used to keep it fresh and spicy.
-        """
-        if self.ai is None:
-            raise ValueError("AI is not initialized")
-
-        if self.lock.locked():
-            logger.debug("Skipping background generation, AI is locked")
-            return
-
-        if not self.prompt_queue.empty():
-            logger.info("Generating background response from queue")
-            return await self.generate_response(prompt=self.prompt_queue.get_nowait())
-        return
 
 
 def setup(bot):

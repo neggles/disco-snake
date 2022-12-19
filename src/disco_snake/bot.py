@@ -10,6 +10,7 @@ from functools import partial as partial_func
 from pathlib import Path
 from traceback import print_exception
 from zoneinfo import ZoneInfo
+from humanize import naturaldelta as fuzzydelta
 
 from disnake import Activity, ActivityType, ApplicationCommandInteraction, Embed, Intents, Message, Guild
 from disnake import __version__ as DISNAKE_VERSION
@@ -56,6 +57,14 @@ class DiscoSnake(commands.Bot):
             max_workers=1, thread_name_prefix="bot_gpu"
         )  # thread "pool" for GPU operations
 
+    @property
+    def uptime(self) -> timedelta:
+        return datetime.now(tz=ZoneInfo("UTC")) - self.start_time
+
+    @property
+    def fuzzyuptime(self) -> str:
+        return fuzzydelta(self.uptime)
+
     async def do(self, func, *args, **kwargs):
         funcname = getattr(func, "__name__", None)
         if funcname is None:
@@ -99,9 +108,6 @@ class DiscoSnake(commands.Bot):
             )
         with (self.datadir_path / "guilds" / f"{guild_id}-members.json").open("w") as f:
             json.dump(memberlist, f, skipkeys=True, indent=2)
-
-    def get_uptime(self) -> timedelta:
-        return datetime.now(tz=ZoneInfo("UTC")) - self.start_time
 
     def available_cogs(self):
         cogs = [

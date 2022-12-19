@@ -28,7 +28,7 @@ class General(commands.Cog, name="general"):
         embed.add_field(name="Source repo:", value=self.bot.config["repo_url"], inline=True)
         embed.add_field(name="Running on", value=f"Python {platform.python_version()}", inline=False)
         embed.add_field(name="Timezone:", value=str(self.bot.config["timezone"]), inline=True)
-        embed.add_field(name="Uptime:", value=str(self.bot.status), inline=False)
+        embed.add_field(name="Uptime", value=self.bot.fuzzyuptime, inline=False)
         embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.avatar.url)
         await ctx.send(embed=embed)
 

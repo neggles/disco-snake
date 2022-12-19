@@ -1,13 +1,13 @@
 import json
 import logging
 import sys
+import asyncio
 from zoneinfo import ZoneInfo
 
 import click
 import daemonocle
 import uvloop
 from daemonocle.cli import DaemonCLI
-from rich.logging import RichHandler
 from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
@@ -50,8 +50,19 @@ bot: DiscoSnake = None  # type: ignore
 
 def cb_shutdown(message: str, code: int):
     logger.warning(f"Daemon is stopping: {code}")
-    bot.save_userdata()
+    if bot is not None:
+        bot.save_userdata()
+        loop = bot.loop
+    else:
+        loop = asyncio.get_event_loop()
+
     logger.info(message)
+
+    pending = asyncio.all_tasks()
+    logger.info(f"Waiting for {len(pending)} remaining tasks to complete...")
+    loop.run_until_complete(asyncio.gather(*pending))
+    logger.info("All tasks completed, shutting down...")
+
     return code
 
 
@@ -78,9 +89,14 @@ def cli(ctx: click.Context):
     """
     Main entrypoint for your application.
     """
+    return start_bot(ctx)
+
+
+def start_bot(ctx: click.Context = None):
     global bot
     bot = DiscoSnake()
-    ctx.obj: DiscoSnake = bot
+    if ctx is not None:
+        ctx.obj: DiscoSnake = bot
 
     # have to use a different method on python 3.11 and up because of a change to how asyncio works
     # not sure how to implement that with disnake, so for now, no uvloop on python 3.11 and up
@@ -95,8 +111,12 @@ def cli(ctx: click.Context):
     else:
         raise FileNotFoundError(f"Config file '{CONFIG_PATH}' not found!")
 
-    logger.setLevel(parse_log_level(config["log_level"]))
+    config_log_level = parse_log_level(config["log_level"])
+    logger.setLevel(config_log_level)
     logger.info(f"Effective log level: {logging.getLevelName(logger.getEffectiveLevel())}")
+
+    logging.getLogger("disnake.gateway").setLevel(config_log_level)
+    logging.getLogger("disnake.http").setLevel(config_log_level)
 
     # create log and data directories if they don't exist
     if not DATADIR_PATH.exists():
