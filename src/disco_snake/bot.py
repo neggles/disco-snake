@@ -12,7 +12,16 @@ from traceback import print_exception
 from zoneinfo import ZoneInfo
 from humanize import naturaldelta as fuzzydelta
 
-from disnake import Activity, ActivityType, ApplicationCommandInteraction, Embed, Intents, Message, Guild
+from disnake import (
+    Activity,
+    ActivityType,
+    ApplicationCommandInteraction,
+    Embed,
+    Intents,
+    Message,
+    Guild,
+    InteractionResponseType,
+)
 from disnake import __version__ as DISNAKE_VERSION
 from disnake.ext import commands, tasks
 
@@ -194,7 +203,61 @@ class DiscoSnake(commands.Bot):
         )
 
     async def on_slash_command_error(self, ctx: ApplicationCommandInteraction, error) -> None:
-        return await self.on_command_error(ctx, error)
+        if isinstance(error, commands.CommandOnCooldown):
+            logger.info(
+                f"User {ctx.author} attempted to use {ctx.application_command.qualified_name} on cooldown."
+            )
+            embed = CooldownEmbed(error.retry_after + 1, ctx.author)
+            return await ctx.send(embed=embed, ephemeral=True)
+
+        elif isinstance(error, exceptions.UserBlacklisted):
+            logger.info(
+                f"User {ctx.author} attempted to use {ctx.application_command.qualified_name}, but is blacklisted."
+            )
+            embed = Embed(
+                title="Error!",
+                description="You have been blacklisted and cannot use this bot. If you think this is a mistake, please contact the bot owner.",
+                color=0xE02B2B,
+            )
+            return await ctx.send(embed=embed, ephemeral=True)
+
+        elif isinstance(error, exceptions.UserNotOwner):
+            embed = Embed(
+                title="Error!",
+                description="This command requires admin permissions. soz bb xoxo <3",
+                color=0xE02B2B,
+            )
+            logger.warn(
+                f"User {ctx.author} attempted to execute {ctx.application_command.qualified_name} without admin permissions."
+            )
+            return await ctx.send(embed=embed, ephemeral=True)
+
+        elif isinstance(error, commands.MissingPermissions):
+            logger.warn(
+                f"User {ctx.author} attempted to execute {ctx.application_command.qualified_name} without authorization."
+            )
+            embed = MissingPermissionsEmbed(ctx.author, error.missing_permissions)
+            return await ctx.send(embed=embed, ephemeral=True)
+
+        # that covers all the usual errors, so let's catch the rest
+        # first work out if we've deferred the response so we can send an ephemeral message if we need to
+        ctx_rtype = getattr(ctx.response, "_response_type", None)
+        ctx_ephemeral = (
+            True
+            if (ctx_rtype == InteractionResponseType.deferred_channel_message)
+            or (ctx_rtype == InteractionResponseType.deferred_message_update)
+            else False
+        )
+
+        embed = Embed(
+            title="Error!",
+            description="An unknown error occurred while executing this command. Please try again later or contact the bot owner if the problem persists.",
+            color=0xE02B2B,
+        )
+        await ctx.send(embed=embed, ephemeral=ctx_ephemeral)
+
+        logger.warn(f"Unhandled error in slash command {ctx}: {error}")
+        raise error
 
     async def on_command_completion(self, ctx: commands.Context) -> None:
         """
@@ -220,8 +283,14 @@ class DiscoSnake(commands.Bot):
             return await ctx.send(embed=embed, ephemeral=True)
 
         elif isinstance(error, exceptions.UserBlacklisted):
-            logger.info(f"User {ctx.author} attempted to use {ctx.command.qualified_name} on cooldown.")
-            embed = CooldownEmbed(error.retry_after + 1, ctx.author)
+            logger.info(
+                f"User {ctx.author} attempted to use {ctx.command.qualified_name}, but is blacklisted."
+            )
+            embed = Embed(
+                title="Error!",
+                description="You have been blacklisted and cannot use this bot. If you think this is a mistake, please contact the bot owner.",
+                color=0xE02B2B,
+            )
             return await ctx.send(embed=embed, ephemeral=True)
 
         elif isinstance(error, exceptions.UserNotOwner):
@@ -253,5 +322,5 @@ class DiscoSnake(commands.Bot):
                 f"User {ctx.author} attempted to execute a non-existent command: {ctx.message.content}"
             )
             return
-        logger.warn(f"Error in command {ctx}: {error}")
+        logger.warn(f"Unhandled error in command {ctx}: {error}")
         raise error
