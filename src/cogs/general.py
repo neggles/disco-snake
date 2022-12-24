@@ -32,31 +32,6 @@ class General(commands.Cog, name="general"):
         embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.avatar.url)
         await ctx.send(embed=embed)
 
-    @commands.slash_command(
-        name="serverinfo",
-        description="Get some useful (or not) information about the server.",
-    )
-    @checks.not_blacklisted()
-    async def serverinfo(self, ctx: ApplicationCommandInteraction) -> None:
-        """
-        Get some useful (or not) information about the server.
-        :param ctx: The application command ctx.
-        """
-        roles = [role.name for role in ctx.guild.roles]
-        if len(roles) > 50:
-            roles = roles[:50]
-            roles.append(f">>>> Displaying[50/{len(roles)}] Roles")
-        roles = ", ".join(roles)
-
-        embed = disnake.Embed(title="**Server Name:**", description=f"{ctx.guild}", color=0x9C84EF)
-        embed.set_thumbnail(url=ctx.guild.icon.url)
-        embed.add_field(name="Server ID", value=ctx.guild.id)
-        embed.add_field(name="Member Count", value=ctx.guild.member_count)
-        embed.add_field(name="Text/Voice Channels", value=f"{len(ctx.guild.channels)}")
-        embed.add_field(name=f"Roles ({len(ctx.guild.roles)})", value=roles)
-        embed.set_footer(text=f"Created at: {ctx.guild.created_at}")
-        await ctx.send(embed=embed)
-
     @commands.slash_command(name="ping", description="ping the bot")
     @checks.not_blacklisted()
     async def ping(self, ctx: ApplicationCommandInteraction) -> None:
@@ -69,7 +44,7 @@ class General(commands.Cog, name="general"):
             description=f"Current API latency is {round(self.bot.latency * 1000)}ms",
             color=0x9C84EF,
         )
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
 
     @commands.slash_command(
         name="get-invite", description="Get the bot's invite link to add it to your server."
@@ -85,9 +60,8 @@ class General(commands.Cog, name="general"):
             color=0xD75BF4,
         )
         try:
-            # To know what permissions to give to your bot, please see here: https://discordapi.com/permissions.html and remember to not give Administrator permissions.
             await ctx.author.send(embed=embed)
-            await ctx.send("I sent you a private message!")
+            await ctx.send("Check your private messages for the link!", ephemeral=True)
         except disnake.Forbidden:
             await ctx.send(embed=embed)
 

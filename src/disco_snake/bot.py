@@ -59,12 +59,11 @@ class DiscoSnake(commands.Bot):
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
         self.home_guild: Guild = None  # set in on_ready
 
-        self.executor = ThreadPoolExecutor(
-            max_workers=5, thread_name_prefix="bot"
-        )  # thread pool for blocking code
-        self.gpu_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="bot_gpu"
-        )  # thread "pool" for GPU operations
+        # thread pool for blocking code
+        self.executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="bot")
+
+        # single thread worker for blocking gpu code
+        self.gpu_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bot_gpu")
 
     @property
     def uptime(self) -> timedelta:

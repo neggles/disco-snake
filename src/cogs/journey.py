@@ -328,7 +328,7 @@ class Journey(commands.Cog, name=COG_UID):
         name="journey", description=f"Generate images with {SD_MODEL}. WARNING: NO CONTENT FILTER"
     )
     @checks.not_blacklisted()
-    @commands.cooldown(1, 40.0, commands.BucketType.user)
+    @commands.cooldown(1, 35.0, commands.BucketType.user)
     async def generate_command(
         self,
         ctx: ApplicationCommandInteraction,
