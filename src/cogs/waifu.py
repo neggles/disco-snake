@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial as partial_func
 from pathlib import Path
+from random import uniform as rand_float
 from time import perf_counter
 
 import torch
@@ -24,7 +25,7 @@ from disnake.ext import commands
 
 import logsnake
 from cogs.common import Upscaler
-from disco_snake import DATADIR_PATH, LOGDIR_PATH, LOG_FORMAT
+from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
 from helpers import checks
 
@@ -34,6 +35,7 @@ except ImportError:
     xformers = None
 
 COG_UID = "waifu"
+GUIDANCE_DEFAULT = 9.1
 
 # set diffusers logger to info
 d2logging.set_verbosity_info()
@@ -344,7 +346,7 @@ class Waifu(commands.Cog, name=COG_UID):
         ),
         guidance: float = commands.Param(
             description="Higher values follow the prompt more closely at the expense of image quality.",
-            default=9.6,
+            default=GUIDANCE_DEFAULT,
             min_value=1.0,
             max_value=30.0,
         ),
@@ -364,7 +366,12 @@ class Waifu(commands.Cog, name=COG_UID):
             await ctx.send("Pipeline is not ready yet, please try again in a few seconds.", ephemeral=True)
             return
 
+        # send thinking notification
         await ctx.response.defer()
+
+        # randomize guidance if it's set to default
+        if guidance == GUIDANCE_DEFAULT:
+            guidance = rand_float(6.0, 12.0)
         model_params = {
             "num_inference_steps": round(steps),
             "guidance_scale": round(guidance, 2),

@@ -23,9 +23,6 @@ logger = logsnake.setup_logger(
     backupCount=1,
 )
 
-GUILD_ID = 123123
-ROLE_ID = 123123
-
 
 @dataclass
 class PatriotColors:
@@ -35,10 +32,16 @@ class PatriotColors:
 
 
 class Freedom(commands.Cog, name="freedom"):
-    def __init__(self, bot):
+    def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
         self.guild: Guild = None
         self.role: Role = None
+
+        self._guild_id = bot.config[COG_UID]["guild_id"] or None
+        self._role_id = bot.config[COG_UID]["role_id"] or None
+
+        if any([self._guild_id is None, self._role_id is None]):
+            raise ValueError("freedom.role_id and freedom.guild_id must be set in config.json!")
 
         self.colours = [PatriotColors.red, PatriotColors.white, PatriotColors.blue]
         self.index = 0
@@ -61,11 +64,11 @@ class Freedom(commands.Cog, name="freedom"):
     async def on_ready(self):
         logger.info("FREEDOM RINGS ACROSS THE LAND!")
         if self.guild is None:
-            self.guild = self.bot.get_guild(GUILD_ID)
+            self.guild = self.bot.get_guild(self._guild_id)
             logger.info(f"GUILD OF THE FREE: {self.guild}")
 
         if self.role is None:
-            self.role = self.guild.get_role(ROLE_ID)
+            self.role = self.guild.get_role(self._role_id)
             logger.info(f"ROLE OF THE FREE: {self.role}")
 
         if not self.military_industrial_complex.is_running():
