@@ -296,7 +296,7 @@ class Journey(commands.Cog, name=COG_UID):
         try:
             start_time = perf_counter()
             result: StableDiffusionPipelineOutput = await self.do_gpu(
-                self.pipe, prompt=f"mdjrny-v4 style {prompt.strip()}", **model_params
+                self.pipe, prompt=f"mdjrny-v4 style, {prompt.strip()}", **model_params
             )
             run_duration = perf_counter() - start_time
             logger.info(f"Generated in {run_duration:.2f}s")
@@ -371,7 +371,7 @@ class Journey(commands.Cog, name=COG_UID):
 
         # randomize guidance if it's set to default
         if guidance == GUIDANCE_DEFAULT:
-            guidance = rand_float(6.0, 12.0)
+            guidance = rand_float(4.0, 12.0)
 
         model_params = {
             "num_inference_steps": round(steps),
