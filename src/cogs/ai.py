@@ -344,9 +344,12 @@ class AiCog(commands.Cog, name="Ai"):
         )
         direct = True if isinstance(message.channel, DMChannel) else False
 
-        if not mentioned and not direct and random.random() > float(self.response_chance):
-            # Don't respond to non-mentions most of the time
-            return
+        if not mentioned and not direct:
+            if message.thread is not None:
+                # Don't respond to threads randomly
+                return
+            if random.random() > float(self.response_chance):
+                return
 
         async with message.channel.typing():
             try:
