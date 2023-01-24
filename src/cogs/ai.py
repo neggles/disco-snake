@@ -193,6 +193,10 @@ class AiCog(commands.Cog, name="Ai"):
         await self.ai_init()
         return await super().cog_load()
 
+    async def cog_unload(self) -> None:
+        await self.ai.save_for_upload(self.model_folder)
+        return super().cog_unload()
+
     async def do_gpu(self, func, *args, **kwargs):
         funcname = getattr(func, "__name__", None)
         if funcname is None:

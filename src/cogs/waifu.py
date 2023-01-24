@@ -59,7 +59,7 @@ for handler in logger.handlers:
 
 SD_DATADIR = DATADIR_PATH.joinpath("sd", COG_UID)
 SD_DATADIR.mkdir(parents=True, exist_ok=True)
-SD_MODEL = "waifu-diffusion"
+SD_MODEL = "waifu-v1.4"
 
 PARAM_DISPLAY = {
     "model": "Model",
@@ -224,8 +224,8 @@ class Waifu(commands.Cog, name=COG_UID):
         )  # thread pool for blocking code
         self.gpu_executor = bot.gpu_executor  # thread "pool" for GPU operations
 
-        self.torch_device = self.bot.config["diffusers"]["torch_device"] or "cpu"
-        dtype_str = self.bot.config["diffusers"]["torch_dtype"] or "float32"
+        self.torch_device = self.bot.config["waifu"]["torch_device"] or "cpu"
+        dtype_str = self.bot.config["waifu"]["torch_dtype"] or "float16"
         self.torch_dtype: torch.dtype = getattr(torch, dtype_str)
 
         logger.debug(f"{COG_UID} cog using torch device {self.torch_device} and dtype {self.torch_dtype}")
@@ -275,7 +275,6 @@ class Waifu(commands.Cog, name=COG_UID):
             local_files_only=True,
             safety_checker=lambda images, **kwargs: (images, [False] * len(images)),
         )
-        # self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.pipe = self.pipe.to(self.torch_device)
         if xformers is not None:
             await self.do_gpu(self.pipe.enable_xformers_memory_efficient_attention)

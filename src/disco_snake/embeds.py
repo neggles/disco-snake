@@ -51,7 +51,6 @@ class CooldownEmbed(Embed):
 
 
 DENIED_GIF_PATH = DATADIR_PATH.joinpath("misc", "magic-word-2.gif")
-DENIED_GIF = File(DENIED_GIF_PATH, filename=DENIED_GIF_PATH.name)
 
 
 class MissingPermissionsEmbed(Embed):
@@ -61,7 +60,7 @@ class MissingPermissionsEmbed(Embed):
             description="you didn't say the magic word!",
             color=0xE02B2B,
         )
-        self.set_image(file=DENIED_GIF)
+        self.set_image(file=File(DENIED_GIF_PATH, filename=DENIED_GIF_PATH.name))
 
         if author is not None:
             self.set_footer(text=f"Triggered by {author.display_name}", icon_url=author.display_avatar.url)
