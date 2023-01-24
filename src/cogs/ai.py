@@ -253,6 +253,7 @@ class AiCog(commands.Cog, name="Ai"):
     # parameter tweak command group
 
     @ai_group.sub_command_group(name="params", description="Change the AI parameters.")
+    @checks.is_owner()
     async def ai_params(self, inter: ApplicationCommandInteraction):
         pass
 
@@ -319,6 +320,21 @@ class AiCog(commands.Cog, name="Ai"):
         messages = int(messages)
         self.context_messages = messages
         await inter.send(f"Prompt context set to {messages}", ephemeral=True)
+
+    @ai_group.sub_command(name="save", description="Save the current AI model.")
+    @checks.is_owner()
+    async def ai_save(self, inter: ApplicationCommandInteraction) -> None:
+        """
+        Save the current AI model.
+        :param inter: The application command interaction.
+        """
+        if self.ai is None:
+            await inter.send("AI is not initialized.", ephemeral=True)
+            return
+
+        await inter.response.defer(ephemeral=True)
+        self.ai.save_for_upload(self.model_folder)
+        await inter.followup.send(content=f"Model {self.model_name} saved to disk.", ephemeral=True)
 
     # Event Listeners
 

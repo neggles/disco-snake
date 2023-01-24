@@ -151,7 +151,7 @@ class ImageView(ui.View):
 
             upscaled = await self.bot.do(self.upscaler.upscale, url=src_url, download=True)
             upscaled_name = str(src_name.stem + "-upscaled" + src_name.suffix)
-            SD_DATADIR.joinpath(str(ctx.author.id), upscaled_name).write_bytes(upscaled.read())
+            SD_DATADIR.joinpath(str(self.author.id), upscaled_name).write_bytes(upscaled.read())
             upscaled.seek(0)
 
             image = File(upscaled, filename=upscaled_name)
@@ -186,7 +186,7 @@ class ImageView(ui.View):
             # Generate new embed
             logger.info(f"Retrying {COG_UID} generation for {ctx.author.display_name} ({ctx.author.id})")
             embed = await self.bot.cogs[COG_UID].generate_embed(
-                prompt=self.prompt, author=ctx.author, model_params=self.model_params
+                prompt=self.prompt, author=self.author, model_params=self.model_params
             )
 
             # Update button state to reflect completion
