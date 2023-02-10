@@ -35,7 +35,7 @@ except ImportError:
     xformers = None
 
 COG_UID = "waifu"
-GUIDANCE_DEFAULT = 9.1
+GUIDANCE_DEFAULT = 9.11
 
 # set diffusers logger to info
 d2logging.set_verbosity_info()
@@ -60,6 +60,9 @@ for handler in logger.handlers:
 SD_DATADIR = DATADIR_PATH.joinpath("sd", COG_UID)
 SD_DATADIR.mkdir(parents=True, exist_ok=True)
 SD_MODEL = "waifu-v1.4"
+
+PROMPT_PREFIX = "masterpiece, best quality, high quality, absurdres, "
+DEFAULT_NEGATIVE = "worst quality, low quality, medium quality, deleted, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, jpeg artifacts, signature, watermark, username, blurry"
 
 PARAM_DISPLAY = {
     "model": "Model",
@@ -315,7 +318,7 @@ class Waifu(commands.Cog, name=COG_UID):
 
         image = File(fp=save_path, filename=save_path.name)
         embed = SDEmbed(
-            prompt=prompt,
+            prompt=PROMPT_PREFIX + prompt,
             image=image,
             author=author,
             nsfw=nsfw,
@@ -329,19 +332,19 @@ class Waifu(commands.Cog, name=COG_UID):
         name="waifu", description=f"Generate waifus with {SD_MODEL}. WARNING: NO CONTENT FILTER"
     )
     @checks.not_blacklisted()
-    @commands.cooldown(1, 40.0, commands.BucketType.user)
+    @commands.cooldown(1, 25.0, commands.BucketType.user)
     async def generate_command(
         self,
         ctx: ApplicationCommandInteraction,
         prompt: str = commands.Param(
             description="Prompt to generate an image from.",
-            max_length=240,
+            max_length=500,
         ),
         steps: float = commands.Param(
             description="Number of steps to run the model for.",
-            default=50.0,
-            min_value=25.0,
-            max_value=100.0,
+            default=20.0,
+            min_value=10.0,
+            max_value=50.0,
         ),
         guidance: float = commands.Param(
             description="Higher values follow the prompt more closely at the expense of image quality.",
@@ -352,7 +355,7 @@ class Waifu(commands.Cog, name=COG_UID):
         negative: str = commands.Param(
             description="Negative prompt to steer the model away from",
             default="",
-            max_length=240,
+            max_length=500,
         ),
     ):
         """
@@ -374,10 +377,14 @@ class Waifu(commands.Cog, name=COG_UID):
         model_params = {
             "num_inference_steps": round(steps),
             "guidance_scale": round(guidance, 2),
+            "width": 768,
+            "height": 768,
         }
 
         if negative != "":
             model_params["negative_prompt"]: negative
+        else:
+            model_params["negative_prompt"]: DEFAULT_NEGATIVE
 
         embed = await self.generate_embed(prompt=prompt, author=ctx.author, model_params=model_params)
         await ctx.edit_original_response(

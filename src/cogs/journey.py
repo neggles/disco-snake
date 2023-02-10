@@ -7,7 +7,7 @@ from random import uniform as rand_float
 from time import perf_counter
 
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, StableDiffusionKDiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import logging as d2logging
 from disnake import (
@@ -268,14 +268,15 @@ class Journey(commands.Cog, name=COG_UID):
             raise FileNotFoundError(f"Model directory {model_dir} does not exist.")
         logger.info(f"Loading diffusers model from {model_dir}")
 
-        self.pipe: StableDiffusionPipeline = await self.do_gpu(
-            StableDiffusionPipeline.from_pretrained,
+        self.pipe: StableDiffusionKDiffusionPipeline = await self.do_gpu(
+            StableDiffusionKDiffusionPipeline.from_pretrained,
             model_dir,
             torch_dtype=self.torch_dtype,
             local_files_only=True,
             safety_checker=lambda images, **kwargs: (images, [False] * len(images)),
         )
         self.pipe = self.pipe.to(self.torch_device)
+        self.pipe.set_scheduler("sample_dpmpp_2m")
         if xformers is not None:
             await self.do_gpu(self.pipe.enable_xformers_memory_efficient_attention)
 
@@ -330,7 +331,7 @@ class Journey(commands.Cog, name=COG_UID):
         name="journey", description=f"Generate images with {SD_MODEL}. WARNING: NO CONTENT FILTER"
     )
     @checks.not_blacklisted()
-    @commands.cooldown(1, 35.0, commands.BucketType.user)
+    @commands.cooldown(1, 20.0, commands.BucketType.user)
     async def generate_command(
         self,
         ctx: ApplicationCommandInteraction,
@@ -340,9 +341,9 @@ class Journey(commands.Cog, name=COG_UID):
         ),
         steps: float = commands.Param(
             description="Number of steps to run the model for.",
-            default=50.0,
-            min_value=25.0,
-            max_value=100.0,
+            default=28.0,
+            min_value=15.0,
+            max_value=50.0,
         ),
         guidance: float = commands.Param(
             description="Higher values follow the prompt more closely at the expense of image quality.",
