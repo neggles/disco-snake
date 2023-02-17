@@ -55,7 +55,8 @@ logger = logsnake.setup_logger(
 # set up the diffusers logger
 d2logger = d2logging.get_logger("diffusers")
 for handler in logger.handlers:
-    d2logger.addHandler(handler)
+    if handler not in d2logger.handlers:
+        d2logger.addHandler(handler)
 
 SD_DATADIR = DATADIR_PATH.joinpath("sd", COG_UID)
 SD_DATADIR.mkdir(parents=True, exist_ok=True)
@@ -224,8 +225,8 @@ class Journey(commands.Cog, name=COG_UID):
         )  # thread pool for blocking code
         self.gpu_executor = bot.gpu_executor  # thread "pool" for GPU operations
 
-        self.torch_device = self.bot.config["diffusers"]["torch_device"] or "cpu"
-        dtype_str = self.bot.config["diffusers"]["torch_dtype"] or "float32"
+        self.torch_device = self.bot.config["journey"]["torch_device"] or "cpu"
+        dtype_str = self.bot.config["journey"]["torch_dtype"] or "float32"
         self.torch_dtype: torch.dtype = getattr(torch, dtype_str)
 
         logger.debug(f"{COG_UID} cog using torch device {self.torch_device} and dtype {self.torch_dtype}")
@@ -342,7 +343,7 @@ class Journey(commands.Cog, name=COG_UID):
         steps: float = commands.Param(
             description="Number of steps to run the model for.",
             default=28.0,
-            min_value=15.0,
+            min_value=14.0,
             max_value=50.0,
         ),
         guidance: float = commands.Param(
@@ -377,6 +378,8 @@ class Journey(commands.Cog, name=COG_UID):
         model_params = {
             "num_inference_steps": round(steps),
             "guidance_scale": round(guidance, 2),
+            "width": 768,
+            "height": 768,
         }
 
         if negative != "":

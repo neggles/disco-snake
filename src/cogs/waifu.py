@@ -7,7 +7,7 @@ from random import uniform as rand_float
 from time import perf_counter
 
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, StableDiffusionKDiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import logging as d2logging
 from disnake import (
@@ -271,16 +271,18 @@ class Waifu(commands.Cog, name=COG_UID):
             raise FileNotFoundError(f"Model directory {model_dir} does not exist.")
         logger.info(f"Loading diffusers model from {model_dir}")
 
-        self.pipe: StableDiffusionPipeline = await self.do_gpu(
-            StableDiffusionPipeline.from_pretrained,
+        self.pipe: StableDiffusionKDiffusionPipeline = await self.do_gpu(
+            StableDiffusionKDiffusionPipeline.from_pretrained,
             model_dir,
             torch_dtype=self.torch_dtype,
             local_files_only=True,
             safety_checker=lambda images, **kwargs: (images, [False] * len(images)),
         )
         self.pipe = self.pipe.to(self.torch_device)
+        self.pipe.set_scheduler("sample_dpmpp_2m")
         if xformers is not None:
             await self.do_gpu(self.pipe.enable_xformers_memory_efficient_attention)
+
         logger.info(f"Loaded diffusers model {model_name} successfully.")
 
     async def generate_embed(self, prompt: str, author: User | Member, model_params: dict):
@@ -298,7 +300,7 @@ class Waifu(commands.Cog, name=COG_UID):
         try:
             start_time = perf_counter()
             result: StableDiffusionPipelineOutput = await self.do_gpu(
-                self.pipe, prompt=f"mdjrny-v4 style {prompt.strip()}", **model_params
+                self.pipe, prompt=f"{PROMPT_PREFIX}, {prompt.strip()}", **model_params
             )
             run_duration = perf_counter() - start_time
             logger.info(f"Generated in {run_duration:.2f}s")
@@ -318,7 +320,7 @@ class Waifu(commands.Cog, name=COG_UID):
 
         image = File(fp=save_path, filename=save_path.name)
         embed = SDEmbed(
-            prompt=PROMPT_PREFIX + prompt,
+            prompt=prompt,
             image=image,
             author=author,
             nsfw=nsfw,
@@ -332,7 +334,7 @@ class Waifu(commands.Cog, name=COG_UID):
         name="waifu", description=f"Generate waifus with {SD_MODEL}. WARNING: NO CONTENT FILTER"
     )
     @checks.not_blacklisted()
-    @commands.cooldown(1, 25.0, commands.BucketType.user)
+    @commands.cooldown(1, 20.0, commands.BucketType.user)
     async def generate_command(
         self,
         ctx: ApplicationCommandInteraction,
@@ -342,8 +344,8 @@ class Waifu(commands.Cog, name=COG_UID):
         ),
         steps: float = commands.Param(
             description="Number of steps to run the model for.",
-            default=20.0,
-            min_value=10.0,
+            default=28.0,
+            min_value=14.0,
             max_value=50.0,
         ),
         guidance: float = commands.Param(
