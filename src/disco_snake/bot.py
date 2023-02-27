@@ -148,7 +148,7 @@ class DiscoSnake(commands.Bot):
         Set up the bot's status task
         """
         statuses = self.config["statuses"]
-        activity = Activity(name=random.choice(statuses), type=ActivityType.listening)
+        activity = Activity(name=random.choice(statuses), type=ActivityType.playing)
         await self.change_presence(activity=activity)
 
     @status_task.before_loop
