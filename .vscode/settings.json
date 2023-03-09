@@ -9,11 +9,17 @@
     "editor.formatOnSave": true
   },
   "python.formatting.provider": "black",
-  "python.formatting.blackArgs": ["--config=${workspaceFolder}/pyproject.toml"],
+  "python.formatting.blackArgs": [
+    "--config=${workspaceFolder}/pyproject.toml",
+    "--line-length=110"
+  ],
   "python.linting.enabled": true,
   "python.linting.pylintEnabled": false,
   "python.linting.flake8Enabled": true,
-  "python.linting.flake8Args": ["--config=${workspaceFolder}/setup.cfg"],
+  "python.linting.flake8Args": [
+    "--config=${workspaceFolder}/setup.cfg",
+    "--max-line-length=110"
+  ],
 
   "[json]": {
     "editor.formatOnSave": true,
