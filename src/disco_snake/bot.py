@@ -178,8 +178,10 @@ class DiscoSnake(commands.Bot):
             self.home_guild = self.get_guild(self.config["home_guild"])
             self.save_guild_metadata(self.home_guild.id)
         if not self.status_task.is_running():
+            logger.info("Starting status update task")
             self.status_task.start()
         if not self.userdata_task.is_running():
+            logger.info("Starting userdata flush task")
             self.userdata_task.start()
 
     async def on_message(self, message: Message) -> None:
