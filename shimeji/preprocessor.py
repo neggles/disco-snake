@@ -2,9 +2,10 @@ from .util import *
 from .memory import memory_context, memory_sort
 from .memorystore_provider import MemoryStoreProvider
 
+
 class Preprocessor:
-    """Abstract class for preprocessors.
-    """
+    """Abstract class for preprocessors."""
+
     def __call__(self, context: str, is_respond: bool, name: str) -> str:
         """Process the given context before the ModelProvider is called.
 
@@ -17,10 +18,12 @@ class Preprocessor:
         :return: The processed context.
         :rtype: str
         """
-        raise NotImplementedError(f'{self.__class__} is an abstract class')
+        raise NotImplementedError(f"{self.__class__} is an abstract class")
+
 
 class MemoryPreprocessor(Preprocessor):
     """A Preprocessor that builds the long-term memory context."""
+
     def __init__(self, memorystore: MemoryStoreProvider, short_term: int, long_term: int):
         """Constructor for MemoryPreprocessor which uses the most recent memory as the present memory to build the long-term memory context.
 
@@ -34,16 +37,20 @@ class MemoryPreprocessor(Preprocessor):
         self.memorystore = memorystore
         self.short_term = short_term
         self.long_term = long_term
-    
+
     def __call__(self, context: str, is_respond: bool, name: str) -> str:
         memories = self.memorystore.get(created_after=0)
         now = memories[-1]
         memories.remove(now)
-        long_term_context = memory_context(now, memories, short_term=self.short_term, long_term=self.long_term)
+        long_term_context = memory_context(
+            now, memories, short_term=self.short_term, long_term=self.long_term
+        )
         return long_term_context + context
+
 
 class ContextPreprocessor(Preprocessor):
     """A Preprocessor that builds a context from a list of ContextEntry objects."""
+
     def __init__(self, token_budget=1024):
         """Initialize a ContextPreprocessor.
 
@@ -52,7 +59,7 @@ class ContextPreprocessor(Preprocessor):
         """
         self.token_budget = token_budget
         self.entries = []
-    
+
     def add_entry(self, entry):
         """Add a ContextEntry to the ContextPreprocessor.
 
@@ -60,7 +67,7 @@ class ContextPreprocessor(Preprocessor):
         :type entry: ContextEntry
         """
         self.entries.append(entry)
-    
+
     def del_entry(self, entry):
         """Delete a ContextEntry from the ContextPreprocessor.
 
@@ -68,7 +75,7 @@ class ContextPreprocessor(Preprocessor):
         :type entry: ContextEntry
         """
         self.entries.remove(entry)
-    
+
     # return true if key is found in an entry's text
     def key_lookup(self, entry_a, entry_b):
         """Check if a ContextEntry's key is found in an entry's text.
@@ -81,12 +88,12 @@ class ContextPreprocessor(Preprocessor):
         :rtype: bool
         """
         for i in entry_b.keys:
-            if i == '':
+            if i == "":
                 continue
             if i.lower() in entry_a.text.lower():
                 return True
         return False
-    
+
     # recursive function that searches for other entries that are activated
     def cascade_lookup(self, entry, nest=0):
         """Search for other entries that are activated by a given entry.
@@ -107,7 +114,7 @@ class ContextPreprocessor(Preprocessor):
                 if self.key_lookup(i, entry):
                     cascaded_entries.append(i)
                     continue
-                for j in self.cascade_lookup(i, nest+1):
+                for j in self.cascade_lookup(i, nest + 1):
                     cascaded_entries.append(j)
         return cascaded_entries
 
@@ -116,7 +123,7 @@ class ContextPreprocessor(Preprocessor):
         if position < 0:
             return length + 1 + position
         return position
-    
+
     def context(self, budget=1024):
         """Build the context from the ContextPreprocessor's entries.
 
@@ -141,7 +148,7 @@ class ContextPreprocessor(Preprocessor):
             if i.insertion_position > 0 or i.insertion_position < 0:
                 if i.reserved_tokens == 0:
                     i.reserved_tokens = len(tokenizer.encode(i.text))
-        
+
         activated_entries = list(set(activated_entries))
         # sort activated_entries by insertion_order
         activated_entries.sort(key=lambda x: x.insertion_order, reverse=True)
@@ -159,7 +166,7 @@ class ContextPreprocessor(Preprocessor):
                     reserved = i.reserved_tokens
                 else:
                     reserved = len_tokens
-            
+
             text = i.get_text(budget + reserved, self.token_budget)
             ctxtext = text.splitlines(keepends=False)
             trimmed_tokenized = tokenizer.encode(text)
@@ -172,8 +179,8 @@ class ContextPreprocessor(Preprocessor):
             if i.insertion_position < 0:
                 ctxinsertion += 1
                 if len(newctx) + ctxinsertion >= 0:
-                    before = newctx[0:len(newctx)+ctxinsertion]
-                    after = newctx[len(newctx)+ctxinsertion:]
+                    before = newctx[0 : len(newctx) + ctxinsertion]
+                    after = newctx[len(newctx) + ctxinsertion :]
                 else:
                     before = []
                     after = newctx[0:]
@@ -189,7 +196,7 @@ class ContextPreprocessor(Preprocessor):
                 newctx.append(ctxtext[cIdx])
             for aIdx in range(len(after)):
                 newctx.append(after[aIdx])
-        return '\n'.join(newctx)
+        return "\n".join(newctx)
 
     def __call__(self, context: str, is_respond: bool, name: str) -> str:
         """Build the context from the ContextPreprocessor's entries.
@@ -205,9 +212,29 @@ class ContextPreprocessor(Preprocessor):
         """
 
         if is_respond:
-            main_entry = ContextEntry(text=context, suffix=f'\n{name}:', reserved_tokens=512, insertion_order=0, trim_direction=TRIM_DIR_TOP, forced_activation=True, cascading_activation=True, insertion_type=INSERTION_TYPE_NEWLINE, insertion_position=-1)
+            main_entry = ContextEntry(
+                text=context,
+                suffix=f"\n{name}:",
+                reserved_tokens=512,
+                insertion_order=0,
+                trim_direction=TRIM_DIR_TOP,
+                forced_activation=True,
+                cascading_activation=True,
+                insertion_type=INSERTION_TYPE_NEWLINE,
+                insertion_position=-1,
+            )
         else:
-            main_entry = ContextEntry(text=context, suffix='\n', reserved_tokens=512, insertion_order=0, trim_direction=TRIM_DIR_TOP, forced_activation=True, cascading_activation=True, insertion_type=INSERTION_TYPE_NEWLINE, insertion_position=-1)
+            main_entry = ContextEntry(
+                text=context,
+                suffix="\n",
+                reserved_tokens=512,
+                insertion_order=0,
+                trim_direction=TRIM_DIR_TOP,
+                forced_activation=True,
+                cascading_activation=True,
+                insertion_type=INSERTION_TYPE_NEWLINE,
+                insertion_position=-1,
+            )
         self.add_entry(main_entry)
         constructed_context = self.context()
         self.del_entry(main_entry)

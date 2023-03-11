@@ -18,12 +18,14 @@ class ModelGenArgs(BaseModel):
     def toJSON(self):
         return json.dumps(self.dict())
 
+
 class ModelLogitBiasArgs(BaseModel):
     id: int
     bias: float
 
     def toJSON(self):
         return json.dumps(self.dict())
+
 
 class ModelPhraseBiasArgs(BaseModel):
     sequences: List[str]
@@ -33,6 +35,7 @@ class ModelPhraseBiasArgs(BaseModel):
 
     def toJSON(self):
         return json.dumps(self.dict())
+
 
 class ModelSampleArgs(BaseModel):
     temp: Optional[float] = None
@@ -51,6 +54,7 @@ class ModelSampleArgs(BaseModel):
     def toJSON(self):
         return json.dumps(self.dict())
 
+
 class ModelGenRequest(BaseModel):
     model: str
     prompt: str
@@ -67,21 +71,23 @@ class ModelGenRequest(BaseModel):
 
     def to_dict(self):
         return self.dict()
-    
+
     def toJSON(self):
         return json.dumps(self.dict())
 
+
 class ModelSerializer(json.JSONEncoder):
-    """Class to serialize ModelGenRequest to JSON.
-    """
+    """Class to serialize ModelGenRequest to JSON."""
+
     def default(self, o):
-        if hasattr(o, 'toJSON'):
+        if hasattr(o, "toJSON"):
             return o.toJSON()
         return json.JSONEncoder.default(self, o)
 
+
 class ModelProvider:
-    """Abstract class for model providers that provide access to generative AI models.
-    """
+    """Abstract class for model providers that provide access to generative AI models."""
+
     def __init__(self, endpoint_url: str, **kwargs):
         """Constructor for ModelProvider.
 
@@ -90,38 +96,38 @@ class ModelProvider:
         """
         self.endpoint_url = endpoint_url
         self.kwargs = kwargs
-        if 'args' not in kwargs:
-            raise Exception('default args is required')
+        if "args" not in kwargs:
+            raise Exception("default args is required")
         self.auth()
-    
+
     def auth(self):
         """Authenticate with the ModelProvider's endpoint.
 
         :raises NotImplementedError: If the authentication method is not implemented.
         """
-        raise NotImplementedError('auth method is required')
+        raise NotImplementedError("auth method is required")
 
     def generate(self, args):
         """Generate a response from the ModelProvider's endpoint.
-        
+
         :param args: The arguments to pass to the endpoint.
         :type args: dict
         :raises NotImplementedError: If the generate method is not implemented.
         """
-        raise NotImplementedError('generate method is required')
-    
+        raise NotImplementedError("generate method is required")
+
     async def generate_async(self, args):
         """Generate a response from the ModelProvider's endpoint asynchronously.
-        
+
         :param args: The arguments to pass to the endpoint.
         :type args: dict
         :raises NotImplementedError: If the generate method is not implemented.
         """
-        raise NotImplementedError('generate method is required')
-    
+        raise NotImplementedError("generate method is required")
+
     async def hidden_async(self, model, text, layer):
         """Fetch a layer's hidden states from text.
-        
+
         :param model: The model to extract hidden states from.
         :type model: str
         :param text: The text to use.
@@ -130,7 +136,7 @@ class ModelProvider:
         :type layer: int
         """
 
-        raise NotImplementedError('hidden_async method is required')
+        raise NotImplementedError("hidden_async method is required")
 
     async def image_label_async(self, model, url, labels):
         """Classify an image with labels (CLIP).
@@ -143,7 +149,7 @@ class ModelProvider:
         :type labels: list
         """
 
-        raise NotImplementedError('image_label_async method is required')
+        raise NotImplementedError("image_label_async method is required")
 
     def should_respond(self, context, name):
         """Determine if the ModelProvider predicts that the name should respond to the given context.
@@ -154,8 +160,8 @@ class ModelProvider:
         :type name: str
         :raises NotImplementedError: If the should_respond method is not implemented.
         """
-        raise NotImplementedError('should_respond method is required')
-    
+        raise NotImplementedError("should_respond method is required")
+
     def should_respond_async(self, context, name):
         """Determine if the ModelProvider predicts that the name should respond to the given context asynchronously.
 
@@ -165,25 +171,26 @@ class ModelProvider:
         :type name: str
         :raises NotImplementedError: If the should_respond method is not implemented.
         """
-        raise NotImplementedError('should_respond method is required')
+        raise NotImplementedError("should_respond method is required")
 
     def response(self, context):
         """Generate a response from the ModelProvider's endpoint.
-            
+
         :param context: The context to use.
         :type context: str
         :raises NotImplementedError: If the response method is not implemented.
         """
-        raise NotImplementedError('response method is required')
-    
+        raise NotImplementedError("response method is required")
+
     def response_async(self, context):
         """Generate a response from the ModelProvider's endpoint asynchronously.
-            
+
         :param context: The context to use.
         :type context: str
         :raises NotImplementedError: If the response method is not implemented.
         """
-        raise NotImplementedError('response method is required')
+        raise NotImplementedError("response method is required")
+
 
 class Sukima_ModelProvider(ModelProvider):
     def __init__(self, endpoint_url: str, **kwargs):
@@ -195,29 +202,32 @@ class Sukima_ModelProvider(ModelProvider):
 
         super().__init__(endpoint_url, **kwargs)
         self.auth()
-    
+
     def auth(self):
         """Authenticate with the Sukima endpoint.
 
         :raises Exception: If the authentication fails.
         """
 
-        if 'username' not in self.kwargs and 'password' not in self.kwargs:
-            raise Exception('username, password, and or token are not in kwargs')
-        
+        if "username" not in self.kwargs and "password" not in self.kwargs:
+            raise Exception("username, password, and or token are not in kwargs")
+
         try:
-            r = requests.post(f'{self.endpoint_url}/api/v1/users/token', data={'username': self.kwargs['username'], 'password': self.kwargs['password']})
+            r = requests.post(
+                f"{self.endpoint_url}/api/v1/users/token",
+                data={"username": self.kwargs["username"], "password": self.kwargs["password"]},
+            )
         except Exception as e:
             raise e
         if r.status_code == 200:
-            self.token = r.json()['access_token']
+            self.token = r.json()["access_token"]
         else:
-            raise Exception(f'Could not authenticate with Sukima. Error: {r.text}')
-        
-    def conv_listobj_to_listdict(self, list_objects): 
+            raise Exception(f"Could not authenticate with Sukima. Error: {r.text}")
+
+    def conv_listobj_to_listdict(self, list_objects):
         """Convert the elements of a list to a dictionary for JSON compatability.
 
-        :param list_objects: The list. 
+        :param list_objects: The list.
         :type list_objects: list
         :return: A list which has it's elements converted to dictionaries.
         :rtype: list
@@ -230,10 +240,10 @@ class Sukima_ModelProvider(ModelProvider):
             return list_dict
         else:
             return list_objects
-    
+
     def generate(self, args: ModelGenRequest):
         """Generate a response from the Sukima endpoint.
-        
+
         :param args: The arguments to pass to the endpoint.
         :type args: dict
         :return: The response from the endpoint.
@@ -242,82 +252,90 @@ class Sukima_ModelProvider(ModelProvider):
         """
 
         args = {
-            'model': args.model,
-            'prompt': args.prompt,
-            'sample_args': {
-                'temp': args.sample_args.temp,
-                'top_p': args.sample_args.top_p,
-                'top_a': args.sample_args.top_a,
-                'top_k': args.sample_args.top_k,
-                'typical_p': args.sample_args.typical_p,
-                'tfs': args.sample_args.tfs,
-                'rep_p': args.sample_args.rep_p,
-                'rep_p_range': args.sample_args.rep_p_range,
-                'rep_p_slope': args.sample_args.rep_p_slope,
-                'bad_words': args.sample_args.bad_words,
-                'logit_biases': self.conv_listobj_to_listdict(args.sample_args.logit_biases)
+            "model": args.model,
+            "prompt": args.prompt,
+            "sample_args": {
+                "temp": args.sample_args.temp,
+                "top_p": args.sample_args.top_p,
+                "top_a": args.sample_args.top_a,
+                "top_k": args.sample_args.top_k,
+                "typical_p": args.sample_args.typical_p,
+                "tfs": args.sample_args.tfs,
+                "rep_p": args.sample_args.rep_p,
+                "rep_p_range": args.sample_args.rep_p_range,
+                "rep_p_slope": args.sample_args.rep_p_slope,
+                "bad_words": args.sample_args.bad_words,
+                "logit_biases": self.conv_listobj_to_listdict(args.sample_args.logit_biases),
             },
-            'gen_args': {
-                'max_length': args.gen_args.max_length,
-                'max_time': args.gen_args.max_time,
-                'min_length': args.gen_args.min_length,
-                'eos_token_id': args.gen_args.eos_token_id,
-                'logprobs': args.gen_args.logprobs,
-                'best_of': args.gen_args.best_of
-            }
+            "gen_args": {
+                "max_length": args.gen_args.max_length,
+                "max_time": args.gen_args.max_time,
+                "min_length": args.gen_args.min_length,
+                "eos_token_id": args.gen_args.eos_token_id,
+                "logprobs": args.gen_args.logprobs,
+                "best_of": args.gen_args.best_of,
+            },
         }
         try:
-            r = requests.post(f'{self.endpoint_url}/api/v1/models/generate', data=json.dumps(args), headers={'Authorization': f'Bearer {self.token}'})
+            r = requests.post(
+                f"{self.endpoint_url}/api/v1/models/generate",
+                data=json.dumps(args),
+                headers={"Authorization": f"Bearer {self.token}"},
+            )
         except Exception as e:
             raise e
         if r.status_code == 200:
-            return r.json()['output'][len(args['prompt']):]
+            return r.json()["output"][len(args["prompt"]) :]
         else:
-            raise Exception(f'Could not generate text with Sukima. Error: {r.json()}')
-    
+            raise Exception(f"Could not generate text with Sukima. Error: {r.json()}")
+
     async def generate_async(self, args: ModelGenRequest):
         """Generate a response from the Sukima endpoint asynchronously.
-        
+
         :param args: The arguments to pass to the endpoint.
         :type args: dict
         :return: The response from the endpoint.
         :rtype: str
         :raises Exception: If the request fails.
-        """ 
-  
+        """
+
         args = {
-            'model': args.model,
-            'prompt': args.prompt,
-            'sample_args': {
-                'temp': args.sample_args.temp,
-                'top_p': args.sample_args.top_p,
-                'top_a': args.sample_args.top_a,
-                'top_k': args.sample_args.top_k,
-                'typical_p': args.sample_args.typical_p,
-                'tfs': args.sample_args.tfs,
-                'rep_p': args.sample_args.rep_p,
-                'rep_p_range': args.sample_args.rep_p_range,
-                'rep_p_slope': args.sample_args.rep_p_slope,
-                'bad_words': args.sample_args.bad_words,
-                'logit_biases': self.conv_listobj_to_listdict(args.sample_args.logit_biases)  
+            "model": args.model,
+            "prompt": args.prompt,
+            "sample_args": {
+                "temp": args.sample_args.temp,
+                "top_p": args.sample_args.top_p,
+                "top_a": args.sample_args.top_a,
+                "top_k": args.sample_args.top_k,
+                "typical_p": args.sample_args.typical_p,
+                "tfs": args.sample_args.tfs,
+                "rep_p": args.sample_args.rep_p,
+                "rep_p_range": args.sample_args.rep_p_range,
+                "rep_p_slope": args.sample_args.rep_p_slope,
+                "bad_words": args.sample_args.bad_words,
+                "logit_biases": self.conv_listobj_to_listdict(args.sample_args.logit_biases),
             },
-            'gen_args': {
-                'max_length': args.gen_args.max_length,
-                'max_time': args.gen_args.max_time,
-                'min_length': args.gen_args.min_length,
-                'eos_token_id': args.gen_args.eos_token_id,
-                'logprobs': args.gen_args.logprobs,
-                'best_of': args.gen_args.best_of
-            }
+            "gen_args": {
+                "max_length": args.gen_args.max_length,
+                "max_time": args.gen_args.max_time,
+                "min_length": args.gen_args.min_length,
+                "eos_token_id": args.gen_args.eos_token_id,
+                "logprobs": args.gen_args.logprobs,
+                "best_of": args.gen_args.best_of,
+            },
         }
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.post(f'{self.endpoint_url}/api/v1/models/generate', json=args, headers={'Authorization': f'Bearer {self.token}'}) as resp:
+                async with session.post(
+                    f"{self.endpoint_url}/api/v1/models/generate",
+                    json=args,
+                    headers={"Authorization": f"Bearer {self.token}"},
+                ) as resp:
                     if resp.status == 200:
                         js = await resp.json()
-                        return js['output'][len(args['prompt']):]
+                        return js["output"][len(args["prompt"]) :]
                     else:
-                        raise Exception(f'Could not generate response. Error: {await resp.text()}')
+                        raise Exception(f"Could not generate response. Error: {await resp.text()}")
             except Exception as e:
                 raise e
 
@@ -334,11 +352,15 @@ class Sukima_ModelProvider(ModelProvider):
 
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.post(f'{self.endpoint_url}/api/v1/models/hidden', json={'model': model, 'prompt': text, 'layers': [layer]}, headers={'Authorization': f'Bearer {self.token}'}) as resp:
+                async with session.post(
+                    f"{self.endpoint_url}/api/v1/models/hidden",
+                    json={"model": model, "prompt": text, "layers": [layer]},
+                    headers={"Authorization": f"Bearer {self.token}"},
+                ) as resp:
                     if resp.status == 200:
-                        return (await resp.json())[f'{layer}'][0]
+                        return (await resp.json())[f"{layer}"][0]
                     else:
-                        raise Exception(f'Could not fetch hidden states. Error: {await resp.text()}')
+                        raise Exception(f"Could not fetch hidden states. Error: {await resp.text()}")
             except Exception as e:
                 raise e
 
@@ -355,14 +377,18 @@ class Sukima_ModelProvider(ModelProvider):
 
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.post(f'{self.endpoint_url}/api/v1/models/classify', json={'model': model, 'prompt': url, 'labels': labels}, headers={'Authorization': f'Bearer {self.token}'}) as resp:
+                async with session.post(
+                    f"{self.endpoint_url}/api/v1/models/classify",
+                    json={"model": model, "prompt": url, "labels": labels},
+                    headers={"Authorization": f"Bearer {self.token}"},
+                ) as resp:
                     if resp.status == 200:
-                        return (await resp.json())
+                        return await resp.json()
                     else:
-                        raise Exception(f'Could not classify image. Error: {await resp.text()}')
+                        raise Exception(f"Could not classify image. Error: {await resp.text()}")
             except Exception as e:
                 raise e
-            
+
     def should_respond(self, context, name):
         """Determine if the Sukima endpoint predicts that the name should respond to the given context.
 
@@ -380,7 +406,7 @@ class Sukima_ModelProvider(ModelProvider):
         phrase_bias.ensure_sequence_finish = True
         phrase_bias.generate_once = True
 
-        args = copy.deepcopy(self.kwargs['args'])
+        args = copy.deepcopy(self.kwargs["args"])
         args.prompt = context
         args.gen_args.max_length = 10
         args.gen_args.eos_token_id = 25
@@ -412,7 +438,7 @@ class Sukima_ModelProvider(ModelProvider):
         phrase_bias.ensure_sequence_finish = True
         phrase_bias.generate_once = True
 
-        args = copy.deepcopy(self.kwargs['args'])
+        args = copy.deepcopy(self.kwargs["args"])
         args.prompt = context
         args.gen_args.max_length = 10
         args.gen_args.eos_token_id = 25
@@ -436,7 +462,7 @@ class Sukima_ModelProvider(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args = self.kwargs['args']
+        args = self.kwargs["args"]
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
@@ -451,15 +477,16 @@ class Sukima_ModelProvider(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args = self.kwargs['args']
+        args = self.kwargs["args"]
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
         response = await self.generate_async(args)
         return response
 
+
 class TextSynth_ModelProvider(ModelProvider):
-    def __init__(self, endpoint_url: str = 'https://api.textsynth.com', **kwargs):
+    def __init__(self, endpoint_url: str = "https://api.textsynth.com", **kwargs):
         """Constructor for TextSynth_ModelProvider.
 
         :param endpoint_url: The URL for the TextSynth endpoint.
@@ -469,19 +496,19 @@ class TextSynth_ModelProvider(ModelProvider):
         """
         super().__init__(endpoint_url, **kwargs)
         self.auth()
-    
+
     def auth(self):
         """Authenticate with the TextSynth endpoint.
 
         :raises Exception: If the authentication fails.
         """
-        if 'token' not in self.kwargs:
-            raise Exception('token is not in kwargs')
-        self.token = self.kwargs['token']
-    
+        if "token" not in self.kwargs:
+            raise Exception("token is not in kwargs")
+        self.token = self.kwargs["token"]
+
     async def generate_async(self, args: ModelGenRequest) -> str:
         """Generate a response from the TextSynth endpoint.
-        
+
         :param args: The arguments to pass to the endpoint.
         :type args: dict
         :return: The response from the endpoint.
@@ -490,21 +517,25 @@ class TextSynth_ModelProvider(ModelProvider):
         """
         model = args.model
         args = {
-            'prompt': args.prompt,
-            'max_tokens': args.gen_args.max_length,
-            'temperature': args.sample_args.temp,
-            'top_p': args.sample_args.top_p,
-            'top_k': args.sample_args.top_k,
-            'stop': tokenizer.decode(args.gen_args.eos_token_id)
+            "prompt": args.prompt,
+            "max_tokens": args.gen_args.max_length,
+            "temperature": args.sample_args.temp,
+            "top_p": args.sample_args.top_p,
+            "top_k": args.sample_args.top_k,
+            "stop": tokenizer.decode(args.gen_args.eos_token_id),
         }
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.post(f'{self.endpoint_url}/v1/engines/{model}/completions', json=args, headers={'Authorization': f'Bearer {self.token}'}) as resp:
+                async with session.post(
+                    f"{self.endpoint_url}/v1/engines/{model}/completions",
+                    json=args,
+                    headers={"Authorization": f"Bearer {self.token}"},
+                ) as resp:
                     if resp.status == 200:
                         js = await resp.json()
-                        return js['text']
+                        return js["text"]
                     else:
-                        raise Exception(f'Could not generate response. Error: {resp.text()}')
+                        raise Exception(f"Could not generate response. Error: {resp.text()}")
             except Exception as e:
                 raise e
 
@@ -518,7 +549,7 @@ class TextSynth_ModelProvider(ModelProvider):
         :return: Whether or not the name should respond to the given context.
         :rtype: bool
         """
-        args = copy.deepcopy(self.kwargs['args'])
+        args = copy.deepcopy(self.kwargs["args"])
         args.prompt = context
         args.gen_args.max_length = 10
         args.sample_args.temp = 0.25
@@ -527,7 +558,7 @@ class TextSynth_ModelProvider(ModelProvider):
             return True
         else:
             return False
-    
+
     async def response_async(self, context):
         """Generate a response from the TextSynth endpoint asynchronously.
 
@@ -536,7 +567,7 @@ class TextSynth_ModelProvider(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args = self.kwargs['args']
+        args = self.kwargs["args"]
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
