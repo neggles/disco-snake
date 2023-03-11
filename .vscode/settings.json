@@ -6,8 +6,11 @@
 
   "[python]": {
     "editor.wordBasedSuggestions": false,
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "file",
+    "editor.semanticHighlighting.enabled": true
   },
+
   "python.formatting.provider": "black",
   "python.formatting.blackArgs": [
     "--config=${workspaceFolder}/pyproject.toml",
