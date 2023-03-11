@@ -19,7 +19,7 @@ from sqlalchemy import Column, String, Table, BigInteger, Integer, func
 # models
 class MemorySQL(Base):
     """
-    A model to be used by PostgreSQL_MemoryStoreProvider
+    A model to be used by PostgreSQLMemoryStore
     """
 
     __tablename__ = "memories"

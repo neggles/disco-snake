@@ -21,9 +21,9 @@ Model Providers
    :undoc-members:
    :show-inheritance:
 
-``Sukima_ModelProvider``
+``SukimaModel``
 ~~~~~~~~~~~~~~~~~~~~~~~~
-.. autoclass:: shimeji.Sukima_ModelProvider
+.. autoclass:: shimeji.SukimaModel
    :members:
    :undoc-members:
    :show-inheritance:

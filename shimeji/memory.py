@@ -2,9 +2,8 @@ from typing import List
 import numpy as np
 import base64
 import random
-import copy
 
-from shimeji.memorystore_provider import Memory, MemoryStoreProvider
+from shimeji.memorystore_provider import Memory
 
 
 def numpybin_to_str(arr: np.array) -> str:

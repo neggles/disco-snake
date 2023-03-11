@@ -192,9 +192,9 @@ class ModelProvider:
         raise NotImplementedError("response method is required")
 
 
-class Sukima_ModelProvider(ModelProvider):
+class SukimaModel(ModelProvider):
     def __init__(self, endpoint_url: str, **kwargs):
-        """Constructor for Sukima_ModelProvider.
+        """Constructor for SukimaModel.
 
         :param endpoint_url: The URL for the Sukima endpoint.
         :type endpoint_url: str

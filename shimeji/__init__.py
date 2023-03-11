@@ -1,5 +1,5 @@
 __title__ = "shimeji"
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "hitomi-team"
 __license__ = "GPLv2 License"
 __copyright__ = "Copyright 2022 hitomi-team"

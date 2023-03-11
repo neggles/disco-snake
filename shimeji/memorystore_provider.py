@@ -37,7 +37,7 @@ class MemoryStoreProvider:
         """
         self.kwargs = kwargs
 
-    async def count(self):
+    async def count(self) -> int:
         """
         Return the number of memories in the MemoryStore.
 
@@ -46,7 +46,7 @@ class MemoryStoreProvider:
         """
         raise NotImplementedError("count() is not implemented")
 
-    async def filter(self, **kwargs):
+    async def filter(self, exclude_duplicates: bool, exclude_duplicates_ratio: float = None):
         """
         Returns a list of memories from the MemoryStore.
 
@@ -57,7 +57,7 @@ class MemoryStoreProvider:
         """
         raise NotImplementedError("filter() is not implemented")
 
-    async def create(self, **kwargs):
+    async def create(self, memory_obj: Memory) -> Optional[Memory]:
         """
         Add a memory directly to the MemoryStore.
 
@@ -66,7 +66,7 @@ class MemoryStoreProvider:
         """
         raise NotImplementedError("set() is not implemented")
 
-    async def delete(self, **kwargs):
+    async def delete(self, memory_obj: Memory) -> Optional[Memory]:
         """
         Delete a memory from the MemoryStore.
 
@@ -75,7 +75,7 @@ class MemoryStoreProvider:
         """
         raise NotImplementedError("delete() is not implemented")
 
-    async def add(self, **kwargs):
+    async def add(self, author_id: int, author: str, text: str, encoding_model: str, encoding: str) -> Memory:
         """
         Create and add a memory to the MemoryStore.
 
@@ -93,7 +93,7 @@ class MemoryStoreProvider:
         """
         raise NotImplementedError("add() is not implemented")
 
-    async def check_duplicates(self, **kwargs) -> bool:
+    async def check_duplicates(self, text: str, duplicate_ratio: float) -> bool:
         """
         Check if a memory is a duplicate.
 
@@ -103,7 +103,6 @@ class MemoryStoreProvider:
         :type duplicate_ratio: float
         :rtype: bool
         """
-
         raise NotImplementedError("check_duplicates() is not implemented")
 
 
@@ -113,30 +112,32 @@ from sqlalchemy.orm import sessionmaker
 from shimeji.sqlcrud import memory
 
 
-class PostgreSQL_MemoryStoreProvider(MemoryStoreProvider):
+class PostgreSQLMemoryStore(MemoryStoreProvider):
     """
     A MemoryStoreProvider using PostgreSQL.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, database_uri: str, **kwargs):
         """
-        Initialize a PostgreSQL_MemoryStoreProvider.
+        Initialize a PostgreSQLMemoryStore.
 
         :param database_uri: The URI of the database to connect to.
         """
         self.kwargs = kwargs
 
-        if "database_uri" not in kwargs:
-            raise ValueError("database_uri is required")
-
-        self.engine = create_async_engine(kwargs["database_uri"], pool_pre_ping=True)
+        self.engine = create_async_engine(database_uri, pool_pre_ping=True)
         self.async_session = sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
+
+        self.model: str = self.kwargs.get("model", None)
+        self.model_layer: int = self.kwargs.get("model_layer", -1)
+        self.short_term_amount: int = self.kwargs.get("short_term_amount", 10)
+        self.long_term_amount: int = self.kwargs.get("long_term_amount", 10)
 
     async def count(self) -> int:
         """
-        Return the number of memories in the PostgreSQL_MemoryStoreProvider.
+        Return the number of memories in the PostgreSQLMemoryStore.
 
-        :return: The number of memories in the PostgreSQL_MemoryStoreProvider.
+        :return: The number of memories in the PostgreSQLMemoryStore.
         :rtype: int
         """
         async with self.async_session() as session, session.begin():
@@ -171,15 +172,14 @@ class PostgreSQL_MemoryStoreProvider(MemoryStoreProvider):
         async with self.async_session() as session, session.begin():
             return await memory.get_after_id(session=session, created_at=created_after)
 
-    async def create(self, **kwargs) -> Optional[Memory]:
+    async def create(self, memory_obj: Memory) -> Optional[Memory]:
         """
-        Add a memory to the PostgreSQL_MemoryStoreProvider.
+        Add a memory to the PostgreSQLMemoryStore.
 
-        :param memory: The memory to add to the PostgreSQL_MemoryStoreProvider.
+        :param memory: The memory to add to the PostgreSQLMemoryStore.
         :type Memory: Memory
         :rtype: Memory
         """
-        memory_obj = kwargs["memory"]
         async with self.async_session() as session, session.begin():
             return await memory.create(
                 session=session,
@@ -191,19 +191,18 @@ class PostgreSQL_MemoryStoreProvider(MemoryStoreProvider):
                 encoding=memory_obj.encoding,
             )
 
-    async def delete(self, **kwargs) -> Optional[Memory]:
+    async def delete(self, memory_obj: Memory) -> Optional[Memory]:
         """
-        Delete a memory from the PostgreSQL_MemoryStoreProvider. Only deletes based on the memory's created_at.
+        Delete a memory from the PostgreSQLMemoryStore. Only deletes based on the memory's created_at.
 
-        :param memory: The memory to delete from the PostgreSQL_MemoryStoreProvider.
+        :param memory: The memory to delete from the PostgreSQLMemoryStore.
         :type Memory: Memory
         :rtype: Memory
         """
-        memory_obj = kwargs["memory"]
         async with self.async_session() as session, session.begin():
             return await memory.delete(session=session, author_id=memory_obj.author_id)
 
-    async def add(self, **kwargs):
+    async def add(self, author_id: int, author: str, text: str, encoding_model: str, encoding: str) -> Memory:
         """
         Create and add a memory to the MemoryStore.
 
@@ -222,16 +221,14 @@ class PostgreSQL_MemoryStoreProvider(MemoryStoreProvider):
 
         memory = Memory(
             created_at=snowflake(),
-            author_id=kwargs["author_id"],
-            author=kwargs["author"],
-            text=kwargs["text"],
-            encoding_model=kwargs["encoding_model"],
-            encoding=kwargs["encoding"],
+            author_id=author_id,
+            author=author,
+            text=text,
+            encoding_model=encoding_model,
+            encoding=encoding,
         )
 
-        await self.create(memory=memory)
-
-        return memory
+        return await self.create(memory=memory)
 
     async def filter(
         self, exclude_duplicates: bool = False, exclude_duplicates_ratio: float = 0.8
@@ -258,7 +255,7 @@ class PostgreSQL_MemoryStoreProvider(MemoryStoreProvider):
 
         return memories
 
-    async def check_duplicates(self, **kwargs) -> bool:
+    async def check_duplicates(self, text: str, duplicate_ratio: float) -> bool:
         """
         Check if a memory is a duplicate.
 
@@ -271,9 +268,7 @@ class PostgreSQL_MemoryStoreProvider(MemoryStoreProvider):
         memories = await self.get(created_after=0)
 
         for m in memories:
-            if m.text == kwargs["text"]:
-                return True
-            elif SequenceMatcher(None, m.text, kwargs["text"]).ratio() > kwargs["duplicate_ratio"]:
+            if m.text == text or SequenceMatcher(None, m.text, text).ratio() > duplicate_ratio:
                 return True
 
         return False
