@@ -1,6 +1,7 @@
 import time
 from pydantic import BaseModel
 from difflib import SequenceMatcher
+from typing import Optional
 
 sukima_epoch = 1621123998
 
@@ -57,7 +58,7 @@ class MemoryStoreProvider:
         """
         raise NotImplementedError("filter() is not implemented")
 
-    async def create(self, memory_obj: Memory) -> Optional[Memory]:
+    async def create(self, memory: Memory) -> Optional[Memory]:
         """
         Add a memory directly to the MemoryStore.
 
@@ -66,7 +67,7 @@ class MemoryStoreProvider:
         """
         raise NotImplementedError("set() is not implemented")
 
-    async def delete(self, memory_obj: Memory) -> Optional[Memory]:
+    async def delete(self, memory: Memory) -> Optional[Memory]:
         """
         Delete a memory from the MemoryStore.
 
@@ -109,7 +110,7 @@ class MemoryStoreProvider:
 from typing import AsyncIterator, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from shimeji.sqlcrud import memory
+from shimeji.sqlcrud import memory as memorydb
 
 
 class PostgreSQLMemoryStore(MemoryStoreProvider):
@@ -141,7 +142,7 @@ class PostgreSQLMemoryStore(MemoryStoreProvider):
         :rtype: int
         """
         async with self.async_session() as session, session.begin():
-            return await memory.count(session=session)
+            return await memorydb.count(session=session)
 
     async def get_session(self) -> AsyncIterator[AsyncSession]:
         """
@@ -170,9 +171,9 @@ class PostgreSQLMemoryStore(MemoryStoreProvider):
             created_after = 0
 
         async with self.async_session() as session, session.begin():
-            return await memory.get_after_id(session=session, created_at=created_after)
+            return await memorydb.get_after_id(session=session, created_at=created_after)
 
-    async def create(self, memory_obj: Memory) -> Optional[Memory]:
+    async def create(self, memory: Memory) -> Optional[Memory]:
         """
         Add a memory to the PostgreSQLMemoryStore.
 
@@ -181,17 +182,17 @@ class PostgreSQLMemoryStore(MemoryStoreProvider):
         :rtype: Memory
         """
         async with self.async_session() as session, session.begin():
-            return await memory.create(
+            return await memorydb.create(
                 session=session,
-                created_at=memory_obj.created_at,
-                author_id=memory_obj.author_id,
-                author=memory_obj.author,
-                text=memory_obj.text,
-                encoding_model=memory_obj.encoding_model,
-                encoding=memory_obj.encoding,
+                created_at=memory.created_at,
+                author_id=memory.author_id,
+                author=memory.author,
+                text=memory.text,
+                encoding_model=memory.encoding_model,
+                encoding=memory.encoding,
             )
 
-    async def delete(self, memory_obj: Memory) -> Optional[Memory]:
+    async def delete(self, memory: Memory) -> Optional[Memory]:
         """
         Delete a memory from the PostgreSQLMemoryStore. Only deletes based on the memory's created_at.
 
@@ -200,7 +201,7 @@ class PostgreSQLMemoryStore(MemoryStoreProvider):
         :rtype: Memory
         """
         async with self.async_session() as session, session.begin():
-            return await memory.delete(session=session, author_id=memory_obj.author_id)
+            return await memorydb.delete(session=session, author_id=memory.author_id)
 
     async def add(self, author_id: int, author: str, text: str, encoding_model: str, encoding: str) -> Memory:
         """
