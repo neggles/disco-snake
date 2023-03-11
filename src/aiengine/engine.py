@@ -1,27 +1,35 @@
 import logging
-import queue  # imported for using queue.Empty exception
-import time
-from multiprocessing import Lock, Process, Queue, current_process
+from datetime import datetime
 from pathlib import Path
-from traceback import format_exc
-from typing import List
+from random import uniform as rand_float
+from time import perf_counter
 
-import disnake
+from shimeji.memorystore_provider import MemoryStoreProvider, PostgreSQLMemoryStore
+from shimeji.model_provider import (
+    ModelGenArgs,
+    ModelGenRequest,
+    ModelLogitBiasArgs,
+    ModelPhraseBiasArgs,
+    ModelProvider,
+    ModelSampleArgs,
+    SukimaModel,
+)
+from transformers.utils import logging as t2logging
+
 import logsnake
-from aitextgen import aitextgen
-from disco_snake.cli import DATADIR_PATH, LOGDIR_PATH
-from disnake.ext import commands, tasks
-from helpers.misc import parse_log_level
+from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
+from disco_snake.bot import DiscoSnake
+from helpers import checks
 
-MODELS_ROOT = DATADIR_PATH.joinpath("models")
-NEWLINE = "\n"
+MODULE_UID = "aiengine"
 
-EMOJI = {
-    "huggingface": "🤗",
-    "disco": "💃",
-    "snake": "🐍",
-    "disco_snake": "💃🐍",
-    "robot": "🤖",
-    "confus": "😕",
-    "thonk": "🤔",
-}
+logger = logsnake.setup_logger(
+    level=logging.DEBUG,
+    isRootLogger=False,
+    name=MODULE_UID,
+    formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
+    logfile=LOGDIR_PATH.joinpath(f"{MODULE_UID}.log"),
+    fileLoglevel=logging.DEBUG,
+    maxBytes=2 * (2**20),
+    backupCount=2,
+)
