@@ -1,0 +1,15 @@
+name: disco-snake
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+  - huggingface
+  - defaults
+dependencies:
+  - nvidia::cudatoolkit=11.7
+  - python=3.10
+  - pytorch::pytorch-cuda=11.7
+  - pytorch::torchvision
+  - huggingface::transformers
+  - conda-forge::huggingface_hub
+  - conda-forge::diffusers
