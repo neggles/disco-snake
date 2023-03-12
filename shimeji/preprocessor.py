@@ -1,6 +1,9 @@
-from .util import *
-from .memory import memory_context, memory_sort
-from .memorystore_provider import MemoryStoreProvider
+from typing import List
+
+from shimeji.memory import memory_context, memory_sort
+from shimeji.memorystore_provider import MemoryStoreProvider
+from shimeji.util import *
+from transformers import PreTrainedTokenizer
 
 
 class Preprocessor:
@@ -51,14 +54,15 @@ class MemoryPreprocessor(Preprocessor):
 class ContextPreprocessor(Preprocessor):
     """A Preprocessor that builds a context from a list of ContextEntry objects."""
 
-    def __init__(self, token_budget=1024):
+    def __init__(self, token_budget=1024, tokenizer: PreTrainedTokenizer = None):
         """Initialize a ContextPreprocessor.
 
         :param token_budget: The maximum number of tokens that can be used in the context, defaults to 1024.
         :type token_budget: int, optional
         """
         self.token_budget = token_budget
-        self.entries = []
+        self.tokenizer = tokenizer
+        self.entries: List[ContextEntry] = []
 
     def add_entry(self, entry):
         """Add a ContextEntry to the ContextPreprocessor.
@@ -124,7 +128,7 @@ class ContextPreprocessor(Preprocessor):
             return length + 1 + position
         return position
 
-    def context(self, budget=1024):
+    def context(self, budget=1024) -> str:
         """Build the context from the ContextPreprocessor's entries.
 
         :param budget: The maximum number of tokens that can be used in the context, defaults to 1024.
@@ -134,7 +138,7 @@ class ContextPreprocessor(Preprocessor):
         """
         # sort self.entries by insertion_order
         self.entries.sort(key=lambda x: x.insertion_order, reverse=True)
-        activated_entries = []
+        activated_entries: List[ContextEntry] = []
 
         # Get entries activated by default
         for i in self.entries:
