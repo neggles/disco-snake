@@ -32,7 +32,13 @@ from shimeji.model_provider import (
 )
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
-from shimeji.util import INSERTION_TYPE_NEWLINE, TRIM_DIR_TOP, TRIM_TYPE_SENTENCE, ContextEntry
+from shimeji.util import (
+    INSERTION_TYPE_NEWLINE,
+    TRIM_DIR_TOP,
+    TRIM_TYPE_SENTENCE,
+    TRIM_TYPE_NEWLINE,
+    ContextEntry,
+)
 from transformers import GPT2Tokenizer
 
 import logsnake
@@ -242,7 +248,7 @@ class Ai(commands.Cog, name=COG_UID):
                     message.content, message.guild.members, message.guild.emojis
                 )
                 content = re.sub(r"\<[^>]*\>", "", message.content.lstrip().rstrip()).lstrip().rstrip()
-                if content != "":
+                if content != "" and not "```" in content:
                     chain.append(f"{message.author.name}: {content}")
                 continue
             elif message:
@@ -255,7 +261,7 @@ class Ai(commands.Cog, name=COG_UID):
         prompt_entry = ContextEntry(
             text=self.prompt,
             prefix="",
-            suffix="\n",
+            suffix="\n<START>",
             reserved_tokens=512,
             insertion_order=1000,
             insertion_position=-1,
@@ -295,13 +301,13 @@ class Ai(commands.Cog, name=COG_UID):
         # conversation
         conversation_entry = ContextEntry(
             text=conversation,
-            prefix="\n<START>",
-            suffix=f"\n{self.name}: ",
+            prefix="",
+            suffix=f"\n{self.name}:",
             reserved_tokens=512,
             insertion_order=0,
             insertion_position=-1,
             trim_direction=TRIM_DIR_TOP,
-            trim_type=TRIM_TYPE_SENTENCE,
+            trim_type=TRIM_TYPE_NEWLINE,
             insertion_type=INSERTION_TYPE_NEWLINE,
             forced_activation=True,
             cascading_activation=False,
@@ -331,9 +337,6 @@ class Ai(commands.Cog, name=COG_UID):
                 "timestamp": message.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                 "content": message.content,
             }
-            # debug_data["map_users"] = map_users
-            # debug_data["map_emojis"] = map_emojis
-            debug_data["conversation"] = conversation.splitlines()
 
             if self.memory_store is not None:
                 encoded_user_message = ""
@@ -378,6 +381,12 @@ class Ai(commands.Cog, name=COG_UID):
                                         )
                                     ),
                                 )
+
+            debug_data["conversation"] = conversation.splitlines()
+            # remap emojis and pings
+            conversation = utils.replace_emojis_pings_inverse(
+                text=conversation, users=map_users, emojis=map_emojis
+            )
 
             # Build conversation context
             conversation = await self.build_ctx(conversation + encoded_image_label)
@@ -458,18 +467,18 @@ class Ai(commands.Cog, name=COG_UID):
             return
 
         try:
+            logger.info(f"Raw message: {message.content}")
             conversation = await self.get_msg_ctx(message.channel)
-            if message.channel.guild is not None:
+            if message.channel.guild:
                 message_content = utils.replace_emojis_pings_inverse(
                     text=message.content,
-                    users=message.channel.guild.members,
-                    emojis=list(message.channel.guild.emojis),
+                    users=message.guild.members,
+                    emojis=list(message.guild.emojis),
                 )
             else:
                 message_content = re.sub(r"\<[^>]*\>", "", message.content.lower())
 
             logger.info(f"Message: {message_content}")
-            logger.debug(f"Conversation: {conversation}")
 
             if self.config.conditional_response is True:
                 if self.bot.user.mentioned_in(message) or any(

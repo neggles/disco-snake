@@ -43,10 +43,9 @@ logger = logging.getLogger(__package__)
 
 class DiscoSnake(commands.Bot):
     def __init__(self, *args, **kwargs):
-        command_prefix = kwargs.pop("command_prefix", commands.when_mentioned)
         intents = kwargs.pop("intents", BOT_INTENTS)
 
-        super().__init__(*args, command_prefix=command_prefix, intents=intents, **kwargs)
+        super().__init__(*args, command_prefix=None, intents=intents, **kwargs)
 
         # attributes set up in cli.py. this is a dumb way to do this but it works
         self.config: dict = None
