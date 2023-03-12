@@ -33,6 +33,7 @@ from shimeji.model_provider import (
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
 from shimeji.util import INSERTION_TYPE_NEWLINE, TRIM_DIR_TOP, TRIM_TYPE_SENTENCE, ContextEntry
+from transformers import GPT2Tokenizer
 
 import logsnake
 from cogs.common import utils, MessageChannel
@@ -78,12 +79,14 @@ class ModelProviderConfig:
 class ChatbotConfig:
     name: str
     prompt: str
+    postprompt: str
     conditional_response: bool
     idle_messaging: bool
     idle_messaging_interval: int
     nicknames: List[str]
     context_size: int
     logging_channel_id: int
+    debug: bool
     memory_store: MemoryStoreConfig
     model_provider: ModelProviderConfig
 
@@ -155,12 +158,19 @@ def get_sukima_model(cfg: ModelProviderConfig) -> SukimaModel:
     )
 
 
+def get_role_by_name(guild: Guild, name: str) -> Role:
+    for role in guild.roles:
+        if role.name == name:
+            return role
+    return None
+
+
 class Ai(commands.Cog, name=COG_UID):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
 
         # Load config file
-        self.cfg_path: Path = DATADIR_PATH.joinpath("ai-config.json")
+        self.cfg_path: Path = DATADIR_PATH.joinpath("ai", "config.json")
         try:
             self.config = from_dict(data_class=ChatbotConfig, data=json.loads(self.cfg_path.read_text()))
         except FileNotFoundError:
@@ -175,11 +185,21 @@ class Ai(commands.Cog, name=COG_UID):
         self.model_provider: SukimaModel = None
         self.chatbot: ChatBot = None
         self.logging_channel: TextChannel = None
-
-        self.name: str = self.config.name
-        self.prompt: str = self.config.prompt
-
         self.guilds: dict = {}
+        self.tokenizer: GPT2Tokenizer = None
+
+        # somewhere to put the last context we generated for debugging
+        self.debug_datadir: Path = LOGDIR_PATH.joinpath("ai")
+        self.debug_datadir.mkdir(parents=True, exist_ok=True)
+
+    # Getters for config object sub-properties
+    @property
+    def name(self):
+        return self.config.name
+
+    @property
+    def prompt(self):
+        return self.config.prompt
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -198,31 +218,13 @@ class Ai(commands.Cog, name=COG_UID):
             preprocessors=[ContextPreprocessor(self.config.context_size)],
             postprocessors=[NewlinePrunerPostprocessor()],
         )
+        self.tokenizer = GPT2Tokenizer.from_pretrained(
+            pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizer").as_posix(),
+        )
+
         logger.info("AI engine initialized... probably?")
 
-    @commands.slash_command(
-        name="testcommand",
-        description="This is a testing command that does nothing.",
-    )
-    @checks.not_blacklisted()
-    @checks.is_owner()
-    async def testcommand(self, interaction: ApplicationCommandInteraction):
-        """
-        This is a testing command that does nothing.
-        Note: This is a SLASH command
-        :param interaction: The application command interaction.
-        """
-        # Do your stuff here
-
-        # Don't forget to remove "pass", that's just because there's no content in the method.
-        pass
-
-    def get_role_by_name(self, guild: Guild, role_name: str) -> Union[Role, None]:
-        for role in guild.roles:
-            if role.name == role_name:
-                return role
-        return None
-
+    # build a context from the last 40 messages in the channel
     async def get_msg_ctx(self, channel: MessageChannel) -> str:
         messages = await channel.history(limit=40).flatten()
         messages, to_remove = utils.anti_spam(messages)
@@ -230,25 +232,25 @@ class Ai(commands.Cog, name=COG_UID):
             logger.info(f"Removed {to_remove} messages from context.")
         chain = []
         for message in reversed(messages):
-            if not message.embeds and message.content:
-                content = utils.replace_emojis_pings(
-                    message.content, message.guild.members, message.guild.emojis
-                )
-                content = re.sub(r"\<[^>]*\>", "", message.content)
-                if content != "":
-                    chain.append(f"{message.author.name}: {content}")
-                continue
-            elif message.embeds:
+            if len(message.embeds) > 0:
                 content = message.embeds[0].description
                 if content != "":
                     chain.append(f"{message.author.name}: [Embed: {content}]")
                 continue
-            elif message.attachments:
+            elif message.content != "":
+                content = utils.replace_emojis_pings(
+                    message.content, message.guild.members, message.guild.emojis
+                )
+                content = re.sub(r"\<[^>]*\>", "", message.content.lstrip().rstrip()).lstrip().rstrip()
+                if content != "":
+                    chain.append(f"{message.author.name}: {content}")
+                continue
+            elif message:
                 chain.append(f"{message.author.name}: [Image attached]")
         return "\n".join(chain)
 
     async def build_ctx(self, conversation: str):
-        contextmgr = ContextPreprocessor(self.config.context_size)
+        contextmgr = ContextPreprocessor(token_budget=self.config.context_size, tokenizer=self.tokenizer)
 
         prompt_entry = ContextEntry(
             text=self.prompt,
@@ -293,8 +295,8 @@ class Ai(commands.Cog, name=COG_UID):
         # conversation
         conversation_entry = ContextEntry(
             text=conversation,
-            prefix="",
-            suffix=f"\n{self.name}:",
+            prefix="\n<START>",
+            suffix=f"\n{self.name}: ",
             reserved_tokens=512,
             insertion_order=0,
             insertion_position=-1,
@@ -309,20 +311,35 @@ class Ai(commands.Cog, name=COG_UID):
         return contextmgr.context(self.config.context_size)
 
     async def respond(self, conversation: str, message: Message):
+        did_respond = False
         async with message.channel.typing():
             encoded_image_label = ""
+            debug_data = {}
 
-            if message.channel.guild is not None:
-                message_users = message.channel.guild.members
-                message_emojis = list(message.channel.guild.emojis)
-            elif isinstance(message.channel, DMChannel):
-                message_users = [message.author, message.channel.recipient]
+            map_users = (
+                message.guild.members
+                if message.guild is not None
+                else [message.author, message.channel.recipient]
+            )
+            map_emojis = list(message.guild.emojis) if message.guild is not None else []
+
+            debug_data["message"] = {
+                "id": message.id,
+                "author": message.author.name + "#" + message.author.discriminator,
+                "guild": message.guild.name if message.guild is not None else "DM",
+                "channel": message.channel.name if message.guild is not None else "DM",
+                "timestamp": message.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "content": message.content,
+            }
+            # debug_data["map_users"] = map_users
+            # debug_data["map_emojis"] = map_emojis
+            debug_data["conversation"] = conversation.splitlines()
 
             if self.memory_store is not None:
                 encoded_user_message = ""
                 anonymous = True
-                anonymous_role = self.get_role_by_name(guild=message.guild, role_name="Anonymous")
-                private_role = self.get_role_by_name(guild=message.guild, role_name="Private")
+                anonymous_role = get_role_by_name(guild=message.guild, name="Anonymous")
+                private_role = get_role_by_name(guild=message.guild, name="Private")
                 if private_role is not None:
                     # check if the user has the private role, if the user does, don't encode
                     if private_role not in message.author.roles:
@@ -330,7 +347,7 @@ class Ai(commands.Cog, name=COG_UID):
                             anonymous = False
 
                         message_content = utils.replace_emojis_pings_inverse(
-                            text=message.content, users=message_users, emojis=message_emojis
+                            text=message.content, users=map_users, emojis=map_emojis
                         )
                         message_content = (
                             re.sub(r"\<[^>]*\>", "", message_content.lstrip().rstrip()).lstrip().rstrip()
@@ -361,15 +378,34 @@ class Ai(commands.Cog, name=COG_UID):
                                         )
                                     ),
                                 )
+
+            # Build conversation context
             conversation = await self.build_ctx(conversation + encoded_image_label)
+            debug_data["context"] = conversation.splitlines()
+
+            # Generate response
             response = await self.chatbot.respond_async(conversation, push_chain=False)
+            debug_data["response_raw"] = response
+
+            # replace "<USER>" with user mention
+            response = response.replace("<USER>", message.author.mention)
+
+            # Clean response - trim left whitespace and fix emojis and pings
             response = utils.cut_trailing_sentence(response)
+            response = response.lstrip()
+            if message.guild is not None:
+                response = utils.replace_emojis_pings(text=response, users=map_users, emojis=map_emojis)
+            debug_data["response"] = response
 
-        # trim left whitespace from response and fix emojis and pings
-        response = response.lstrip()
-        if message.guild is not None:
-            response = utils.replace_emojis_pings(text=response, users=message_users, emojis=message_emojis)
+            # Send response if not empty
+            if response == "":
+                logger.info(f"Response was empty.")
+            else:
+                logger.info(f"Response: {response}")
+                did_respond = True
+                await message.channel.send(response)
 
+        # add to memory store in background
         if self.memory_store is not None:
             # encode bot response
             if await self.memory_store.check_duplicates(text=response, duplicate_ratio=0.8) is False:
@@ -387,18 +423,15 @@ class Ai(commands.Cog, name=COG_UID):
                     ),
                 )
 
-        if response == "":
-            logger.info(f"Response was empty.")
-            return
-        else:
-            logger.info(f"Response: {response}")
-            await message.channel.send(response)
+        if self.config.debug and did_respond:
+            dump_file = self.debug_datadir.joinpath(f"{message.created_at.isoformat()}-{message.id}.json")
+            dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
         if (message.author.bot is True) or (message.author == self.bot.user):
             return
-        if message.content.startswith("```"):
+        if "```" in message.content:
             return
 
         mentioned = (
