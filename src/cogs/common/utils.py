@@ -16,7 +16,7 @@ def anti_spam(messages: Union[Message, List[Message]], threshold=0.8):
     return messages, len(to_remove)
 
 
-def replace_emojis_pings(text: str, users: List[User], emojis: List[Emoji]) -> str:
+def restore_mentions_emotes(text: str, users: List[User], emojis: List[Emoji]) -> str:
     # sort users from largest username to smallest
     users.sort(key=lambda user: len(user.name), reverse=True)
 
@@ -34,7 +34,7 @@ def replace_emojis_pings(text: str, users: List[User], emojis: List[Emoji]) -> s
     return text
 
 
-def replace_emojis_pings_inverse(text: str, users: List[User], emojis: List[Emoji]) -> str:
+def convert_mentions_emotes(text: str, users: List[User], emojis: List[Emoji]) -> str:
     for user in users:
         text = text.replace(f"<@{user.id}>", f"@{user.name}")
 

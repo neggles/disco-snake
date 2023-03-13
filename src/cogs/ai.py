@@ -200,11 +200,11 @@ class Ai(commands.Cog, name=COG_UID):
 
     # Getters for config object sub-properties
     @property
-    def name(self):
+    def name(self) -> str:
         return self.config.name
 
     @property
-    def prompt(self):
+    def prompt(self) -> str:
         return self.config.prompt
 
     async def cog_load(self) -> None:
@@ -244,7 +244,7 @@ class Ai(commands.Cog, name=COG_UID):
                     chain.append(f"{message.author.name}: [Embed: {content}]")
                 continue
             elif message.content != "":
-                content = utils.replace_emojis_pings(
+                content = utils.convert_mentions_emotes(
                     message.content, message.guild.members, message.guild.emojis
                 )
                 content = re.sub(r"\<[^>]*\>", "", message.content.lstrip().rstrip()).lstrip().rstrip()
@@ -286,7 +286,7 @@ class Ai(commands.Cog, name=COG_UID):
                 memories_entry = ContextEntry(
                     text=memories_ctx,
                     prefix="",
-                    suffix="\n",
+                    suffix="",
                     reserved_tokens=0,
                     insertion_order=800,
                     insertion_position=0,
@@ -322,12 +322,12 @@ class Ai(commands.Cog, name=COG_UID):
             encoded_image_label = ""
             debug_data = {}
 
-            map_users = (
-                message.guild.members
-                if message.guild is not None
-                else [message.author, message.channel.recipient]
-            )
-            map_emojis = list(message.guild.emojis) if message.guild is not None else []
+            if message.guild is not None:
+                map_users = message.channel.members
+                map_emojis = list(message.guild.emojis)
+            else:
+                map_users = [message.author, self.bot.user]
+                map_emojis = []
 
             debug_data["message"] = {
                 "id": message.id,
@@ -340,70 +340,54 @@ class Ai(commands.Cog, name=COG_UID):
 
             if self.memory_store is not None:
                 encoded_user_message = ""
-                anonymous = True
-                anonymous_role = get_role_by_name(guild=message.guild, name="Anonymous")
                 private_role = get_role_by_name(guild=message.guild, name="Private")
                 if private_role is not None:
                     # check if the user has the private role, if the user does, don't encode
                     if private_role not in message.author.roles:
-                        if anonymous_role not in message.author.roles:
-                            anonymous = False
-
-                        message_content = utils.replace_emojis_pings_inverse(
+                        message_content = utils.convert_mentions_emotes(
                             text=message.content, users=map_users, emojis=map_emojis
                         )
                         message_content = (
                             re.sub(r"\<[^>]*\>", "", message_content.lstrip().rstrip()).lstrip().rstrip()
                         )
                         author_name = message.author.name
-                        if message_content != "":
-                            if anonymous:
-                                encoded_user_message = f"Deleted User: {message_content}"
-                                author_name = "Deleted User"
-                            else:
-                                encoded_user_message = f"{message.author.name}: {message_content}"
-                            if (
-                                await self.memory_store.check_duplicates(
-                                    text=message.content, duplicate_ratio=0.8
-                                )
-                                is False
-                            ):
-                                await self.memory_store.add(
-                                    author_id=message.author.id,
-                                    author=author_name,
-                                    text=message_content,
-                                    encoding_model=self.memory_store.model,
-                                    encoding=array_to_str(
-                                        await self.model_provider.hidden_async(
-                                            self.memory_store.model,
-                                            encoded_user_message,
-                                            layer=self.memory_store.model_layer,
-                                        )
-                                    ),
-                                )
+                        encoded_user_message = f"{message.author.name}: {message_content}"
+                        is_dupe = await self.memory_store.check_duplicates(
+                            text=encoded_user_message, duplicate_ratio=0.8
+                        )
+                        if not is_dupe:
+                            await self.memory_store.add(
+                                author_id=message.author.id,
+                                author=author_name,
+                                text=message_content,
+                                encoding_model=self.memory_store.model,
+                                encoding=array_to_str(
+                                    await self.model_provider.hidden_async(
+                                        self.memory_store.model,
+                                        encoded_user_message,
+                                        layer=self.memory_store.model_layer,
+                                    )
+                                ),
+                            )
 
             debug_data["conversation"] = conversation.splitlines()
-            # remap emojis and pings
-            conversation = utils.replace_emojis_pings_inverse(
-                text=conversation, users=map_users, emojis=map_emojis
-            )
-
             # Build conversation context
             conversation = await self.build_ctx(conversation + encoded_image_label)
             debug_data["context"] = conversation.splitlines()
 
             # Generate response
-            response = await self.chatbot.respond_async(conversation, push_chain=False)
+            response: str = await self.chatbot.respond_async(conversation, push_chain=False)
             debug_data["response_raw"] = response
 
-            # replace "<USER>" with user mention
+            # replace "<USER>" with user mention, same for "<BOT>"
             response = response.replace("<USER>", message.author.mention)
+            response = response.replace("<BOT>", self.name)
 
             # Clean response - trim left whitespace and fix emojis and pings
             response = utils.cut_trailing_sentence(response)
             response = response.lstrip()
-            if message.guild is not None:
-                response = utils.replace_emojis_pings(text=response, users=map_users, emojis=map_emojis)
+            if message.guild:
+                response = utils.restore_mentions_emotes(text=response, users=map_users, emojis=map_emojis)
             debug_data["response"] = response
 
             # Send response if not empty
@@ -413,6 +397,10 @@ class Ai(commands.Cog, name=COG_UID):
                 logger.info(f"Response: {response}")
                 did_respond = True
                 await message.channel.send(response)
+
+        if self.config.debug and did_respond:
+            dump_file = self.debug_datadir.joinpath(f"{message.created_at.isoformat()}-{message.id}.json")
+            dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
 
         # add to memory store in background
         if self.memory_store is not None:
@@ -431,10 +419,6 @@ class Ai(commands.Cog, name=COG_UID):
                         )
                     ),
                 )
-
-        if self.config.debug and did_respond:
-            dump_file = self.debug_datadir.joinpath(f"{message.created_at.isoformat()}-{message.id}.json")
-            dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
@@ -470,7 +454,7 @@ class Ai(commands.Cog, name=COG_UID):
             logger.info(f"Raw message: {message.content}")
             conversation = await self.get_msg_ctx(message.channel)
             if message.channel.guild:
-                message_content = utils.replace_emojis_pings_inverse(
+                message_content = utils.convert_mentions_emotes(
                     text=message.content,
                     users=message.guild.members,
                     emojis=list(message.guild.emojis),
