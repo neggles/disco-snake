@@ -10,25 +10,25 @@ from functools import partial as partial_func
 from pathlib import Path
 from traceback import print_exception
 from zoneinfo import ZoneInfo
-from humanize import naturaldelta as fuzzydelta
 
 from disnake import (
     Activity,
     ActivityType,
     ApplicationCommandInteraction,
     Embed,
-    Intents,
-    Message,
     Guild,
+    Intents,
     InteractionResponseType,
+    Message,
 )
 from disnake import __version__ as DISNAKE_VERSION
 from disnake.ext import commands, tasks
+from humanize import naturaldelta as fuzzydelta
 
 import exceptions
-from disco_snake import COGDIR_PATH, DATADIR_PATH, EXTDIR_PATH, USERDATA_PATH
+from disco_snake import COGDIR_PATH, DATADIR_PATH, USERDATA_PATH
 from disco_snake.embeds import CooldownEmbed, MissingPermissionsEmbed, MissingRequiredArgumentEmbed
-from helpers.misc import get_package_root, filename_filter
+from helpers.misc import filename_filter, get_package_root
 
 PACKAGE_ROOT = get_package_root()
 
@@ -55,7 +55,6 @@ class DiscoSnake(commands.Bot):
         self.userdata_path: Path = USERDATA_PATH
         self.userdata: dict = None
         self.cogdir_path: Path = COGDIR_PATH
-        self.extdir_path: Path = EXTDIR_PATH
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
         self.home_guild: Guild = None  # set in on_ready
 
@@ -101,21 +100,45 @@ class DiscoSnake(commands.Bot):
             logger.debug("Loaded user states from disk")
 
     def save_guild_metadata(self, guild_id: int):
+        # get guild metadata (members, channels, etc.)
         guild = self.get_guild(guild_id)
-        memberlist = []
-        for member in guild.members:
-            memberlist.append(
+        guild_data = {
+            "id": guild.id,
+            "name": guild.name,
+            "member_count": guild.member_count,
+            "description": guild.description,
+            "created_at": guild.created_at.isoformat(),
+            "nsfw_level": guild.nsfw_level.name,
+            "members": [
                 {
                     "id": member.id,
                     "name": member.name,
+                    "discriminator": member.discriminator,
                     "display_name": member.display_name,
                     "avatar": str(member.avatar.url) if member.avatar else None,
                     "is_bot": member.bot,
                     "is_system": member.system,
                 }
-            )
-        with (self.datadir_path / "guilds" / f"{guild_id}-members.json").open("w") as f:
-            json.dump(memberlist, f, skipkeys=True, indent=2)
+                for member in guild.members
+            ],
+            "channels": [
+                {
+                    "id": channel.id,
+                    "name": channel.name,
+                    "category": (
+                        {"id": channel.category_id, "name": channel.category.name} if channel.category else {}
+                    ),
+                    "position": channel.position,
+                }
+                for channel in guild.channels
+            ],
+        }
+
+        # save member_data
+        guild_data_path = self.datadir_path.joinpath("guilds", f"{guild_id}-meta.json")
+        guild_data_path.parent.mkdir(exist_ok=True, parents=True)
+        with guild_data_path.open("w") as f:
+            json.dump(guild_data, f, skipkeys=True, indent=2)
 
     def available_cogs(self):
         cogs = [
@@ -123,7 +146,7 @@ class DiscoSnake(commands.Bot):
             for f in self.cogdir_path.glob("*.py")
             if f.stem != "template" and not f.stem.endswith("_wip")
         ]
-        if isinstance(self.config["disable_cogs"], list):
+        if isinstance(self.config.get("disable_cogs", None), list):
             cogs = [x for x in cogs if x not in self.config["disable_cogs"]]
         return cogs
 
@@ -137,7 +160,7 @@ class DiscoSnake(commands.Bot):
                 except Exception as e:
                     etype, exc, tb = sys.exc_info()
                     exception = f"{etype}: {exc}"
-                    logger.error(f"Failed to load extension {cog}:\n{exception}")
+                    logger.error(f"Failed to load cog {cog}:\n{exception}")
                     print_exception(etype, exc, tb)
         else:
             logger.info("No cogs found")
@@ -162,7 +185,7 @@ class DiscoSnake(commands.Bot):
         Background task to flush user state to disk
         """
         self.save_userdata()
-        logger.debug("Flushed userdatas to disk")
+        logger.debug("Flushed userdata to disk")
 
     async def on_ready(self) -> None:
         """

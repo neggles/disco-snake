@@ -54,7 +54,7 @@ class Freedom(commands.Cog, name="freedom"):
         logger.info("FREEDOM IS COMING! WILL YOU HEED THE CALL?")
         pass
 
-    def cog_unload(self):
+    def cog_unload(self) -> None:
         if self.military_industrial_complex.is_running():
             logger.info("FREEDOM'S WORK IS NEVER DONE!")
             self.military_industrial_complex.cancel()
