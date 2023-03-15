@@ -20,6 +20,7 @@ from disnake import (
     Intents,
     InteractionResponseType,
     Message,
+    Member,
 )
 from disnake import __version__ as DISNAKE_VERSION
 from disnake.ext import commands, tasks
@@ -98,6 +99,25 @@ class DiscoSnake(commands.Bot):
             with self.userdata_path.open("r") as f:
                 self.userdata = json.load(f)
             logger.debug("Loaded user states from disk")
+
+    # Get a user's entire data dict from the userdata dict
+    def _get_userdata(self, user: Member, default={}) -> dict:
+        return self.userdata.get(user.id, default)
+
+    # Set a user's entire data dict
+    def _set_userdata(self, user: Member, data: dict) -> None:
+        self.userdata[user.id] = data
+
+    # Get a specific key from a user's data dict
+    def get_userdata_key(self, user: Member, key: str, default=None):
+        userdata = self._get_userdata(user)
+        return userdata.get(key, default)
+
+    # Set a specific key in a user's data dict
+    def set_userdata_key(self, user: Member, key: str, value: str) -> None:
+        userdata = self._get_userdata(user)
+        userdata[key] = value
+        self._set_userdata(user, userdata)
 
     def save_guild_metadata(self, guild_id: int):
         # get guild metadata (members, channels, etc.)
