@@ -1,15 +1,15 @@
 import json
 import logging
 import re
-from random import randint
+from random import choice as random_choice
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Union
+from typing import List
 from traceback import format_exc
 
 from dacite import from_dict
 from disnake import (
-    ApplicationCommandInteraction,
     Role,
     Message,
     Guild,
@@ -18,7 +18,7 @@ from disnake import (
     File,
     TextChannel,
 )
-from disnake.ext import commands
+from disnake.ext import commands, tasks
 from shimeji import ChatBot
 from shimeji.memory import array_to_str, memory_context
 from shimeji.memorystore_provider import PostgreSQLMemoryStore
@@ -45,7 +45,6 @@ import logsnake
 from cogs.common import utils, MessageChannel
 from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
-from helpers import checks
 
 COG_UID = "ai"
 
@@ -82,10 +81,7 @@ class ModelProviderConfig:
 
 
 @dataclass
-class ChatbotConfig:
-    name: str
-    prompt: str
-    postprompt: str
+class BotParameters:
     conditional_response: bool
     idle_messaging: bool
     idle_messaging_interval: int
@@ -93,6 +89,13 @@ class ChatbotConfig:
     context_size: int
     logging_channel_id: int
     debug: bool
+
+
+@dataclass
+class ChatbotConfig:
+    name: str
+    prompt: str
+    params: BotParameters
     memory_store: MemoryStoreConfig
     model_provider: ModelProviderConfig
 
@@ -185,6 +188,8 @@ class Ai(commands.Cog, name=COG_UID):
         # Parse config file
         self.memory_store_cfg: MemoryStoreConfig = self.config.memory_store
         self.model_provider_cfg: ModelProviderConfig = self.config.model_provider
+        self.params: BotParameters = self.config.params
+        self.debug: bool = self.params.debug
 
         # we will populate these later during async init
         self.memory_store: PostgreSQLMemoryStore = None
@@ -221,7 +226,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.chatbot = ChatBot(
             name=self.name,
             model_provider=self.model_provider,
-            preprocessors=[ContextPreprocessor(self.config.context_size)],
+            preprocessors=[ContextPreprocessor(self.params.context_size)],
             postprocessors=[NewlinePrunerPostprocessor()],
         )
         self.tokenizer = GPT2Tokenizer.from_pretrained(
@@ -229,6 +234,9 @@ class Ai(commands.Cog, name=COG_UID):
         )
 
         logger.info("AI engine initialized... probably?")
+        if self.params.idle_messaging is True:
+            logger.info("Starting idle messaging loop")
+            self.idle_loop.start()
 
     # build a context from the last 40 messages in the channel
     async def get_msg_ctx(self, channel: MessageChannel) -> str:
@@ -256,7 +264,7 @@ class Ai(commands.Cog, name=COG_UID):
         return "\n".join(chain)
 
     async def build_ctx(self, conversation: str):
-        contextmgr = ContextPreprocessor(token_budget=self.config.context_size, tokenizer=self.tokenizer)
+        contextmgr = ContextPreprocessor(token_budget=self.params.context_size, tokenizer=self.tokenizer)
 
         prompt_entry = ContextEntry(
             text=self.prompt,
@@ -289,7 +297,7 @@ class Ai(commands.Cog, name=COG_UID):
                     suffix="",
                     reserved_tokens=0,
                     insertion_order=800,
-                    insertion_position=0,
+                    insertion_position=len(self.prompt.splitlines()) + 1,
                     trim_direction=TRIM_DIR_TOP,
                     trim_type=TRIM_TYPE_SENTENCE,
                     insertion_type=INSERTION_TYPE_NEWLINE,
@@ -314,7 +322,7 @@ class Ai(commands.Cog, name=COG_UID):
         )
         contextmgr.add_entry(conversation_entry)
 
-        return contextmgr.context(self.config.context_size)
+        return contextmgr.context(self.params.context_size)
 
     async def respond(self, conversation: str, message: Message):
         did_respond = False
@@ -356,6 +364,7 @@ class Ai(commands.Cog, name=COG_UID):
                             text=encoded_user_message, duplicate_ratio=0.8
                         )
                         if not is_dupe:
+                            logger.info(f"adding message from {message.author.name} to memory store...")
                             await self.memory_store.add(
                                 author_id=message.author.id,
                                 author=author_name,
@@ -398,7 +407,7 @@ class Ai(commands.Cog, name=COG_UID):
                 did_respond = True
                 await message.channel.send(response)
 
-        if self.config.debug and did_respond:
+        if self.debug and did_respond:
             dump_file = self.debug_datadir.joinpath(f"{message.created_at.isoformat()}-{message.id}.json")
             dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
 
@@ -464,16 +473,16 @@ class Ai(commands.Cog, name=COG_UID):
 
             logger.info(f"Message: {message_content}")
 
-            if self.config.conditional_response is True:
+            if self.params.conditional_response is True:
                 if self.bot.user.mentioned_in(message) or any(
-                    t in message_content for t in self.config.nicknames
+                    t in message_content for t in self.params.nicknames
                 ):
                     await self.respond(conversation, message)
                 elif await self.chatbot.should_respond_async(conversation, push_chain=False):
                     await self.respond(conversation, message)
             else:
                 if self.bot.user.mentioned_in(message) or any(
-                    t in message_content for t in self.config.nicknames
+                    t in message_content for t in self.params.nicknames
                 ):
                     await self.respond(conversation, message)
                 elif isinstance(message.channel, DMChannel):
@@ -486,11 +495,11 @@ class Ai(commands.Cog, name=COG_UID):
                 title="**Exception**",
                 description=str(f"**``{repr(e)}``**\n```{format_exc()}```"),
             )
-            if self.config.logging_channel_id == 0:
+            if self.params.logging_channel_id == 0:
                 await message.channel.send(embed=embed, delete_after=15.0)
             else:
                 if self.logging_channel is None:
-                    self.logging_channel = self.bot.get_channel(self.config.logging_channel_id)
+                    self.logging_channel = self.bot.get_channel(self.params.logging_channel_id)
                 if len(str(f"**Exception:** **``{repr(e)}``**\n```{format_exc()}```")) < 5900:
                     await self.logging_channel.send(embed=embed)
                 else:
@@ -502,6 +511,31 @@ class Ai(commands.Cog, name=COG_UID):
                         description=str("The error is too large, check the attached file"),
                     )
                     await self.logging_channel.send(embed=embed, file=File("error.txt"))
+
+    @tasks.loop(seconds=21)
+    async def idle_loop(self):
+        if self.params.idle_messaging is True:
+            # get last message in a random priority channel
+            priority_channels = self.get_priority_channel(self.kwargs["priority_channel"])
+            channel: MessageChannel = self.bot.get_channel(random_choice(priority_channels))
+            if channel is not None:
+                message: Message = await channel.history(limit=1).flatten()[0]
+                # check if message author is bot
+                if message.author.id == self.bot.user.id or message.author.bot:
+                    return
+                if (
+                    datetime.utcnow() - message.created_at
+                ).total_seconds() >= self.params.idle_messaging_interval:
+                    # if it's been more than 5 minutes, send a response
+                    conversation = await self.get_msg_ctx(channel)
+                    await self.respond(conversation, message[0])
+                    logger.info(f"Processed idle response - ID: {message.id}")
+
+    @idle_loop.before_loop
+    async def before_idle_loop(self):
+        logger.info("Idle loop waiting for bot to be ready")
+        await self.bot.wait_until_ready()
+        logger.info("Idle loop running!")
 
 
 def setup(bot):

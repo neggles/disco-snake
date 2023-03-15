@@ -26,7 +26,7 @@ from disnake import __version__ as DISNAKE_VERSION
 from disnake.ext import commands, tasks
 
 import exceptions
-from disco_snake import COGDIR_PATH, DATADIR_PATH, EXTDIR_PATH, USERDATA_PATH
+from disco_snake import COGDIR_PATH, DATADIR_PATH, USERDATA_PATH
 from disco_snake.embeds import CooldownEmbed, MissingPermissionsEmbed, MissingRequiredArgumentEmbed
 from helpers.misc import get_package_root, filename_filter
 
@@ -54,7 +54,6 @@ class DiscoSnake(commands.Bot):
         self.userdata_path: Path = USERDATA_PATH
         self.userdata: dict = None
         self.cogdir_path: Path = COGDIR_PATH
-        self.extdir_path: Path = EXTDIR_PATH
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
         self.home_guild: Guild = None  # set in on_ready
 
