@@ -406,7 +406,7 @@ class SukimaModel(ModelProvider):
         phrase_bias.ensure_sequence_finish = True
         phrase_bias.generate_once = True
 
-        args = copy.deepcopy(self.kwargs["args"])
+        args: ModelGenRequest = copy.deepcopy(self.kwargs["args"])
         args.prompt = context
         args.gen_args.max_length = 10
         args.gen_args.eos_token_id = 25
@@ -438,7 +438,7 @@ class SukimaModel(ModelProvider):
         phrase_bias.ensure_sequence_finish = True
         phrase_bias.generate_once = True
 
-        args = copy.deepcopy(self.kwargs["args"])
+        args: ModelGenRequest = copy.deepcopy(self.kwargs["args"])
         args.prompt = context
         args.gen_args.max_length = 10
         args.gen_args.eos_token_id = 25
@@ -462,7 +462,7 @@ class SukimaModel(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args = self.kwargs["args"]
+        args: ModelGenRequest = self.kwargs["args"]
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
@@ -477,7 +477,7 @@ class SukimaModel(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args = self.kwargs["args"]
+        args: ModelGenRequest = self.kwargs["args"]
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
@@ -549,7 +549,7 @@ class TextSynth_ModelProvider(ModelProvider):
         :return: Whether or not the name should respond to the given context.
         :rtype: bool
         """
-        args = copy.deepcopy(self.kwargs["args"])
+        args: ModelGenRequest = copy.deepcopy(self.kwargs["args"])
         args.prompt = context
         args.gen_args.max_length = 10
         args.sample_args.temp = 0.25
@@ -567,7 +567,7 @@ class TextSynth_ModelProvider(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args = self.kwargs["args"]
+        args: ModelGenRequest = self.kwargs["args"]
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
