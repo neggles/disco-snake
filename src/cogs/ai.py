@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 from traceback import format_exc
+from zoneinfo import ZoneInfo
 
 from dacite import from_dict
 from disnake import (
@@ -178,6 +179,7 @@ def get_role_by_name(guild: Guild, name: str) -> Role:
 class Ai(commands.Cog, name=COG_UID):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
+        self.timezone = self.bot.timezone
 
         # Load config file
         self.cfg_path: Path = DATADIR_PATH.joinpath("ai", "config.json")
@@ -238,6 +240,11 @@ class Ai(commands.Cog, name=COG_UID):
         if self.params.idle_messaging is True:
             logger.info("Starting idle messaging loop")
             self.idle_loop.start()
+        if not self.log_archive_loop.is_running():
+            logger.info("Archiving all logs from previous startups")
+            self.archive_logs(seconds=0)
+            logger.info("Starting log archive loop")
+            self.log_archive_loop.start()
 
     # build a context from the last 40 messages in the channel
     async def get_msg_ctx(self, channel: MessageChannel) -> str:
@@ -348,40 +355,48 @@ class Ai(commands.Cog, name=COG_UID):
             }
 
             if self.memory_store is not None:
-                encoded_user_message = ""
                 private_role = get_role_by_name(guild=message.guild, name="Private")
-                if private_role is not None:
-                    # check if the user has the private role, if the user does, don't encode
-                    if private_role not in message.author.roles:
-                        message_content = utils.convert_mentions_emotes(
-                            text=message.content, users=map_users, emojis=map_emojis
-                        )
-                        message_content = (
-                            re.sub(r"\<[^>]*\>", "", message_content.lstrip().rstrip()).lstrip().rstrip()
-                        )
+                anonymous_role = get_role_by_name(guild=message.guild, name="Anonymous")
+                if private_role is not None and private_role not in message.author.roles:
+                    message_content = utils.convert_mentions_emotes(
+                        text=message.content, users=map_users, emojis=map_emojis
+                    )
+                    message_content = (
+                        re.sub(r"\<[^>]*\>", "", message_content.lstrip().rstrip()).lstrip().rstrip()
+                    )
+
+                    if anonymous_role is not None and anonymous_role in message.author.roles:
+                        author_name = "Deleted User"
+                    else:
                         author_name = message.author.name
-                        encoded_user_message = f"{message.author.name}: {message_content}"
-                        is_dupe = await self.memory_store.check_duplicates(
-                            text=encoded_user_message, duplicate_ratio=0.8
+                    encoded_user_message = f"{author_name}: {message_content}"
+
+                    is_dupe = await self.memory_store.check_duplicates(
+                        text=encoded_user_message, duplicate_ratio=0.8
+                    )
+                    if not is_dupe:
+                        logger.info(f"adding message from {message.author} to memory as '{author_name}'")
+                        await self.memory_store.add(
+                            author_id=message.author.id,
+                            author=author_name,
+                            text=message_content,
+                            encoding_model=self.memory_store.model,
+                            encoding=array_to_str(
+                                await self.model_provider.hidden_async(
+                                    self.memory_store.model,
+                                    encoded_user_message,
+                                    layer=self.memory_store.model_layer,
+                                )
+                            ),
                         )
-                        if not is_dupe:
-                            logger.info(f"adding message from {message.author.name} to memory store...")
-                            await self.memory_store.add(
-                                author_id=message.author.id,
-                                author=author_name,
-                                text=message_content,
-                                encoding_model=self.memory_store.model,
-                                encoding=array_to_str(
-                                    await self.model_provider.hidden_async(
-                                        self.memory_store.model,
-                                        encoded_user_message,
-                                        layer=self.memory_store.model_layer,
-                                    )
-                                ),
-                            )
 
             debug_data["conversation"] = conversation.splitlines()
             # Build conversation context
+            if message.guild:
+                conversation = utils.convert_mentions_emotes(
+                    text=conversation, users=map_users, emojis=map_emojis
+                )
+
             conversation = await self.build_ctx(conversation + encoded_image_label)
             debug_data["context"] = conversation.splitlines()
 
@@ -409,8 +424,10 @@ class Ai(commands.Cog, name=COG_UID):
                 await message.channel.send(response)
 
         if self.debug and did_respond:
-            dump_file = self.debug_datadir.joinpath(f"{message.created_at.isoformat()}-{message.id}.json")
+            message_time = message.created_at.astimezone(self.bot.timezone).strftime("%Y-%m-%dT%H:%M:%S%z")
+            dump_file = self.debug_datadir.joinpath(f"msg-{message_time}-{message.id}.json")
             dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
+            logger.debug(f"Dumped message debug data to {dump_file.name}")
 
         # add to memory store in background
         if self.memory_store is not None:
@@ -469,8 +486,7 @@ class Ai(commands.Cog, name=COG_UID):
                     users=message.guild.members,
                     emojis=list(message.guild.emojis),
                 )
-            else:
-                message_content = re.sub(r"\<[^>]*\>", "", message.content.lower())
+            message_content = re.sub(r"\<[^>]*\>", "", message.content.lower())
 
             logger.info(f"Message: {message_content}")
 
@@ -518,24 +534,20 @@ class Ai(commands.Cog, name=COG_UID):
         if self.params.idle_messaging is True:
             # get last message in a random priority channel
             channel: MessageChannel = self.bot.get_channel(random_choice(self.params.activity_channels))
-            logger.debug(f"idle loop targeting {channel} in {channel.guild}")
             if channel is not None:
                 messages = await channel.history(limit=1).flatten()
-                logger.debug(f"got {len(messages)} messages")
                 message: Message = messages.pop()
-
                 idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
-                logger.debug(f"last message ({idle_sec:.2f}s ago): [{message.author}]: {message.content}")
 
+                # logger.debug(f"last message ({idle_sec:.2f}s ago): [{message.author}]: {message.content}")
                 if message.author.bot is True:
-                    logger.debug(f"last message is from bot {message.author}, skipping")
                     return
 
                 if idle_sec >= self.params.idle_messaging_interval:
                     # if it's been more than 5 minutes, send a response
                     conversation = await self.get_msg_ctx(channel)
                     await self.respond(conversation, message)
-                    logger.debug(f"Processed idle response - ID: {message.id}")
+                    logger.debug(f"Ran idle response to message ID {message.id}")
         else:
             return
 
@@ -544,6 +556,20 @@ class Ai(commands.Cog, name=COG_UID):
         logger.info("Idle loop waiting for bot to be ready")
         await self.bot.wait_until_ready()
         logger.info("Idle loop running!")
+
+    @tasks.loop(hours=1)
+    async def log_archive_loop(self) -> None:
+        """
+        Move message log files over 24h old to the archive directory
+        """
+        self.archive_logs(seconds=86400)
+
+    def archive_logs(self, seconds: int = 86400):
+        for file in self.debug_datadir.glob("*.json"):
+            file_age = (datetime.now() - datetime.fromtimestamp(file.stat().st_mtime)).total_seconds()
+            if file_age >= seconds:
+                logger.debug(f"Archiving debug log {file.name}")
+                file = file.rename(file.parent / "archive" / file.name)
 
 
 def setup(bot):
