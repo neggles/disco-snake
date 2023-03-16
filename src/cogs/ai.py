@@ -320,7 +320,7 @@ class Ai(commands.Cog, name=COG_UID):
         # conversation
         conversation_entry = ContextEntry(
             text=conversation,
-            prefix="\n<START>",
+            prefix="",
             suffix=f"\n{self.name}:",
             reserved_tokens=512,
             insertion_order=0,
@@ -484,7 +484,7 @@ class Ai(commands.Cog, name=COG_UID):
             ):
                 await self.respond(conversation, message)
 
-            elif isinstance(message.channel, DMChannel):
+            elif isinstance(message.channel, DMChannel) and len(message_content) > 8:
                 await self.respond(conversation, message)
 
             elif self.conditional_response is True:
