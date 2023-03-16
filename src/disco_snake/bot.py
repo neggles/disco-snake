@@ -160,7 +160,6 @@ class DiscoSnake(commands.Bot):
         Background task to flush user state to disk
         """
         self.save_userdata()
-        logger.debug("Flushed userdatas to disk")
 
     async def on_ready(self) -> None:
         """

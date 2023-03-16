@@ -3,7 +3,7 @@ import logging
 import re
 from random import choice as random_choice
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 from traceback import format_exc
@@ -56,7 +56,7 @@ logger = logsnake.setup_logger(
     name=COG_UID,
     formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
     logfile=LOGDIR_PATH.joinpath(f"{COG_UID}.log"),
-    fileLoglevel=logging.INFO,
+    fileLoglevel=logging.DEBUG,
     maxBytes=2 * (2**20),
     backupCount=2,
 )
@@ -88,6 +88,7 @@ class BotParameters:
     nicknames: List[str]
     context_size: int
     logging_channel_id: int
+    activity_channels: List[int]
     debug: bool
 
 
@@ -513,23 +514,30 @@ class Ai(commands.Cog, name=COG_UID):
                     await self.logging_channel.send(embed=embed, file=File("error.txt"))
 
     @tasks.loop(seconds=21)
-    async def idle_loop(self):
+    async def idle_loop(self) -> None:
         if self.params.idle_messaging is True:
             # get last message in a random priority channel
-            priority_channels = self.get_priority_channel(self.kwargs["priority_channel"])
-            channel: MessageChannel = self.bot.get_channel(random_choice(priority_channels))
+            channel: MessageChannel = self.bot.get_channel(random_choice(self.params.activity_channels))
+            logger.debug(f"idle loop targeting {channel} in {channel.guild}")
             if channel is not None:
-                message: Message = await channel.history(limit=1).flatten()[0]
-                # check if message author is bot
-                if message.author.id == self.bot.user.id or message.author.bot:
+                messages = await channel.history(limit=1).flatten()
+                logger.debug(f"got {len(messages)} messages")
+                message: Message = messages.pop()
+
+                idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
+                logger.debug(f"last message ({idle_sec:.2f}s ago): [{message.author}]: {message.content}")
+
+                if message.author.bot is True:
+                    logger.debug(f"last message is from bot {message.author}, skipping")
                     return
-                if (
-                    datetime.utcnow() - message.created_at
-                ).total_seconds() >= self.params.idle_messaging_interval:
+
+                if idle_sec >= self.params.idle_messaging_interval:
                     # if it's been more than 5 minutes, send a response
                     conversation = await self.get_msg_ctx(channel)
-                    await self.respond(conversation, message[0])
-                    logger.info(f"Processed idle response - ID: {message.id}")
+                    await self.respond(conversation, message)
+                    logger.debug(f"Processed idle response - ID: {message.id}")
+        else:
+            return
 
     @idle_loop.before_loop
     async def before_idle_loop(self):
