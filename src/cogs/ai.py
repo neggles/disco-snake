@@ -1,49 +1,41 @@
 import json
 import logging
 import re
-from random import choice as random_choice
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List
+from random import choice as random_choice
 from traceback import format_exc
+from typing import List
 from zoneinfo import ZoneInfo
 
 from dacite import from_dict
-from disnake import (
-    Role,
-    Message,
-    Guild,
-    DMChannel,
-    Embed,
-    File,
-    TextChannel,
-)
+from disnake import DMChannel, Embed, File, Guild, Message, Role, TextChannel
 from disnake.ext import commands, tasks
 from shimeji import ChatBot
 from shimeji.memory import array_to_str, memory_context
 from shimeji.memorystore_provider import PostgreSQLMemoryStore
 from shimeji.model_provider import (
-    SukimaModel,
     ModelGenArgs,
-    ModelSampleArgs,
+    ModelGenRequest,
     ModelLogitBiasArgs,
     ModelPhraseBiasArgs,
-    ModelGenRequest,
+    ModelSampleArgs,
+    SukimaModel,
 )
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
 from shimeji.util import (
     INSERTION_TYPE_NEWLINE,
     TRIM_DIR_TOP,
-    TRIM_TYPE_SENTENCE,
     TRIM_TYPE_NEWLINE,
+    TRIM_TYPE_SENTENCE,
     ContextEntry,
 )
 from transformers import GPT2Tokenizer
 
 import logsnake
-from cogs.common import utils, MessageChannel
+from cogs.common import MessageChannel, utils
 from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
 
@@ -176,10 +168,16 @@ def get_role_by_name(guild: Guild, name: str) -> Role:
     return None
 
 
+re_angle_bracket = re.compile(r"\<[^>]*\>")
+re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
+re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
+
+
 class Ai(commands.Cog, name=COG_UID):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
         self.timezone = self.bot.timezone
+        self.last_response = datetime.utcnow() - timedelta(minutes=10)
 
         # Load config file
         self.cfg_path: Path = DATADIR_PATH.joinpath("ai", "config.json")
@@ -191,8 +189,16 @@ class Ai(commands.Cog, name=COG_UID):
         # Parse config file
         self.memory_store_cfg: MemoryStoreConfig = self.config.memory_store
         self.model_provider_cfg: ModelProviderConfig = self.config.model_provider
-        self.params: BotParameters = self.config.params
-        self.debug: bool = self.params.debug
+
+        # Load config params up into top level properties
+        self.activity_channels: List[int] = self.config.params.activity_channels
+        self.conditional_response: bool = self.config.params.conditional_response
+        self.context_size: int = self.config.params.context_size
+        self.idle_messaging_interval: int = self.config.params.idle_messaging_interval
+        self.idle_messaging: bool = self.config.params.idle_messaging
+        self.logging_channel_id: int = self.config.params.logging_channel_id
+        self.nicknames: List[str] = self.config.params.nicknames
+        self.debug: bool = self.config.params.debug
 
         # we will populate these later during async init
         self.memory_store: PostgreSQLMemoryStore = None
@@ -229,7 +235,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.chatbot = ChatBot(
             name=self.name,
             model_provider=self.model_provider,
-            preprocessors=[ContextPreprocessor(self.params.context_size)],
+            preprocessors=[ContextPreprocessor(self.context_size)],
             postprocessors=[NewlinePrunerPostprocessor()],
         )
         self.tokenizer = GPT2Tokenizer.from_pretrained(
@@ -237,7 +243,7 @@ class Ai(commands.Cog, name=COG_UID):
         )
 
         logger.info("AI engine initialized... probably?")
-        if self.params.idle_messaging is True:
+        if self.idle_messaging is True:
             logger.info("Starting idle messaging loop")
             self.idle_loop.start()
         if not self.log_archive_loop.is_running():
@@ -260,10 +266,7 @@ class Ai(commands.Cog, name=COG_UID):
                     chain.append(f"{message.author.name}: [Embed: {content}]")
                 continue
             elif message.content != "":
-                content = utils.convert_mentions_emotes(
-                    message.content, message.guild.members, message.guild.emojis
-                )
-                content = re.sub(r"\<[^>]*\>", "", message.content.lstrip().rstrip()).lstrip().rstrip()
+                content = self.get_msg_content_clean(message)
                 if content != "" and not "```" in content:
                     chain.append(f"{message.author.name}: {content}")
                 continue
@@ -272,7 +275,7 @@ class Ai(commands.Cog, name=COG_UID):
         return "\n".join(chain)
 
     async def build_ctx(self, conversation: str):
-        contextmgr = ContextPreprocessor(token_budget=self.params.context_size, tokenizer=self.tokenizer)
+        contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
 
         prompt_entry = ContextEntry(
             text=self.prompt,
@@ -317,7 +320,7 @@ class Ai(commands.Cog, name=COG_UID):
         # conversation
         conversation_entry = ContextEntry(
             text=conversation,
-            prefix="",
+            prefix="\n<START>",
             suffix=f"\n{self.name}:",
             reserved_tokens=512,
             insertion_order=0,
@@ -330,20 +333,12 @@ class Ai(commands.Cog, name=COG_UID):
         )
         contextmgr.add_entry(conversation_entry)
 
-        return contextmgr.context(self.params.context_size)
+        return contextmgr.context(self.context_size)
 
     async def respond(self, conversation: str, message: Message):
-        did_respond = False
         async with message.channel.typing():
             encoded_image_label = ""
             debug_data = {}
-
-            if message.guild is not None:
-                map_users = message.channel.members
-                map_emojis = list(message.guild.emojis)
-            else:
-                map_users = [message.author, self.bot.user]
-                map_emojis = []
 
             debug_data["message"] = {
                 "id": message.id,
@@ -351,30 +346,24 @@ class Ai(commands.Cog, name=COG_UID):
                 "guild": message.guild.name if message.guild is not None else "DM",
                 "channel": message.channel.name if message.guild is not None else "DM",
                 "timestamp": message.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                "content": message.content,
+                "content_raw": message.content,
             }
 
-            if self.memory_store is not None:
+            if self.memory_store is not None and not isinstance(message.channel, DMChannel):
                 private_role = get_role_by_name(guild=message.guild, name="Private")
                 anonymous_role = get_role_by_name(guild=message.guild, name="Anonymous")
                 if private_role is not None and private_role not in message.author.roles:
-                    message_content = utils.convert_mentions_emotes(
-                        text=message.content, users=map_users, emojis=map_emojis
-                    )
-                    message_content = (
-                        re.sub(r"\<[^>]*\>", "", message_content.lstrip().rstrip()).lstrip().rstrip()
-                    )
-
                     if anonymous_role is not None and anonymous_role in message.author.roles:
                         author_name = "Deleted User"
                     else:
                         author_name = message.author.name
-                    encoded_user_message = f"{author_name}: {message_content}"
 
+                    message_content = self.get_msg_content_clean(message)
+                    encoded_user_message = f"{author_name}: {message_content}"
                     is_dupe = await self.memory_store.check_duplicates(
                         text=encoded_user_message, duplicate_ratio=0.8
                     )
-                    if not is_dupe:
+                    if message_content != "" and not is_dupe:
                         logger.info(f"adding message from {message.author} to memory as '{author_name}'")
                         await self.memory_store.add(
                             author_id=message.author.id,
@@ -391,12 +380,8 @@ class Ai(commands.Cog, name=COG_UID):
                         )
 
             debug_data["conversation"] = conversation.splitlines()
-            # Build conversation context
-            if message.guild:
-                conversation = utils.convert_mentions_emotes(
-                    text=conversation, users=map_users, emojis=map_emojis
-                )
 
+            # Build conversation context
             conversation = await self.build_ctx(conversation + encoded_image_label)
             debug_data["context"] = conversation.splitlines()
 
@@ -405,14 +390,16 @@ class Ai(commands.Cog, name=COG_UID):
             debug_data["response_raw"] = response
 
             # replace "<USER>" with user mention, same for "<BOT>"
-            response = response.replace("<USER>", message.author.mention)
-            response = response.replace("<BOT>", self.name)
+            response = re_user_token.sub(f"@{message.author.name}", response)
+            response = re_bot_token.sub(f"{self.name}", response)
 
             # Clean response - trim left whitespace and fix emojis and pings
             response = utils.cut_trailing_sentence(response)
             response = response.lstrip()
             if message.guild:
-                response = utils.restore_mentions_emotes(text=response, users=map_users, emojis=map_emojis)
+                response = utils.restore_mentions_emotes(
+                    text=response, users=message.channel.members, emojis=list(message.guild.emojis)
+                )
             debug_data["response"] = response
 
             # Send response if not empty
@@ -420,10 +407,10 @@ class Ai(commands.Cog, name=COG_UID):
                 logger.info(f"Response was empty.")
             else:
                 logger.info(f"Response: {response}")
-                did_respond = True
                 await message.channel.send(response)
+                self.last_response = datetime.utcnow()
 
-        if self.debug and did_respond:
+        if self.debug:
             message_time = message.created_at.astimezone(self.bot.timezone).strftime("%Y-%m-%dT%H:%M:%S%z")
             dump_file = self.debug_datadir.joinpath(f"msg-{message_time}-{message.id}.json")
             dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
@@ -473,37 +460,40 @@ class Ai(commands.Cog, name=COG_UID):
                 logger.info(
                     f"Got a DM from non-owner {message.author.name}#{message.author.discriminator}. Ignoring..."
                 )
-            return
+                return
         elif message.guild.id not in self.bot.config["ai_guilds"]:
             return
 
         try:
             logger.info(f"Raw message: {message.content}")
-            conversation = await self.get_msg_ctx(message.channel)
-            if message.channel.guild:
-                message_content = utils.convert_mentions_emotes(
-                    text=message.content,
-                    users=message.guild.members,
-                    emojis=list(message.guild.emojis),
-                )
-            message_content = re.sub(r"\<[^>]*\>", "", message.content.lower())
-
-            logger.info(f"Message: {message_content}")
-
-            if self.params.conditional_response is True:
-                if self.bot.user.mentioned_in(message) or any(
-                    t in message_content for t in self.params.nicknames
-                ):
-                    await self.respond(conversation, message)
-                elif await self.chatbot.should_respond_async(conversation, push_chain=False):
-                    await self.respond(conversation, message)
+            message_content = self.get_msg_content_clean(message)
+            if message_content == "":
+                logger.info("Message was empty after cleaning.")
+                return
             else:
-                if self.bot.user.mentioned_in(message) or any(
-                    t in message_content for t in self.params.nicknames
-                ):
+                logger.info(f"Message: {message_content}")
+
+            conversation = await self.get_msg_ctx(message.channel)
+
+            if self.bot.user.mentioned_in(message) or any(t in message_content for t in self.nicknames):
+                await self.respond(conversation, message)
+
+            elif (
+                message.channel.id in self.activity_channels
+                and self.last_response < datetime.utcnow() - timedelta(minutes=1)
+            ):
+                await self.respond(conversation, message)
+
+            elif isinstance(message.channel, DMChannel):
+                await self.respond(conversation, message)
+
+            elif self.conditional_response is True:
+                if await self.chatbot.should_respond_async(conversation, push_chain=False):
+                    logger.debug("Model wants to respond, responding...")
                     await self.respond(conversation, message)
-                elif isinstance(message.channel, DMChannel):
-                    await self.respond(conversation, message)
+                    return
+                else:
+                    logger.debug("No conditional response.")
 
         except Exception as e:
             logger.error(e)
@@ -512,11 +502,11 @@ class Ai(commands.Cog, name=COG_UID):
                 title="**Exception**",
                 description=str(f"**``{repr(e)}``**\n```{format_exc()}```"),
             )
-            if self.params.logging_channel_id == 0:
+            if self.logging_channel_id == 0:
                 await message.channel.send(embed=embed, delete_after=15.0)
             else:
                 if self.logging_channel is None:
-                    self.logging_channel = self.bot.get_channel(self.params.logging_channel_id)
+                    self.logging_channel = self.bot.get_channel(self.logging_channel_id)
                 if len(str(f"**Exception:** **``{repr(e)}``**\n```{format_exc()}```")) < 5900:
                     await self.logging_channel.send(embed=embed)
                 else:
@@ -531,23 +521,23 @@ class Ai(commands.Cog, name=COG_UID):
 
     @tasks.loop(seconds=21)
     async def idle_loop(self) -> None:
-        if self.params.idle_messaging is True:
+        if self.idle_messaging is True:
             # get last message in a random priority channel
-            channel: MessageChannel = self.bot.get_channel(random_choice(self.params.activity_channels))
+            channel: MessageChannel = self.bot.get_channel(random_choice(self.activity_channels))
             if channel is not None:
                 messages = await channel.history(limit=1).flatten()
                 message: Message = messages.pop()
-                idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
-
-                # logger.debug(f"last message ({idle_sec:.2f}s ago): [{message.author}]: {message.content}")
                 if message.author.bot is True:
                     return
 
-                if idle_sec >= self.params.idle_messaging_interval:
-                    # if it's been more than 5 minutes, send a response
-                    conversation = await self.get_msg_ctx(channel)
+                idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
+                if idle_sec >= self.idle_messaging_interval:
+                    if self.get_msg_content_clean(message) == "":
+                        return
+                    logger.debug(f"Running idle response to message {message.id}")
+                    # if it's been more than <idle_messaging_interval> sec, send a response
+                    conversation = await self.get_msg_ctx(message.channel)
                     await self.respond(conversation, message)
-                    logger.debug(f"Ran idle response to message ID {message.id}")
         else:
             return
 
@@ -570,6 +560,23 @@ class Ai(commands.Cog, name=COG_UID):
             if file_age >= seconds:
                 logger.debug(f"Archiving debug log {file.name}")
                 file = file.rename(file.parent / "archive" / file.name)
+
+    def get_msg_content_clean(self, message: Message) -> str:
+        if isinstance(message.channel, DMChannel):
+            message_content = utils.convert_mentions_emotes(
+                text=message.content,
+                users=[message.author, self.bot.user],
+                emojis=[],
+            )
+        else:
+            message_content = utils.convert_mentions_emotes(
+                text=message.content,
+                users=message.guild.members,
+                emojis=list(message.guild.emojis),
+            )
+
+        message_content = re_angle_bracket.sub("", message_content)
+        return message_content.lstrip()
 
 
 def setup(bot):

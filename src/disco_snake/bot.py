@@ -90,13 +90,11 @@ class DiscoSnake(commands.Bot):
         if self.userdata is not None and self.userdata_path.is_file():
             with self.userdata_path.open("w") as f:
                 json.dump(self.userdata, f, skipkeys=True, indent=2)
-            logger.debug("Flushed user states to disk")
 
     def load_userdata(self):
         if self.userdata_path.is_file():
             with self.userdata_path.open("r") as f:
                 self.userdata = json.load(f)
-            logger.debug("Loaded user states from disk")
 
     def save_guild_metadata(self, guild_id: int):
         guild = self.get_guild(guild_id)
