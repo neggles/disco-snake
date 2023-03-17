@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
@@ -59,6 +58,7 @@ logger = logsnake.setup_logger(
 re_angle_bracket = re.compile(r"\<([^>]*)\>")
 re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
+re_unescape_format = re.compile(r"\\([*_~`])")
 
 
 class Ai(commands.Cog, name=COG_UID):
@@ -195,7 +195,7 @@ class Ai(commands.Cog, name=COG_UID):
                 memories_entry = ContextEntry(
                     text=memories_ctx,
                     prefix="",
-                    suffix="",
+                    suffix="\n<START>\n",
                     reserved_tokens=0,
                     insertion_order=800,
                     insertion_position=-1,
@@ -209,7 +209,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         # conversation
         conversation_entry = ContextEntry(
-            text="\n<START>\n" + conversation,
+            text=conversation,
             prefix="",
             suffix=f"\n{self.name}:",
             reserved_tokens=512,
@@ -287,8 +287,7 @@ class Ai(commands.Cog, name=COG_UID):
             debug_data["response_raw"] = response
 
             # replace "<USER>" with user mention, same for "<BOT>"
-            response = re_user_token.sub(f"@{message.author.name}", response)
-            response = re_bot_token.sub(f"{self.name}", response)
+            response = self.fixup_bot_user_tokens(response, message)
 
             # Clean response - trim left whitespace and fix emojis and pings
             response = cut_trailing_sentence(response)
@@ -474,6 +473,15 @@ class Ai(commands.Cog, name=COG_UID):
         )
         message_content = re_angle_bracket.sub("", message_content)
         return message_content.lstrip()
+
+    def fixup_bot_user_tokens(self, response: str, message: Message) -> str:
+        """
+        Fix <USER>, <BOT>, etc tokens in the response, and unescape any escaped markdown formatting
+        """
+        response = re_user_token.sub(f"@{message.author.name}", response)
+        response = re_bot_token.sub(f"{self.name}", response)
+        response = re_unescape_format.sub(r"\1", response)
+        return response
 
 
 def setup(bot):
