@@ -1,10 +1,12 @@
-import aiohttp
-from typing import Optional, List, Any
-from pydantic import BaseModel
-from .util import tokenizer
-import requests
-import json
 import copy
+import json
+from typing import Any, List, Optional
+
+import aiohttp
+import requests
+from pydantic import BaseModel
+
+from shimeji.util import tokenizer
 
 
 class ModelGenArgs(BaseModel):
@@ -199,7 +201,8 @@ class SukimaModel(ModelProvider):
         :param endpoint_url: The URL for the Sukima endpoint.
         :type endpoint_url: str
         """
-
+        self.aioclient = aiohttp.ClientSession()
+        self.client = requests.Session()
         super().__init__(endpoint_url, **kwargs)
         self.auth()
 
@@ -213,16 +216,16 @@ class SukimaModel(ModelProvider):
             raise Exception("username, password, and or token are not in kwargs")
 
         try:
-            r = requests.post(
+            r = self.client.post(
                 f"{self.endpoint_url}/api/v1/users/token",
                 data={"username": self.kwargs["username"], "password": self.kwargs["password"]},
             )
+            if r.status_code == 200:
+                self.token = r.json()["access_token"]
+            else:
+                raise Exception(f"Could not authenticate with Sukima. Error: {r.text}")
         except Exception as e:
             raise e
-        if r.status_code == 200:
-            self.token = r.json()["access_token"]
-        else:
-            raise Exception(f"Could not authenticate with Sukima. Error: {r.text}")
 
     def conv_listobj_to_listdict(self, list_objects):
         """Convert the elements of a list to a dictionary for JSON compatability.
