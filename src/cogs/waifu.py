@@ -1,6 +1,6 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial as partial_func
 from pathlib import Path
 from random import uniform as rand_float
@@ -311,7 +311,9 @@ class Waifu(commands.Cog, name=COG_UID):
             raise e
 
         SD_DATADIR.joinpath(str(author.id)).mkdir(parents=True, exist_ok=True)
-        save_path = SD_DATADIR.joinpath(str(author.id), f"{round(datetime.utcnow().timestamp())}.png")
+        save_path = SD_DATADIR.joinpath(
+            str(author.id), f"{round(datetime.now(timezone.utc).timestamp())}.png"
+        )
         if nsfw is True:
             logger.info(f"NSFW content detected for {author.name} from prompt '{prompt}'")
             save_path = save_path.with_suffix(".nsfw.png")

@@ -13,7 +13,7 @@ from disnake import DMChannel, Embed, File, GroupChannel, Message, TextChannel, 
 from disnake.ext import commands, tasks
 from shimeji import ChatBot
 from shimeji.memory import array_to_str, memory_context
-from shimeji.memorystore_provider import PostgreSQLMemoryStore
+from shimeji.memory.providers import PostgresMemoryStore
 from shimeji.model_provider import SukimaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
@@ -66,7 +66,7 @@ class Ai(commands.Cog, name=COG_UID):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
         self.timezone = self.bot.timezone
-        self.last_response = datetime.utcnow() - timedelta(minutes=10)
+        self.last_response = datetime.now(timezone.utc) - timedelta(minutes=10)
 
         # Load config file
         self.cfg_path: Path = DATADIR_PATH.joinpath("ai", "config.json")
@@ -90,7 +90,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.debug: bool = self.config.params.debug
 
         # we will populate these later during async init
-        self.memory_store: PostgreSQLMemoryStore = None
+        self.memory_store: PostgresMemoryStore = None
         self.model_provider: SukimaModel = None
         self.chatbot: ChatBot = None
         self.logging_channel: Optional[TextChannel] = None
@@ -117,7 +117,7 @@ class Ai(commands.Cog, name=COG_UID):
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
         # Set up MemoryStoreProvider
-        self.memory_store = PostgreSQLMemoryStore(
+        self.memory_store = PostgresMemoryStore(
             database_uri=self.memory_store_cfg.database_uri,
             model=self.memory_store_cfg.model,
             model_layer=self.memory_store_cfg.model_layer,
@@ -201,10 +201,10 @@ class Ai(commands.Cog, name=COG_UID):
                 memories_entry = ContextEntry(
                     text=memories_ctx,
                     prefix="",
-                    suffix="\n<START>",
+                    suffix="\n",
                     reserved_tokens=0,
                     insertion_order=800,
-                    insertion_position=-1,
+                    insertion_position=0,
                     trim_direction=TRIM_DIR_TOP,
                     trim_type=TRIM_TYPE_SENTENCE,
                     insertion_type=INSERTION_TYPE_NEWLINE,
@@ -329,7 +329,7 @@ class Ai(commands.Cog, name=COG_UID):
             else:
                 logger.info(f"Response: {response}")
                 await message.channel.send(response)
-                self.last_response = datetime.utcnow()
+                self.last_response = datetime.now(timezone.utc)
 
         if self.debug:
             dump_file = self.debug_datadir.joinpath(f"msg-{message.id}-{msg_timestamp}.json")
@@ -402,11 +402,9 @@ class Ai(commands.Cog, name=COG_UID):
                 else:
                     logger.debug("No conditional response.")
 
-            elif (
-                message.channel.id in self.activity_channels
-                and self.last_response
-                < datetime.utcnow() - timedelta(seconds=(self.idle_messaging_interval / 2))
-            ):
+            elif message.channel.id in self.activity_channels and self.last_response < datetime.now(
+                timezone.utc
+            ) - timedelta(seconds=(self.idle_messaging_interval / 2)):
                 await self.respond(conversation, message)
 
         except Exception as e:
@@ -418,7 +416,7 @@ class Ai(commands.Cog, name=COG_UID):
                 return
 
             exc_desc = str(f"**``{exc_class}``**\n```{format_exc()}```")
-            error_file = self.debug_datadir.joinpath(f"error-{datetime.utcnow()}.txt")
+            error_file = self.debug_datadir.joinpath(f"error-{datetime.now(timezone.utc)}.txt")
             error_file.write_text(exc_desc)
 
             if len(exc_desc) < 2048:
