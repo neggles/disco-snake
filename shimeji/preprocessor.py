@@ -1,7 +1,7 @@
 from typing import List
 
 from shimeji.memory import memory_context, memory_sort
-from shimeji.memorystore_provider import MemoryStoreProvider
+from shimeji.memory.provider import MemoryStore
 from shimeji.util import *
 from transformers import PreTrainedTokenizer
 
@@ -27,11 +27,11 @@ class Preprocessor:
 class MemoryPreprocessor(Preprocessor):
     """A Preprocessor that builds the long-term memory context."""
 
-    def __init__(self, memorystore: MemoryStoreProvider, short_term: int, long_term: int):
+    def __init__(self, memorystore: MemoryStore, short_term: int, long_term: int):
         """Constructor for MemoryPreprocessor which uses the most recent memory as the present memory to build the long-term memory context.
 
         :param memorystore: The memory store to use.
-        :type memorystore: MemoryStoreProvider
+        :type memorystore: MemoryStore
         :param short_term: The number of short-term memories to use which will be left out of the long-term memory context.
         :type short_term: int
         :param long_term: The number of long-term memories to use.

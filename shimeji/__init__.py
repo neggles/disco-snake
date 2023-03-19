@@ -6,10 +6,10 @@ __copyright__ = "Copyright 2022 hitomi-team"
 
 __path__ = __import__("pkgutil").extend_path(__path__, __name__)
 
-from .shimeji import *
-from .model_provider import *
-from .preprocessor import *
-from .postprocessor import *
-from .memory import *
-from .memorystore_provider import *
-from .util import *
+from shimeji.shimeji import *
+from shimeji.model_provider import *
+from shimeji.preprocessor import *
+from shimeji.postprocessor import *
+from shimeji.memory import *
+from shimeji.memory.providers import *
+from shimeji.util import *

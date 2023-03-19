@@ -1,126 +1,22 @@
-import time
-from pydantic import BaseModel
 from difflib import SequenceMatcher
-from typing import Optional
-
-sukima_epoch = 1621123998
-
-
-def snowflake():
-    return int((time.time() - sukima_epoch) * 10**5)
-
-
-def to_snowflake(timestamp):
-    return int((timestamp - sukima_epoch) * 10**5)
-
-
-class Memory(BaseModel):
-    """
-    A BaseModel for representing a memory.
-    """
-
-    created_at: int
-    author_id: int
-    author: str
-    text: str
-    encoding_model: str
-    encoding: str
-
-
-class MemoryStoreProvider:
-    """
-    This is an abstract class that represents the interface that all MemoryStoreProviders would implement.
-    """
-
-    def __init__(self, *args, **kwargs):
-        """
-        Initialize a MemoryStoreProvider.
-        """
-        self.kwargs = kwargs
-
-    async def count(self) -> int:
-        """
-        Return the number of memories in the MemoryStore.
-
-        :return: The number of memories in the MemoryStore.
-        :rtype: int
-        """
-        raise NotImplementedError("count() is not implemented")
-
-    async def filter(self, exclude_duplicates: bool, exclude_duplicates_ratio: float = None):
-        """
-        Returns a list of memories from the MemoryStore.
-
-        :param exclude_duplicates: Exclude duplicate memories from the search.
-        :type exclude_duplicates: bool
-        :param exclude_duplicates_ratio: Exclude duplicates based upon Sequence Matching techniques. This can be set to None if that is not desired.
-        :type exclude_duplicates_ratio: float
-        """
-        raise NotImplementedError("filter() is not implemented")
-
-    async def create(self, memory: Memory) -> Optional[Memory]:
-        """
-        Add a memory directly to the MemoryStore.
-
-        :param memory: The memory to add to the MemoryStore.
-        :type Memory: Memory
-        """
-        raise NotImplementedError("set() is not implemented")
-
-    async def delete(self, memory: Memory) -> Optional[Memory]:
-        """
-        Delete a memory from the MemoryStore.
-
-        :param memory: The memory to delete from the MemoryStore.
-        :type Memory: Memory
-        """
-        raise NotImplementedError("delete() is not implemented")
-
-    async def add(self, author_id: int, author: str, text: str, encoding_model: str, encoding: str) -> Memory:
-        """
-        Create and add a memory to the MemoryStore.
-
-        :param author_id: The ID of the author of the memory.
-        :type author_id: int
-        :param author: The name of the author of the memory.
-        :type author: str
-        :param text: The text of the memory.
-        :type text: str
-        :param encoding_model: The name of the encoding model used to encode the memory.
-        :type encoding_model: str
-        :param encoding: The encoding of the memory.
-        :type encoding: str
-        :rtype: Memory
-        """
-        raise NotImplementedError("add() is not implemented")
-
-    async def check_duplicates(self, text: str, duplicate_ratio: float) -> bool:
-        """
-        Check if a memory is a duplicate.
-
-        :param text: The text of the memory.
-        :type text: str
-        :param duplicate_ratio: The ratio of the text that must match to be considered a duplicate.
-        :type duplicate_ratio: float
-        :rtype: bool
-        """
-        raise NotImplementedError("check_duplicates() is not implemented")
-
-
 from typing import AsyncIterator, List, Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+
+from shimeji.memory import Memory
+from shimeji.memory.provider import MemoryStore, snowflake
 from shimeji.sqlcrud import memory as memorydb
 
 
-class PostgreSQLMemoryStore(MemoryStoreProvider):
+class PostgresMemoryStore(MemoryStore):
     """
-    A MemoryStoreProvider using PostgreSQL.
+    A MemoryStore using PostgreSQL.
     """
 
     def __init__(self, database_uri: str, **kwargs):
         """
-        Initialize a PostgreSQLMemoryStore.
+        Initialize a PostgresMemoryStore.
 
         :param database_uri: The URI of the database to connect to.
         """
@@ -136,9 +32,9 @@ class PostgreSQLMemoryStore(MemoryStoreProvider):
 
     async def count(self) -> int:
         """
-        Return the number of memories in the PostgreSQLMemoryStore.
+        Return the number of memories in the PostgresMemoryStore.
 
-        :return: The number of memories in the PostgreSQLMemoryStore.
+        :return: The number of memories in the PostgresMemoryStore.
         :rtype: int
         """
         async with self.async_session() as session, session.begin():
@@ -175,9 +71,9 @@ class PostgreSQLMemoryStore(MemoryStoreProvider):
 
     async def create(self, memory: Memory) -> Optional[Memory]:
         """
-        Add a memory to the PostgreSQLMemoryStore.
+        Add a memory to the PostgresMemoryStore.
 
-        :param memory: The memory to add to the PostgreSQLMemoryStore.
+        :param memory: The memory to add to the PostgresMemoryStore.
         :type Memory: Memory
         :rtype: Memory
         """
@@ -194,9 +90,9 @@ class PostgreSQLMemoryStore(MemoryStoreProvider):
 
     async def delete(self, memory: Memory) -> Optional[Memory]:
         """
-        Delete a memory from the PostgreSQLMemoryStore. Only deletes based on the memory's created_at.
+        Delete a memory from the PostgresMemoryStore. Only deletes based on the memory's created_at.
 
-        :param memory: The memory to delete from the PostgreSQLMemoryStore.
+        :param memory: The memory to delete from the PostgresMemoryStore.
         :type Memory: Memory
         :rtype: Memory
         """

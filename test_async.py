@@ -1,22 +1,15 @@
 import asyncio
-import time
+
 from shimeji import ChatBot
-from shimeji.model_provider import (
-    ModelProvider,
-    SukimaModel,
-    TextSynth_ModelProvider,
-    ModelGenRequest,
-    ModelGenArgs,
-    ModelSampleArgs,
-)
-from shimeji.preprocessor import ContextPreprocessor
-from shimeji.postprocessor import NewlinePrunerPostprocessor
-from shimeji.memorystore_provider import PostgreSQLMemoryStore, Memory
 from shimeji.memory import array_to_str, memory_context, str_to_numpybin
+from shimeji.memory.providers import PostgresMemoryStore
+from shimeji.model_provider import ModelGenArgs, ModelGenRequest, ModelSampleArgs, SukimaModel
+from shimeji.postprocessor import NewlinePrunerPostprocessor
+from shimeji.preprocessor import ContextPreprocessor
 
 
 async def main():
-    ms = PostgreSQLMemoryStore(database_uri="postgresql+asyncpg://postgresql:postgresql@0.0.0.0:2027/eliza")
+    ms = PostgresMemoryStore(database_uri="postgresql+asyncpg://postgresql:postgresql@0.0.0.0:2027/eliza")
 
     gen_args = ModelGenArgs(max_length=100, min_length=1, eos_token_id=198)
     sample_args = ModelSampleArgs(temp=0.75, top_p=0.725, typical_p=0.95, rep_p=1.125)

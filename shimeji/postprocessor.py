@@ -13,7 +13,7 @@ class Postprocessor:
         raise NotImplementedError(f"{self.__class__} is an abstract class")
 
 
-class NewlinePrunerPostprocessor:
+class NewlinePrunerPostprocessor(Postprocessor):
     """Postprocessor that removes newlines."""
 
     def __call__(self, context: str) -> str:

@@ -1,7 +1,7 @@
 from shimeji import ChatBot
-from shimeji.model_provider import ModelProvider, SukimaModel, ModelGenRequest, ModelGenArgs, ModelSampleArgs
-from shimeji.preprocessor import ContextPreprocessor
+from shimeji.model_provider import ModelGenArgs, ModelGenRequest, ModelSampleArgs, SukimaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
+from shimeji.preprocessor import ContextPreprocessor
 
 gen_args = ModelGenArgs(max_length=100, min_length=1, eos_token_id=198)
 sample_args = ModelSampleArgs(temp=0.75, top_p=0.725, typical_p=0.95, rep_p=1.125)
