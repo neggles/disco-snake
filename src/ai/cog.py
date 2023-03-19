@@ -6,6 +6,7 @@ from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
 from typing import Any, Dict, List, Optional
+from dataclasses import asdict
 
 from dacite import from_dict
 from disnake import DMChannel, Embed, File, GroupChannel, Message, TextChannel, Thread, User
@@ -109,6 +110,10 @@ class Ai(commands.Cog, name=COG_UID):
     def prompt(self) -> str:
         return self.config.prompt
 
+    @property
+    def get_settings(self) -> dict:
+        return {}
+
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
         # Set up MemoryStoreProvider
@@ -155,22 +160,23 @@ class Ai(commands.Cog, name=COG_UID):
                 if content != "":
                     chain.append(f"{message.author.name}: [Embed: {content}]")
                 continue
-            elif message.content != "":
+            elif message.content:
                 content = self.get_msg_content_clean(message)
                 if content != "" and not "```" in content:
                     chain.append(f"{message.author.name}: {content}")
                 continue
             elif message:
                 chain.append(f"{message.author.name}: [Image attached]")
+        chain = [x for x in chain if x != ""]
         return "\n".join(chain)
 
     async def build_ctx(self, conversation: str):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
 
         prompt_entry = ContextEntry(
-            text=self.prompt + "\n\n<START>\n",
+            text=self.prompt,
             prefix="",
-            suffix="",
+            suffix="\n<START>",
             reserved_tokens=512,
             insertion_order=1000,
             insertion_position=-1,
@@ -195,7 +201,7 @@ class Ai(commands.Cog, name=COG_UID):
                 memories_entry = ContextEntry(
                     text=memories_ctx,
                     prefix="",
-                    suffix="\n<START>\n",
+                    suffix="\n<START>",
                     reserved_tokens=0,
                     insertion_order=800,
                     insertion_position=-1,
@@ -225,14 +231,15 @@ class Ai(commands.Cog, name=COG_UID):
 
         return contextmgr.context(self.context_size)
 
-    async def respond(self, conversation: str, message: Message):
+    async def respond(self, conversation: str, message: Message, trigger: str = None) -> str:
         async with message.channel.typing():
             encoded_image_label = ""
             debug_data: Dict[str, Any] = {}
 
             msg_timestamp = message.created_at.astimezone(tz=self.bot.timezone).strftime(
-                "%Y-%m-%d %H:%M:%S%z"
+                "%Y-%m-%d-%H:%M:%S%z"
             )
+            msg_trigger = trigger.lower() if trigger is not None else "unknown"
 
             debug_data["message"] = {
                 "id": message.id,
@@ -240,8 +247,16 @@ class Ai(commands.Cog, name=COG_UID):
                 "guild": f"{message.guild}" if message.guild is not None else "DM",
                 "channel": message.channel.name if not isinstance(message.channel, DMChannel) else "DM",
                 "timestamp": msg_timestamp,
+                "trigger": msg_trigger,
                 "content_raw": message.content,
             }
+
+            try:
+                debug_data["gensettings"] = asdict(self.model_provider_cfg)["gensettings"]
+                # remove bad_words from debug data because it's long and irrelevant
+                debug_data["gensettings"]["sample_args"]["bad_words"] = []
+            except Exception as e:
+                logger.error(f"Failed to get gensettings: {e}\n{format_exc()}")
 
             if self.memory_store is not None and message.guild is not None:
                 private_role = get_role_by_name(name="Private", guild=message.guild)
@@ -317,8 +332,7 @@ class Ai(commands.Cog, name=COG_UID):
                 self.last_response = datetime.utcnow()
 
         if self.debug:
-            message_time = message.created_at.astimezone(self.bot.timezone).strftime("%Y-%m-%d-%H%M%S%z")
-            dump_file = self.debug_datadir.joinpath(f"msg-{message_time}-{message.id}.json")
+            dump_file = self.debug_datadir.joinpath(f"msg-{message.id}-{msg_timestamp}.json")
             dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
             logger.debug(f"Dumped message debug data to {dump_file.name}")
 

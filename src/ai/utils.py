@@ -74,14 +74,11 @@ def fix_trailing_quotes(text: str) -> str:
 
 
 def fix_trailing_asterisk(text: str) -> str:
-    if text[0] == "*":
-        num_asterisks = text.count("*")
-        if num_asterisks % 2 == 0:
-            return text
-        else:
-            return text + "*"
-    else:
+    num_asterisks = text.count("*")
+    if num_asterisks % 2 == 0:
         return text
+    else:
+        return text + "*"
 
 
 def cut_trailing_sentence(text: str) -> str:
