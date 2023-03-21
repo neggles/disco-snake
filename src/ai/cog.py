@@ -176,7 +176,7 @@ class Ai(commands.Cog, name=COG_UID):
         prompt_entry = ContextEntry(
             text=self.prompt,
             prefix="",
-            suffix="\n<START>",
+            suffix="\n",
             reserved_tokens=512,
             insertion_order=1000,
             insertion_position=-1,
@@ -200,11 +200,11 @@ class Ai(commands.Cog, name=COG_UID):
                 )
                 memories_entry = ContextEntry(
                     text=memories_ctx,
-                    prefix="",
+                    prefix="<START>",
                     suffix="\n",
                     reserved_tokens=0,
                     insertion_order=800,
-                    insertion_position=0,
+                    insertion_position=-1,
                     trim_direction=TRIM_DIR_TOP,
                     trim_type=TRIM_TYPE_SENTENCE,
                     insertion_type=INSERTION_TYPE_NEWLINE,
@@ -216,7 +216,7 @@ class Ai(commands.Cog, name=COG_UID):
         # conversation
         conversation_entry = ContextEntry(
             text=conversation,
-            prefix="",
+            prefix="<START>",
             suffix=f"\n{self.name}:",
             reserved_tokens=512,
             insertion_order=0,
@@ -275,7 +275,7 @@ class Ai(commands.Cog, name=COG_UID):
                     is_dupe = await self.memory_store.check_duplicates(
                         text=encoded_user_message, duplicate_ratio=0.8
                     )
-                    if message_content != "" and not is_dupe:
+                    if self.is_memorable(message_content) and not is_dupe:
                         logger.info(f"adding message from {message.author} to memory as '{author_name}'")
                         await self.memory_store.add(
                             author_id=message.author.id,
@@ -339,7 +339,9 @@ class Ai(commands.Cog, name=COG_UID):
         # add to memory store in background
         if self.memory_store is not None:
             # encode bot response
-            if await self.memory_store.check_duplicates(text=response, duplicate_ratio=0.8) is False:
+            response = self.get_msg_content_clean(message, response)
+            is_dupe = await self.memory_store.check_duplicates(text=response, duplicate_ratio=0.8)
+            if response != "" and not is_dupe and self.is_memorable(response):
                 await self.memory_store.add(
                     author_id=self.bot.user.id,
                     author=self.name,
@@ -477,14 +479,27 @@ class Ai(commands.Cog, name=COG_UID):
                 logger.debug(f"Archiving debug log {file.name}")
                 file = file.rename(file.parent / "archive" / file.name)
 
-    def get_msg_content_clean(self, message: Message) -> str:
-        message_content = convert_mentions_emotes(
-            text=message.content,
-            users=message.mentions,
-            emojis=self.bot.emojis,
-        )
-        message_content = re_angle_bracket.sub("", message_content)
-        return message_content.lstrip()
+    def get_msg_content_clean(self, message: Message, content: str = None) -> str:
+        content = content if content is not None else message.content
+
+        if isinstance(message.channel, Thread):
+            member_ids = [x.id for x in message.channel.members]
+            content = convert_mentions_emotes(
+                text=content,
+                users=self.bot.loop.run_until_complete(
+                    message.channel.guild.get_or_fetch_members(member_ids)
+                ),
+                emojis=self.bot.emojis,
+            )
+        else:
+            content = convert_mentions_emotes(
+                text=content,
+                users=message.channel.members or message.mentions,
+                emojis=self.bot.emojis,
+            )
+        content = re_angle_bracket.sub("", content)
+        # if there's a codeblock in there, return an empty string
+        return content.lstrip() if "```" not in content else ""
 
     def fixup_bot_user_tokens(self, response: str, message: Message) -> str:
         """
@@ -494,6 +509,15 @@ class Ai(commands.Cog, name=COG_UID):
         response = re_bot_token.sub(f"{self.name}", response)
         response = re_unescape_format.sub(r"\1", response)
         return response
+
+    def is_memorable(self, text: str) -> bool:
+        """
+        Don't memorize messages with [] tags in them or code blocks etc
+        """
+        for string in self.model_provider_cfg.gensettings["sample_args"]["bad_words"]:
+            if string in text:
+                return False
+        return True if text != "" else False
 
 
 def setup(bot):
