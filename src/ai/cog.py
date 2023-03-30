@@ -147,6 +147,95 @@ class Ai(commands.Cog, name=COG_UID):
             logger.info("Starting log archive loop")
             self.log_archive_loop.start()
 
+    @commands.Cog.listener("on_ready")
+    async def on_ready(self):
+        if self.logging_channel is None and self.logging_channel_id is not None:
+            logger.info("Logging channel not found, attempting to find it...")
+            self.logging_channel = self.bot.get_channel(self.logging_channel_id)
+            logger.info(f"Logging channel found: {self.logging_channel}")
+        logger.info("Cog is ready.")
+
+    @commands.Cog.listener("on_message")
+    async def on_message(self, message: Message):
+        if (message.author.bot is True) or (message.author == self.bot.user):
+            return
+        if "```" in message.content:
+            return
+
+        # Ignore messages from unapproved users in DMs/groups
+        if isinstance(message.channel, (DMChannel, GroupChannel)):
+            if message.author.id not in self.bot.config["owners"]:
+                logger.info(
+                    f"Got a DM from non-owner {message.author.name}#{message.author.discriminator}. Ignoring..."
+                )
+                return
+        # Ignore threads
+        elif isinstance(message.channel, Thread):
+            return
+        # Ignore messages with no guild
+        elif message.guild is None:
+            return
+        elif message.guild.id not in self.bot.config["ai_guilds"]:
+            return
+
+        try:
+            logger.info(f"Raw message: {message.content}")
+            message_content = self.get_msg_content_clean(message)
+            if message_content == "":
+                logger.info("Message was empty after cleaning.")
+                return
+            else:
+                logger.info(f"Message: {message_content}")
+
+            conversation = await self.get_msg_ctx(message.channel)
+
+            if self.bot.user.mentioned_in(message) or any(t in message_content for t in self.nicknames):
+                await self.respond(conversation, message)
+
+            elif isinstance(message.channel, DMChannel) and len(message_content) > 8:
+                await self.respond(conversation, message)
+
+            elif self.conditional_response is True:
+                if await self.chatbot.should_respond_async(conversation, push_chain=False):
+                    logger.debug("Model wants to respond, responding...")
+                    await self.respond(conversation, message)
+                    return
+                else:
+                    logger.debug("No conditional response.")
+
+            elif message.channel.id in self.activity_channels and self.last_response < datetime.now(
+                timezone.utc
+            ) - timedelta(seconds=(self.idle_messaging_interval / 2)):
+                await self.respond(conversation, message)
+
+        except Exception as e:
+            logger.error(e)
+            logger.error(format_exc())
+            exc_class = get_full_class_name(e)
+            if exc_class == "HTTPException":
+                # don't bother, the backend is down
+                return
+
+            exc_desc = str(f"**``{exc_class}``**\n```{format_exc()}```")
+            error_file = self.debug_datadir.joinpath(f"error-{datetime.now(timezone.utc)}.txt")
+            error_file.write_text(exc_desc)
+
+            if len(exc_desc) < 2048:
+                embed = Embed(title="**Exception**", description=f"**``{exc_class}``**")
+                if self.logging_channel is not None:
+                    await self.logging_channel.send(embed=embed)
+                else:
+                    await message.channel.send(embed=embed, delete_after=300.0)
+            else:
+                embed = Embed(
+                    title="**Exception**",
+                    description="Exception too long for message, see attached file.",
+                )
+                if self.logging_channel is not None:
+                    await self.logging_channel.send(embed=embed, file=File(error_file))
+                else:
+                    await message.channel.send(embed=embed, file=File(error_file), delete_after=300.0)
+
     # build a context from the last 40 messages in the channel
     async def get_msg_ctx(self, channel: MessageChannel) -> str:
         messages = await channel.history(limit=40).flatten()
@@ -167,16 +256,8 @@ class Ai(commands.Cog, name=COG_UID):
                 continue
             elif message:
                 chain.append(f"{message.author.name}: [Image attached]")
-        chain = [x for x in chain if x != ""]
+        chain = [x.strip() for x in chain if x.strip() != ""]
         return "\n".join(chain)
-
-    @commands.Cog.listener("on_ready")
-    async def on_ready(self):
-        if self.logging_channel is None and self.logging_channel_id is not None:
-            logger.info("Logging channel not found, attempting to find it...")
-            self.logging_channel = self.bot.get_channel(self.logging_channel_id)
-            logger.info(f"Logging channel found: {self.logging_channel}")
-        logger.info("Cog is ready.")
 
     async def build_ctx(self, conversation: str):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
@@ -363,87 +444,6 @@ class Ai(commands.Cog, name=COG_UID):
                         )
                     ),
                 )
-
-    @commands.Cog.listener("on_message")
-    async def on_message(self, message: Message):
-        if (message.author.bot is True) or (message.author == self.bot.user):
-            return
-        if "```" in message.content:
-            return
-
-        # Ignore messages from unapproved users in DMs/groups
-        if isinstance(message.channel, (DMChannel, GroupChannel)):
-            if message.author.id not in self.bot.config["owners"]:
-                logger.info(
-                    f"Got a DM from non-owner {message.author.name}#{message.author.discriminator}. Ignoring..."
-                )
-                return
-        # Ignore threads
-        elif isinstance(message.channel, Thread):
-            return
-        # Ignore messages with no guild
-        elif message.guild is None:
-            return
-        elif message.guild.id not in self.bot.config["ai_guilds"]:
-            return
-
-        try:
-            logger.info(f"Raw message: {message.content}")
-            message_content = self.get_msg_content_clean(message)
-            if message_content == "":
-                logger.info("Message was empty after cleaning.")
-                return
-            else:
-                logger.info(f"Message: {message_content}")
-
-            conversation = await self.get_msg_ctx(message.channel)
-
-            if self.bot.user.mentioned_in(message) or any(t in message_content for t in self.nicknames):
-                await self.respond(conversation, message)
-
-            elif isinstance(message.channel, DMChannel) and len(message_content) > 8:
-                await self.respond(conversation, message)
-
-            elif self.conditional_response is True:
-                if await self.chatbot.should_respond_async(conversation, push_chain=False):
-                    logger.debug("Model wants to respond, responding...")
-                    await self.respond(conversation, message)
-                    return
-                else:
-                    logger.debug("No conditional response.")
-
-            elif message.channel.id in self.activity_channels and self.last_response < datetime.now(
-                timezone.utc
-            ) - timedelta(seconds=(self.idle_messaging_interval / 2)):
-                await self.respond(conversation, message)
-
-        except Exception as e:
-            logger.error(e)
-            logger.error(format_exc())
-            exc_class = get_full_class_name(e)
-            if exc_class == "HTTPException":
-                # don't bother, the backend is down
-                return
-
-            exc_desc = str(f"**``{exc_class}``**\n```{format_exc()}```")
-            error_file = self.debug_datadir.joinpath(f"error-{datetime.now(timezone.utc)}.txt")
-            error_file.write_text(exc_desc)
-
-            if len(exc_desc) < 2048:
-                embed = Embed(title="**Exception**", description=f"**``{exc_class}``**")
-                if self.logging_channel is not None:
-                    await self.logging_channel.send(embed=embed)
-                else:
-                    await message.channel.send(embed=embed, delete_after=300.0)
-            else:
-                embed = Embed(
-                    title="**Exception**",
-                    description="Exception too long for message, see attached file.",
-                )
-                if self.logging_channel is not None:
-                    await self.logging_channel.send(embed=embed, file=File(error_file))
-                else:
-                    await message.channel.send(embed=embed, file=File(error_file), delete_after=300.0)
 
     @tasks.loop(seconds=21)
     async def idle_loop(self) -> None:
