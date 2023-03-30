@@ -26,8 +26,8 @@ logging.root = logsnake.setup_logger(
     formatter=logfmt,
     logfile=LOGDIR_PATH.joinpath(f"{PACKAGE}-debug.log"),
     fileLoglevel=logging.INFO,
-    maxBytes=2 * MBYTE,
-    backupCount=2,
+    maxBytes=1 * MBYTE,
+    backupCount=3,
 )
 # setup package logger
 logger = logsnake.setup_logger(
@@ -37,8 +37,8 @@ logger = logsnake.setup_logger(
     formatter=logfmt,
     logfile=LOGDIR_PATH.joinpath(f"{PACKAGE}.log"),
     fileLoglevel=logging.DEBUG,
-    maxBytes=2 * MBYTE,
-    backupCount=2,
+    maxBytes=1 * MBYTE,
+    backupCount=3,
 )
 
 # install rich traceback handler
@@ -133,7 +133,9 @@ def start_bot(ctx: click.Context = None):
         USERDATA_PATH.write_text(json.dumps(userdata, indent=4))
 
     logger.info(f"Loaded configuration from {CONFIG_PATH}")
-    logger.debug(f"    {json.dumps(config, indent=4)}")
+
+    for key in config.keys():
+        logger.debug(f"    {key}: {json.dumps(config[key], default=str)}")
 
     bot.config = config
     bot.timezone = ZoneInfo(config["timezone"])

@@ -52,8 +52,8 @@ logger = logsnake.setup_logger(
     formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
     logfile=LOGDIR_PATH.joinpath(f"{COG_UID}.log"),
     fileLoglevel=logging.DEBUG,
-    maxBytes=2 * (2**20),
-    backupCount=2,
+    maxBytes=1 * (2**20),
+    backupCount=3,
 )
 
 re_angle_bracket = re.compile(r"\<([^>]*)\>")
@@ -170,11 +170,19 @@ class Ai(commands.Cog, name=COG_UID):
         chain = [x for x in chain if x != ""]
         return "\n".join(chain)
 
+    @commands.Cog.listener("on_ready")
+    async def on_ready(self):
+        if self.logging_channel is None and self.logging_channel_id is not None:
+            logger.info("Logging channel not found, attempting to find it...")
+            self.logging_channel = self.bot.get_channel(self.logging_channel_id)
+            logger.info(f"Logging channel found: {self.logging_channel}")
+        logger.info("Cog is ready.")
+
     async def build_ctx(self, conversation: str):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
 
         prompt_entry = ContextEntry(
-            text=self.prompt,
+            text=self.prompt + "\n<START>",
             prefix="",
             suffix="\n",
             reserved_tokens=512,
@@ -200,8 +208,8 @@ class Ai(commands.Cog, name=COG_UID):
                 )
                 memories_entry = ContextEntry(
                     text=memories_ctx,
-                    prefix="<START>",
-                    suffix="\n",
+                    prefix="",
+                    suffix="\n<START>",
                     reserved_tokens=0,
                     insertion_order=800,
                     insertion_position=-1,
@@ -216,7 +224,7 @@ class Ai(commands.Cog, name=COG_UID):
         # conversation
         conversation_entry = ContextEntry(
             text=conversation,
-            prefix="<START>",
+            prefix="",
             suffix=f"\n{self.name}:",
             reserved_tokens=512,
             insertion_order=0,
@@ -489,6 +497,12 @@ class Ai(commands.Cog, name=COG_UID):
                 users=self.bot.loop.run_until_complete(
                     message.channel.guild.get_or_fetch_members(member_ids)
                 ),
+                emojis=self.bot.emojis,
+            )
+        elif isinstance(message.channel, (DMChannel, GroupChannel)):
+            content = convert_mentions_emotes(
+                text=content,
+                users=[message.channel.me, message.channel.recipient, message.author],
                 emojis=self.bot.emojis,
             )
         else:
