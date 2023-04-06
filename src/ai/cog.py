@@ -1,15 +1,30 @@
 import json
 import logging
 import re
+from asyncio import sleep
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Dict, List, Optional
-from dataclasses import asdict
+from typing import Any, Dict, List, Optional, Union
 
 from dacite import from_dict
-from disnake import DMChannel, Embed, File, GroupChannel, Message, TextChannel, Thread, User
+from disnake import (
+    ApplicationCommandInteraction,
+    ChannelType,
+    Colour,
+    DMChannel,
+    Embed,
+    File,
+    GroupChannel,
+    Message,
+    StageChannel,
+    TextChannel,
+    Thread,
+    User,
+)
+from disnake.errors import Forbidden, HTTPException, NotFound
 from disnake.ext import commands, tasks
 from shimeji import ChatBot
 from shimeji.memory import array_to_str, memory_context
@@ -40,6 +55,7 @@ from ai.utils import (
 )
 from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
+from helpers import checks
 
 COG_UID = "ai"
 
@@ -290,7 +306,7 @@ class Ai(commands.Cog, name=COG_UID):
                 memories_entry = ContextEntry(
                     text=memories_ctx,
                     prefix="",
-                    suffix="\n<START>",
+                    suffix="\n",
                     reserved_tokens=0,
                     insertion_order=800,
                     insertion_position=-1,
@@ -306,7 +322,7 @@ class Ai(commands.Cog, name=COG_UID):
         conversation_entry = ContextEntry(
             text=conversation,
             prefix="",
-            suffix=f"\n{self.name}:",
+            suffix=f"\n<START>",
             reserved_tokens=512,
             insertion_order=0,
             insertion_position=-1,
@@ -532,6 +548,70 @@ class Ai(commands.Cog, name=COG_UID):
             if string in text:
                 return False
         return True if text != "" else False
+
+    @commands.slash_command(name="clear", dm_permission=True, guild_ids=[])
+    @checks.is_owner()
+    async def clear_messages(
+        self,
+        ctx: ApplicationCommandInteraction,
+        count: float = commands.Param(
+            name="count",
+            default=10.0,
+            ge=0.0,
+            le=250.0,
+            description="Number of messages to delete",
+        ),
+        clear_all: bool = commands.Param(
+            name="all",
+            default=False,
+            description="Clear all messages, not just ones I sent",
+        ),
+    ):
+        # send thinking message
+        await ctx.response.defer(ephemeral=True)
+
+        # make count an int
+        count = int(count)
+
+        # get channel info
+        channel: Union[DMChannel, TextChannel, GroupChannel, StageChannel] = await self.bot.fetch_channel(
+            ctx.channel.id
+        )
+        if isinstance(channel, Thread):
+            # don't even bother
+            await ctx.send("I can't delete messages in threads, sorry.", ephemeral=True)
+            return
+        elif isinstance(channel, (DMChannel, GroupChannel)):
+            clear_all = False
+
+        delet_self = 0
+        delet_other = 0
+        async for message in channel.history(limit=max(min(count, 250), 100)):
+            try:
+                if message.author.id == self.bot.user.id:
+                    await message.delete()
+                    delet_self += 1
+                elif clear_all is True:
+                    await message.delete()
+                    delet_other += 1
+            except Exception as e:
+                continue
+            finally:
+                if (delet_self + delet_other) >= count:
+                    break
+                await sleep(0.75)
+
+        deleted = delet_self + delet_other
+        delet_embed = Embed(title="Deletion complete", colour=Colour.red())
+        delet_embed.add_field(name="Requested", value=count, inline=True)
+        delet_embed.add_field(name="Deleted", value=deleted, inline=True)
+        delet_embed.add_field(name="All Users", value=clear_all, inline=True)
+        if clear_all is True:
+            delet_embed.add_field(name="From Self", value=delet_self, inline=True)
+            delet_embed.add_field(name="From Others", value=delet_other, inline=True)
+        delet_embed.set_footer(text=f"Requested by {ctx.author.name}")
+
+        await ctx.send(embed=delet_embed, ephemeral=True)
 
 
 def setup(bot):
