@@ -208,7 +208,7 @@ class Ai(commands.Cog, name=COG_UID):
             if self.bot.user.mentioned_in(message) or any(t in message_content for t in self.nicknames):
                 await self.respond(conversation, message)
 
-            elif isinstance(message.channel, DMChannel) and len(message_content) > 8:
+            elif isinstance(message.channel, DMChannel) and len(message_content) > 0:
                 await self.respond(conversation, message)
 
             elif self.conditional_response is True:
@@ -322,7 +322,7 @@ class Ai(commands.Cog, name=COG_UID):
         conversation_entry = ContextEntry(
             text=conversation,
             prefix="",
-            suffix=f"\n<START>",
+            suffix=f"\n{self.name}: ",
             reserved_tokens=512,
             insertion_order=0,
             insertion_position=-1,
@@ -612,6 +612,10 @@ class Ai(commands.Cog, name=COG_UID):
         delet_embed.set_footer(text=f"Requested by {ctx.author.name}")
 
         await ctx.send(embed=delet_embed, ephemeral=True)
+
+    # @commands.Cog.cog_slash_command_error()
+    # async def on_error(self, ctx: ApplicationCommandInteraction, error: Exception):
+    #     pass
 
 
 def setup(bot):
