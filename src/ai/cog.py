@@ -104,6 +104,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.logging_channel_id: int = self.config.params.logging_channel_id
         self.nicknames: List[str] = self.config.params.nicknames
         self.debug: bool = self.config.params.debug
+        self.memory_enable = self.config.params.memory_enable
 
         # we will populate these later during async init
         self.memory_store: PostgresMemoryStore = None
@@ -132,14 +133,20 @@ class Ai(commands.Cog, name=COG_UID):
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
-        # Set up MemoryStoreProvider
-        self.memory_store = PostgresMemoryStore(
-            database_uri=self.memory_store_cfg.database_uri,
-            model=self.memory_store_cfg.model,
-            model_layer=self.memory_store_cfg.model_layer,
-            short_term_amount=self.memory_store_cfg.short_term_amount,
-            long_term_amount=self.memory_store_cfg.long_term_amount,
-        )
+        if self.memory_enable:
+            # Set up MemoryStoreProvider
+            logger.debug("Memory Store is enabled, initializing...")
+            self.memory_store = PostgresMemoryStore(
+                database_uri=self.memory_store_cfg.database_uri,
+                model=self.memory_store_cfg.model,
+                model_layer=self.memory_store_cfg.model_layer,
+                short_term_amount=self.memory_store_cfg.short_term_amount,
+                long_term_amount=self.memory_store_cfg.long_term_amount,
+            )
+        else:
+            logger.debug("Memory Store is disabled, skipping...")
+            self.memory_store = None
+
         self.model_provider = get_sukima_model(cfg=self.model_provider_cfg)
         self.chatbot = ChatBot(
             name=self.name,
@@ -147,9 +154,11 @@ class Ai(commands.Cog, name=COG_UID):
             preprocessors=[ContextPreprocessor(self.context_size)],
             postprocessors=[NewlinePrunerPostprocessor()],
         )
+
         self.tokenizer = GPT2Tokenizer.from_pretrained(
             pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizer").as_posix(),
         )
+
         _logchannel = self.bot.get_channel(self.logging_channel_id)
         self.logging_channel = _logchannel if isinstance(_logchannel, (TextChannel, DMChannel)) else None
 
@@ -292,7 +301,7 @@ class Ai(commands.Cog, name=COG_UID):
         contextmgr.add_entry(prompt_entry)
 
         # memories
-        if self.memory_store is not None:
+        if self.memory_store is not None and self.memory_enable is True:
             memories = await self.memory_store.get()
             if not memories:
                 logger.info("No memories found.")
@@ -319,9 +328,10 @@ class Ai(commands.Cog, name=COG_UID):
                 contextmgr.add_entry(memories_entry)
 
         # conversation
+        conv_prefix = "\n<START>" if self.memory_store is not None and self.memory_enable is True else ""
         conversation_entry = ContextEntry(
             text=conversation,
-            prefix="\n<START>",
+            prefix=conv_prefix,
             suffix=f"\n{self.name}: ",
             reserved_tokens=512,
             insertion_order=0,

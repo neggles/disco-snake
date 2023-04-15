@@ -30,6 +30,7 @@ class BotParameters:
     logging_channel_id: int
     activity_channels: List[int]
     debug: bool
+    memory_enable: bool
 
 
 @dataclass
