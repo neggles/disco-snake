@@ -321,7 +321,7 @@ class Ai(commands.Cog, name=COG_UID):
         # conversation
         conversation_entry = ContextEntry(
             text=conversation,
-            prefix="",
+            prefix="\n<START>",
             suffix=f"\n{self.name}: ",
             reserved_tokens=512,
             insertion_order=0,
