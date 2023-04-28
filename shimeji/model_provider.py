@@ -260,7 +260,7 @@ class SukimaModel(ModelProvider):
         :raises Exception: If the request fails.
         """
 
-        args = {
+        argdict = {
             "model": args.model,
             "prompt": args.prompt,
             "sample_args": {
@@ -288,13 +288,13 @@ class SukimaModel(ModelProvider):
         try:
             r = requests.post(
                 f"{self.endpoint_url}/api/v1/models/generate",
-                data=json.dumps(args),
+                data=json.dumps(argdict),
                 headers={"Authorization": f"Bearer {self.token}"},
             )
         except Exception as e:
             raise e
         if r.status_code == 200:
-            return r.json()["output"][len(args["prompt"]) :]
+            return r.json()["output"][len(argdict["prompt"]) :]
         else:
             raise Exception(f"Could not generate text with Sukima. Error: {r.json()}")
 
@@ -308,7 +308,7 @@ class SukimaModel(ModelProvider):
         :raises Exception: If the request fails.
         """
 
-        args = {
+        argdict = {
             "model": args.model,
             "prompt": args.prompt,
             "sample_args": {
@@ -337,12 +337,12 @@ class SukimaModel(ModelProvider):
             try:
                 async with session.post(
                     f"{self.endpoint_url}/api/v1/models/generate",
-                    json=args,
+                    json=argdict,
                     headers={"Authorization": f"Bearer {self.token}"},
                 ) as resp:
                     if resp.status == 200:
                         js = await resp.json()
-                        return js["output"][len(args["prompt"]) :]
+                        return js["output"][len(argdict["prompt"]) :]
                     else:
                         raise Exception(f"Could not generate response. Error: {await resp.text()}")
             except Exception as e:
@@ -500,15 +500,16 @@ class EnmaModel(ModelProvider):
         :param endpoint_url: The URL for the Enma endpoint. (this is the completion endpoint on the gateway!)
         :type endpoint_url: str
         """
-
+        self.aioclient = aiohttp.ClientSession()
+        self.client = requests.Session()
         super().__init__(endpoint_url, **kwargs)
+        self.auth()
 
     def auth(self):
         """
         :drollwide:\n
         enma doesnt have authentication (at least on fab8e60) so this just returns true
         """
-
         return True
 
     def conv_listobj_to_listdict(self, list_objects):
@@ -551,7 +552,7 @@ class EnmaModel(ModelProvider):
 
         for arg in argdict.values():
             if arg is None:
-                raise Exception("Missing required argument: " + arg)
+                raise ValueError("Missing required argument: " + arg)
         try:
             r = requests.post(f"{self.endpoint_url}", data=json.dumps(argdict))
         except Exception as e:
@@ -585,7 +586,7 @@ class EnmaModel(ModelProvider):
         }
         for arg in argdict.values():
             if arg is None:
-                raise Exception("Missing required argument: " + arg)
+                raise ValueError("Missing required argument: " + arg)
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post(f"{self.endpoint_url}", json=argdict) as resp:
@@ -613,9 +614,9 @@ class EnmaModel(ModelProvider):
         args.sample_args.top_p = 0.9
         args.sample_args.top_k = 40
         args.sample_args.rep_p = None
-        args.sample_args.do_sample = None
+        args.sample_args.do_sample = True
         args.sample_args.penalty_alpha = None
-        args.sample_args.num_return_sequences = None  # i have no idea what these should be
+        args.sample_args.num_return_sequences = 1  # i have no idea what these should be
         args.sample_args.stop_sequence = None
         response = self.generate(args)
         if name in response:
@@ -639,9 +640,9 @@ class EnmaModel(ModelProvider):
         args.sample_args.top_p = 0.9
         args.sample_args.top_k = 40
         args.sample_args.rep_p = None
-        args.sample_args.do_sample = None
+        args.sample_args.do_sample = True
         args.sample_args.penalty_alpha = None
-        args.sample_args.num_return_sequences = None  # i have no idea what these should be
+        args.sample_args.num_return_sequences = 1  # i have no idea what these should be
         args.sample_args.stop_sequence = None
         response = await self.generate_async(args)
         if response.startswith(name):
