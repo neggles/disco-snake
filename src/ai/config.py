@@ -41,3 +41,4 @@ class ChatbotConfig:
     params: BotParameters
     memory_store: MemoryStoreConfig
     model_provider: ModelProviderConfig
+    bad_words: List[str] = []

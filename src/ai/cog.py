@@ -11,23 +11,21 @@ from typing import Any, Dict, List, Optional, Union
 
 from dacite import from_dict
 from disnake import (
-    ApplicationCommandInteraction,
-    Colour,
     DMChannel,
     Embed,
     File,
     GroupChannel,
     Message,
-    StageChannel,
     TextChannel,
     Thread,
     User,
 )
 from disnake.ext import commands, tasks
+from Levenshtein import distance as lev_distance
 from shimeji import ChatBot
 from shimeji.memory import array_to_str, memory_context
 from shimeji.memory.providers import PostgresMemoryStore
-from shimeji.model_provider import SukimaModel, EnmaModel
+from shimeji.model_provider import EnmaModel, SukimaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
 from shimeji.util import (
@@ -41,7 +39,7 @@ from transformers import GPT2Tokenizer
 
 import logsnake
 from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
-from ai.model import get_sukima_model, get_enma_model
+from ai.model import get_enma_model, get_sukima_model
 from ai.types import MessageChannel
 from ai.utils import (
     anti_spam,
@@ -74,6 +72,7 @@ re_angle_bracket = re.compile(r"\<([^>]*)\>")
 re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
 re_unescape_format = re.compile(r"\\([*_~`])")
+re_strip_special = re.compile(r"[^a-zA-Z0-9]+")
 
 
 class Ai(commands.Cog, name=COG_UID):
@@ -112,6 +111,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.logging_channel: Optional[TextChannel] = None
         self.guilds: dict = {}
         self.tokenizer: GPT2Tokenizer = None
+        self.bad_words: List[str] = self.config.bad_words
 
         # somewhere to put the last context we generated for debugging
         self.debug_datadir: Path = LOGDIR_PATH.joinpath("ai")
@@ -125,10 +125,6 @@ class Ai(commands.Cog, name=COG_UID):
     @property
     def prompt(self) -> str:
         return self.config.prompt
-
-    @property
-    def get_settings(self) -> dict:
-        return {}
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -281,7 +277,7 @@ class Ai(commands.Cog, name=COG_UID):
                 continue
             elif message.content:
                 content = self.get_msg_content_clean(message)
-                if content != "" and not "```" in content:
+                if content != "" and "```" not in content:
                     chain.append(f"{message.author.name}: {content}")
                 continue
             elif message:
@@ -445,7 +441,7 @@ class Ai(commands.Cog, name=COG_UID):
 
             # Send response if not empty
             if response == "":
-                logger.info(f"Response was empty.")
+                logger.info("Response was empty.")
             else:
                 logger.info(f"Response: {response}")
                 await message.channel.send(response)
@@ -564,73 +560,21 @@ class Ai(commands.Cog, name=COG_UID):
                 return False
         return True if text != "" else False
 
-    @commands.slash_command(name="clear", dm_permission=True, guild_ids=[])
-    @checks.is_owner()
-    async def clear_messages(
-        self,
-        ctx: ApplicationCommandInteraction,
-        count: float = commands.Param(
-            name="count",
-            default=10.0,
-            ge=0.0,
-            le=250.0,
-            description="Number of messages to delete",
-        ),
-        clear_all: bool = commands.Param(
-            name="all",
-            default=False,
-            description="Clear all messages, not just ones I sent",
-        ),
-    ):
-        # send thinking message
-        await ctx.response.defer(ephemeral=True)
+    def like_bad_word(self, input: str) -> str:
+        found_words: List[str] = []
+        input_words: str = input.split()
 
-        # make count an int
-        count = int(count)
-
-        # get channel info
-        channel: Union[DMChannel, TextChannel, GroupChannel, StageChannel] = await self.bot.fetch_channel(
-            ctx.channel.id
-        )
-        if isinstance(channel, Thread):
-            # don't even bother
-            await ctx.send("I can't delete messages in threads, sorry.", ephemeral=True)
-            return
-        elif isinstance(channel, (DMChannel, GroupChannel)):
-            clear_all = False
-
-        delet_self = 0
-        delet_other = 0
-        async for message in channel.history(limit=max(min(count, 250), 100)):
-            try:
-                if message.author.id == self.bot.user.id:
-                    await message.delete()
-                    delet_self += 1
-                elif clear_all is True:
-                    await message.delete()
-                    delet_other += 1
-            except Exception as e:
-                continue
-            finally:
-                if (delet_self + delet_other) >= count:
-                    break
-                await sleep(0.75)
-
-        deleted = delet_self + delet_other
-        delet_embed = Embed(title="Deletion complete", colour=Colour.red())
-        delet_embed.add_field(name="Requested", value=count, inline=True)
-        delet_embed.add_field(name="Deleted", value=deleted, inline=True)
-        delet_embed.add_field(name="All Users", value=clear_all, inline=True)
-        if clear_all is True:
-            delet_embed.add_field(name="From Self", value=delet_self, inline=True)
-            delet_embed.add_field(name="From Others", value=delet_other, inline=True)
-        delet_embed.set_footer(text=f"Requested by {ctx.author.name}")
-
-        await ctx.send(embed=delet_embed, ephemeral=True)
-
-    # @commands.Cog.cog_slash_command_error()
-    # async def on_error(self, ctx: ApplicationCommandInteraction, error: Exception):
-    #     pass
+        for word in input_words:
+            word_stripped: str = re_strip_special.sub("", word).lower()
+            word_len = len(word_stripped)
+            if word_len > 2:
+                threshold = 2 if word_len > 6 else 1 if word_len > 4 else 0
+                for bad_word in self.bad_words:
+                    if lev_distance(word_stripped, bad_word) <= threshold:
+                        found_words.append(f"{word} (like {bad_word})")
+        if len(found_words) > 0:
+            logger.warn(f"Found bad words: {' | '.join(found_words)}")
+        return found_words
 
 
 def setup(bot):

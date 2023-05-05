@@ -1,8 +1,12 @@
 import re
+from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Any, List, Optional, Tuple, Union
+from zoneinfo import ZoneInfo
 
-from disnake import Emoji, Guild, Message, Role, Member, User
+import Levenshtein as lev
+from disnake import Emoji, Guild, Member, Message, Role, User
+from humanize import naturaltime
 
 from ai.types import ListOfUsers
 
@@ -133,3 +137,43 @@ def get_item(obj, key):
         return obj[key]
     else:
         return None
+
+
+def get_levenshtein_distance(src: str, tgt: str, **kwargs) -> int:
+    return lev.distance(src, tgt, **kwargs)
+
+
+def get_subst_cost(c1: str, c2: str) -> int:
+    if len(c1) > 1 or len(c2) > 1:
+        raise ValueError("Expected single characters")
+    return 0 if c1 == c2 else 1 if c1.isalpha() == c2.isalpha() else 2
+
+
+# timezone maps for below
+TZ_MAP = {
+    "aest": ZoneInfo("Australia/Melbourne"),
+    "jst": ZoneInfo("Asia/Tokyo"),
+    "pst": ZoneInfo("America/Los_Angeles"),
+    "est": ZoneInfo("America/New_York"),
+}
+
+
+def get_current_time(tzname: str) -> str:
+    if tzname not in TZ_MAP.keys():
+        try:
+            tzname = ZoneInfo(tzname)
+        except Exception as e:
+            raise ValueError(f"Unmapped timezone: {tzname}") from e
+    return datetime.now(tz=TZ_MAP[tzname]).strftime("%H:%M")
+
+
+def time_of_day_word(time: datetime) -> str:
+    hour = time.hour
+    if hour in range(5, 12):
+        return "morning"
+    elif hour in range(12, 18):
+        return "afternoon"
+    elif hour in range(18, 22):
+        return "evening"
+    else:
+        return "night"
