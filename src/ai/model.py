@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 
-from shimeji.model_provider import ModelGenArgs, ModelGenRequest, ModelSampleArgs, SukimaModel
+from shimeji.model_provider import ModelGenArgs, ModelGenRequest, ModelSampleArgs, SukimaModel, EnmaModel
 
 from ai.config import ModelProviderConfig
 
@@ -33,3 +33,22 @@ def get_sukima_model(cfg: ModelProviderConfig) -> SukimaModel:
         password=cfg.password,
         args=request,
     )
+
+
+def get_enma_model(cfg: ModelProviderConfig) -> EnmaModel:
+    # load model provider gen_args into basemodel
+    gen_settings = ModelGenSettings(**cfg.gensettings)
+
+    request = ModelGenRequest(
+        model=gen_settings.model,
+        prompt="",
+        sample_args=gen_settings.sample_args,
+        gen_args=gen_settings.gen_args,
+    )
+
+    return EnmaModel(
+        endpoint_url=cfg.endpoint,
+        args=request,
+    )
+
+    pass

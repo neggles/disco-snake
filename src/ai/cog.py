@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional, Union
 from dacite import from_dict
 from disnake import (
     ApplicationCommandInteraction,
-    ChannelType,
     Colour,
     DMChannel,
     Embed,
@@ -24,12 +23,11 @@ from disnake import (
     Thread,
     User,
 )
-from disnake.errors import Forbidden, HTTPException, NotFound
 from disnake.ext import commands, tasks
 from shimeji import ChatBot
 from shimeji.memory import array_to_str, memory_context
 from shimeji.memory.providers import PostgresMemoryStore
-from shimeji.model_provider import SukimaModel
+from shimeji.model_provider import SukimaModel, EnmaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
 from shimeji.util import (
@@ -43,7 +41,7 @@ from transformers import GPT2Tokenizer
 
 import logsnake
 from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
-from ai.model import get_sukima_model
+from ai.model import get_sukima_model, get_enma_model
 from ai.types import MessageChannel
 from ai.utils import (
     anti_spam,
@@ -108,7 +106,8 @@ class Ai(commands.Cog, name=COG_UID):
 
         # we will populate these later during async init
         self.memory_store: PostgresMemoryStore = None
-        self.model_provider: SukimaModel = None
+        self.model_provider: Union[SukimaModel, EnmaModel] = None
+        self.model_provider_type: str = self.model_provider_cfg.type
         self.chatbot: ChatBot = None
         self.logging_channel: Optional[TextChannel] = None
         self.guilds: dict = {}
@@ -147,7 +146,13 @@ class Ai(commands.Cog, name=COG_UID):
             logger.debug("Memory Store is disabled, skipping...")
             self.memory_store = None
 
-        self.model_provider = get_sukima_model(cfg=self.model_provider_cfg)
+        if self.model_provider_type == "sukima":
+            self.model_provider = get_sukima_model(cfg=self.model_provider_cfg)
+        elif self.model_provider_type == "enma":
+            self.model_provider = get_enma_model(cfg=self.model_provider_cfg)
+        else:
+            raise ValueError(f"Unknown model provider type: {self.model_provider_type}")
+
         self.chatbot = ChatBot(
             name=self.name,
             model_provider=self.model_provider,

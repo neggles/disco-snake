@@ -1,13 +1,14 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
 class ModelProviderConfig:
     endpoint: str
-    username: str
-    password: str
     gensettings: dict
+    type: str = "sukima"
+    username: Optional[str] = None
+    password: Optional[str] = None
 
 
 # configuration dataclasses
