@@ -1,53 +1,75 @@
 {
-  "editor.insertSpaces": true,
-  "editor.tabSize": 4,
-  "editor.rulers": [100, 120],
-  "files.trimTrailingWhitespace": true,
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "editor.rulers": [100, 120],
 
-  "search.exclude": {
-    "**/node_modules": true,
-    "**/bower_components": true,
-    "**/*.code-search": true,
-    "**/.venv": true
-  },
+    "files.trimTrailingWhitespace": true,
+    "files.associations": {
+        ".clang-format": "yaml",
+        ".config": "shellscript",
+        ".gitignore": "gitignore",
+        ".vscode/*.json": "jsonc",
+        "*.sh.tmpl": "jinja-shell",
+        "*.txt": "plaintext",
+        "requirements*.txt": "pip-requirements",
+        "setup.cfg": "ini",
+        "ssh_config": "ssh_config"
+    },
 
-  "[python]": {
-    "editor.wordBasedSuggestions": false,
-    "editor.formatOnSave": true,
-    "editor.formatOnSaveMode": "file",
-    "editor.semanticHighlighting.enabled": true
-  },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/bower_components": true,
+        "**/*.code-search": true,
+        "**/.venv": true
+    },
 
-  "python.formatting.provider": "black",
-  "python.formatting.blackArgs": [
-    "--config=${workspaceFolder}/pyproject.toml",
-    "--line-length=110"
-  ],
-  "python.linting.enabled": true,
-  "python.linting.pylintEnabled": false,
-  "python.linting.mypyEnabled": false,
-  "python.linting.flake8Enabled": true,
-  "python.linting.flake8Args": [
-    "--config=${workspaceFolder}/setup.cfg",
-    "--max-line-length=110"
-  ],
+    "[python]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.codeActionsOnSave": {
+            "source.fixAll": true,
+            "source.organizeImports": true
+        }
+    },
+    "ruff.args": ["--line-length=110", "--extend-ignore=F401,F841,E501"],
+    "python.formatting.provider": "none",
+    "black-formatter.args": ["--line-length=110"],
+    "python.linting.enabled": false,
+    "python.linting.flake8Enabled": false,
+    "python.linting.mypyEnabled": false,
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Args": [
+        "--config=${workspaceFolder}/setup.cfg",
+        "--max-line-length=110"
+    ],
 
-  "[json]": {
-    "editor.formatOnSave": true,
-    "editor.tabSize": 2
-  },
+    "[json]": {
+        "editor.codeActionsOnSave": {
+            "source.fixAll.sortJSON": false
+        },
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4
+    },
+    "[jsonc]": {
+        "editor.codeActionsOnSave": {
+            "source.fixAll.sortJSON": false
+        },
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4
+    },
+    "json.format.keepLines": true,
 
-  "[toml]": {
-    "editor.formatOnSave": true,
-    "editor.tabSize": 2
-  },
-
-  "[markdown]": {
-    "files.trimTrailingWhitespace": false
-  },
-
-  "[makefile]": {
-    "editor.insertSpaces": false,
-    "editor.tabSize": 8
-  }
+    "[toml]": {
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2
+    },
+    "[markdown]": {
+        "files.trimTrailingWhitespace": false
+    },
+    "[makefile]": {
+        "editor.insertSpaces": false,
+        "editor.tabSize": 8
+    }
 }

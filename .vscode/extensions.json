@@ -1,0 +1,16 @@
+{
+    "recommendations": [
+        "charliermarsh.ruff",
+        "donjayamanne.python-environment-manager",
+        "editorconfig.editorconfig",
+        "elagil.pre-commit-helper",
+        "esbenp.prettier-vscode",
+        "foxundermoon.shell-format",
+        "matangover.mypy",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "ms-python.python",
+        "redhat.vscode-yaml",
+        "tamasfe.even-better-toml",
+    ]
+}
