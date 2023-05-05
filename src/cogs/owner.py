@@ -1,10 +1,22 @@
 import json
 import logging
+from asyncio import sleep
+from typing import Union
 
 import disnake
-from disnake import ApplicationCommandInteraction, Option, OptionType
+from disnake import (
+    ApplicationCommandInteraction,
+    Colour,
+    DMChannel,
+    Embed,
+    GroupChannel,
+    Option,
+    OptionType,
+    StageChannel,
+    TextChannel,
+    Thread,
+)
 from disnake.ext import commands
-
 from helpers import checks, json_manager
 
 logger = logging.getLogger(__package__)
@@ -127,6 +139,70 @@ class Owner(commands.Cog, name="owner"):
             )
             await ctx.send(embed=embed)
             print(exception)
+
+    @commands.slash_command(name="clear", dm_permission=True, guild_ids=[])
+    @checks.is_owner()
+    async def clear_messages(
+        self,
+        ctx: ApplicationCommandInteraction,
+        count: float = commands.Param(
+            name="count",
+            default=10.0,
+            ge=0.0,
+            le=250.0,
+            description="Number of messages to delete",
+        ),
+        clear_all: bool = commands.Param(
+            name="all",
+            default=False,
+            description="Clear all messages, not just ones I sent",
+        ),
+    ):
+        # send thinking message
+        await ctx.response.defer(ephemeral=True)
+
+        # make count an int
+        count = int(count)
+
+        # get channel info
+        channel: Union[DMChannel, TextChannel, GroupChannel, StageChannel] = await self.bot.fetch_channel(
+            ctx.channel.id
+        )
+        if isinstance(channel, Thread):
+            # don't even bother
+            await ctx.send("I can't delete messages in threads, sorry.", ephemeral=True)
+            return
+        elif isinstance(channel, (DMChannel, GroupChannel)):
+            clear_all = False
+
+        delet_self = 0
+        delet_other = 0
+        async for message in channel.history(limit=max(min(count, 250), 100)):
+            try:
+                if message.author.id == self.bot.user.id:
+                    await message.delete()
+                    delet_self += 1
+                elif clear_all is True:
+                    await message.delete()
+                    delet_other += 1
+            except Exception as e:
+                continue
+            finally:
+                if (delet_self + delet_other) >= count:
+                    break
+                await sleep(0.75)
+
+        deleted = delet_self + delet_other
+        delet_embed = Embed(title="Deletion complete", colour=Colour.red())
+        delet_embed.add_field(name="Requested", value=count, inline=True)
+        delet_embed.add_field(name="Deleted", value=deleted, inline=True)
+        delet_embed.add_field(name="All Users", value=clear_all, inline=True)
+        if clear_all is True:
+            delet_embed.add_field(name="From Self", value=delet_self, inline=True)
+            delet_embed.add_field(name="From Others", value=delet_other, inline=True)
+        delet_embed.set_footer(text=f"Requested by {ctx.author.name}")
+
+        await ctx.send(embed=delet_embed, ephemeral=True)
 
 
 def setup(bot):
