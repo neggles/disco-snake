@@ -75,7 +75,7 @@ class ModelSampleArgs(BaseModel, DictJsonMixin):
 
 
 class ModelGenRequest(BaseModel, DictJsonMixin):
-    model: str
+    model: Optional[str]
     prompt: str
     softprompt: Optional[str] = None
     sample_args: ModelSampleArgs
@@ -872,7 +872,7 @@ class OobaModel(ModelProvider):
             args: ModelGenRequest = self.convert_gen_request(args)
 
         try:
-            r = requests.post(f"{self.endpoint_url}", data=args.asjson())
+            r = requests.post(f"{self.endpoint_url}/api/v1/generate", data=args.asjson())
             r.raise_for_status()
         except Exception as e:
             raise e
@@ -891,7 +891,9 @@ class OobaModel(ModelProvider):
         if isinstance(args, (ModelGenRequest, Dict[str, Any])):
             args: ModelGenRequest = self.convert_gen_request(args)
             try:
-                async with self.session.post(f"{self.endpoint_url}", json=args.asjson()) as resp:
+                async with self.session.post(
+                    f"{self.endpoint_url}/api/v1/generate", json=args.asjson()
+                ) as resp:
                     if resp.status == 200:
                         ret = await resp.json()
                         return ret["results"]["text"]

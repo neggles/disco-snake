@@ -1,4 +1,8 @@
-from typing import Any, List
+from typing import Any, Generic, List, Optional, Type, TypeVar
+
+from pydantic import BaseModel
+from sqlalchemy import BigInteger, Column, Integer, String, Table, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
 
 
@@ -11,9 +15,6 @@ class Base:
     @declared_attr
     def __tablename__(cls) -> str:
         return cls.__name__.lower()
-
-
-from sqlalchemy import Column, String, Table, BigInteger, Integer, func
 
 
 # models
@@ -32,11 +33,7 @@ class MemorySQL(Base):
 
 
 # crud
-from typing import Any, Generic, Optional, Type, TypeVar
 
-from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 ModelType = TypeVar("ModelType", bound=Base)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)

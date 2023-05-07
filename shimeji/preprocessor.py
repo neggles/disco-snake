@@ -2,7 +2,23 @@ from typing import List
 
 from shimeji.memory import memory_context, memory_sort
 from shimeji.memory.provider import MemoryStore
-from shimeji.util import *
+from shimeji.util import (
+    TRIM_DIR_TOP,
+    TRIM_DIR_BOTTOM,
+    TRIM_DIR_NONE,
+    TRIM_TYPE_NEWLINE,
+    TRIM_TYPE_SENTENCE,
+    TRIM_TYPE_TOKEN,
+    INSERTION_TYPE_NEWLINE,
+    INSERTION_TYPE_SENTENCE,
+    INSERTION_TYPE_TOKEN,
+    split_into_sentences,
+    trim_newlines,
+    trim_sentences,
+    trim_tokens,
+    ContextEntry,
+    tokenizer,
+)
 from transformers import PreTrainedTokenizer
 
 

@@ -1,9 +1,9 @@
 from typing import Optional
 from datetime import datetime, timezone
 
-EPOCH = 1621123998
-
 from shimeji.memory import Memory
+
+EPOCH = 1621123998
 
 
 def snowflake():
