@@ -173,6 +173,7 @@ class Ai(commands.Cog, name=COG_UID):
         else:
             raise ValueError(f"Unknown model provider type: {self.model_provider_type}")
 
+        logger.debug("Initializing ChatBot object")
         self.chatbot = ChatBot(
             name=self.name,
             model_provider=self.model_provider,
@@ -180,11 +181,13 @@ class Ai(commands.Cog, name=COG_UID):
             postprocessors=[NewlinePrunerPostprocessor()],
         )
 
+        logger.debug("Initializing Tokenizer...")
         self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizer").as_posix(),
             local_files_only=True,
         )
 
+        logger.debug("Setting logging channel...")
         _logchannel = self.bot.get_channel(self.logging_channel_id)
         self.logging_channel = _logchannel if isinstance(_logchannel, (TextChannel, DMChannel)) else None
 
