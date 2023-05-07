@@ -1,6 +1,6 @@
 import copy
 import json
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
 import requests
@@ -9,7 +9,15 @@ from pydantic import BaseModel
 from shimeji.util import tokenizer
 
 
-class ModelGenArgs(BaseModel):
+class DictJsonMixin:
+    def asdict(self, *args, **kwargs) -> Dict[str, Any]:
+        return self.dict(*args, **kwargs)
+
+    def asjson(self, *args, **kwargs):
+        return json.dumps(self.dict(*args, **kwargs))
+
+
+class ModelGenArgs(BaseModel, DictJsonMixin):
     max_length: int
     max_time: Optional[float] = None
     min_length: Optional[int] = None
@@ -17,29 +25,28 @@ class ModelGenArgs(BaseModel):
     logprobs: Optional[int] = None
     best_of: Optional[int] = None
 
-    def toJSON(self):
-        return json.dumps(self.dict())
+    # text-generation-webui specific
+    seed: Optional[int] = None
+    add_bos_token: Optional[bool] = None
+    truncation_length: Optional[int] = None
+    ban_eos_token: Optional[bool] = None
+    skip_special_tokens: Optional[bool] = None
+    stopping_strings: Optional[List[str]] = None
 
 
-class ModelLogitBiasArgs(BaseModel):
+class ModelLogitBiasArgs(BaseModel, DictJsonMixin):
     id: int
     bias: float
 
-    def toJSON(self):
-        return json.dumps(self.dict())
 
-
-class ModelPhraseBiasArgs(BaseModel):
+class ModelPhraseBiasArgs(BaseModel, DictJsonMixin):
     sequences: List[str]
     bias: float
     ensure_sequence_finish: bool
     generate_once: bool
 
-    def toJSON(self):
-        return json.dumps(self.dict())
 
-
-class ModelSampleArgs(BaseModel):
+class ModelSampleArgs(BaseModel, DictJsonMixin):
     temp: Optional[float] = None
     top_p: Optional[float] = None
     top_a: Optional[float] = None
@@ -59,37 +66,58 @@ class ModelSampleArgs(BaseModel):
     num_return_sequences: Optional[int] = None
     stop_sequence: Optional[str] = None
 
-    def toJSON(self):
-        return json.dumps(self.dict())
+    # text-generation-webui specific (mostly contrastive search)
+    no_repeat_ngram_size: Optional[int] = None
+    num_beams: Optional[int] = None
+    penalty_alpha: Optional[float] = None
+    length_penalty: Optional[float] = None
+    early_stopping: Optional[bool] = None
 
 
-class ModelGenRequest(BaseModel):
+class ModelGenRequest(BaseModel, DictJsonMixin):
     model: str
     prompt: str
     softprompt: Optional[str] = None
     sample_args: ModelSampleArgs
     gen_args: ModelGenArgs
 
-    def __init__(__pydantic_self__, **data: Any) -> None:
-        super().__init__(**data)
+    def __init__(__pydantic_self__, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         if __pydantic_self__.sample_args is None:
             __pydantic_self__.sample_args = ModelSampleArgs()
         if __pydantic_self__.gen_args is None:
             __pydantic_self__.gen_args = ModelGenArgs()
 
-    def to_dict(self):
-        return self.dict()
 
-    def toJSON(self):
-        return json.dumps(self.dict())
+class OobaGenRequest(BaseModel, DictJsonMixin):
+    prompt: str
+    max_new_tokens: int = 250
+    do_sample: bool = True
+    temperature: float = 0.7
+    top_p: float = 0.5
+    typical_p: float = 1.0
+    repetition_penalty: float = 1.125
+    top_k: int = 40
+    min_length: int = 0
+    no_repeat_ngram_size: int = 0
+    num_beams: int = 1
+    penalty_alpha: float = 0.0
+    length_penalty: float = 1.0
+    early_stopping: bool = False
+    seed: int = -1
+    add_bos_token: bool = True
+    truncation_length: int = 2048
+    ban_eos_token: bool = False
+    skip_special_tokens: bool = True
+    stopping_strings: List[str] = []
 
 
 class ModelSerializer(json.JSONEncoder):
     """Class to serialize ModelGenRequest to JSON."""
 
     def default(self, o):
-        if hasattr(o, "toJSON"):
-            return o.toJSON()
+        if hasattr(o, "asjson"):
+            return o.asjson()
         return json.JSONEncoder.default(self, o)
 
 
@@ -106,6 +134,7 @@ class ModelProvider:
         self.kwargs = kwargs
         if "args" not in kwargs:
             raise Exception("default args is required")
+        self.default_args = self.kwargs.get("args", None)
         self.auth()
 
     def auth(self):
@@ -207,7 +236,7 @@ class SukimaModel(ModelProvider):
         :param endpoint_url: The URL for the Sukima endpoint.
         :type endpoint_url: str
         """
-        self.aioclient = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession()
         self.client = requests.Session()
         super().__init__(endpoint_url, **kwargs)
         self.auth()
@@ -415,7 +444,7 @@ class SukimaModel(ModelProvider):
         phrase_bias.ensure_sequence_finish = True
         phrase_bias.generate_once = True
 
-        args: ModelGenRequest = copy.deepcopy(self.kwargs["args"])
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.gen_args.max_length = 10
         args.gen_args.eos_token_id = 25
@@ -447,7 +476,7 @@ class SukimaModel(ModelProvider):
         phrase_bias.ensure_sequence_finish = True
         phrase_bias.generate_once = True
 
-        args: ModelGenRequest = copy.deepcopy(self.kwargs["args"])
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.gen_args.max_length = 10
         args.gen_args.eos_token_id = 25
@@ -471,7 +500,7 @@ class SukimaModel(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args: ModelGenRequest = self.kwargs["args"]
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
@@ -486,7 +515,7 @@ class SukimaModel(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args: ModelGenRequest = self.kwargs["args"]
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
@@ -500,14 +529,14 @@ class EnmaModel(ModelProvider):
         :param endpoint_url: The URL for the Enma endpoint. (this is the completion endpoint on the gateway!)
         :type endpoint_url: str
         """
-        self.aioclient = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession()
         self.client = requests.Session()
         super().__init__(endpoint_url, **kwargs)
         self.auth()
 
     def auth(self):
         """
-        :drollwide:\n
+        :drollwide:
         enma doesnt have authentication (at least on fab8e60) so this just returns true
         """
         return True
@@ -608,7 +637,7 @@ class EnmaModel(ModelProvider):
         :rtype: bool
         """
 
-        args = copy.deepcopy(self.kwargs["args"])
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.sample_args.temp = 0.25
         args.sample_args.top_p = 0.9
@@ -634,7 +663,7 @@ class EnmaModel(ModelProvider):
         :rtype: bool
         """
 
-        args = copy.deepcopy(self.kwargs["args"])
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.sample_args.temp = 0.25
         args.sample_args.top_p = 0.9
@@ -657,7 +686,7 @@ class EnmaModel(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args = self.kwargs["args"]
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
@@ -671,7 +700,7 @@ class EnmaModel(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args = self.kwargs["args"]
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.gen_args.eos_token_id = 198
         args.gen_args.min_length = 1
@@ -743,7 +772,7 @@ class TextSynthModel(ModelProvider):
         :return: Whether or not the name should respond to the given context.
         :rtype: bool
         """
-        args: ModelGenRequest = copy.deepcopy(self.kwargs["args"])
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.gen_args.max_length = 10
         args.sample_args.temp = 0.25
@@ -761,9 +790,216 @@ class TextSynthModel(ModelProvider):
         :return: The response from the endpoint.
         :rtype: str
         """
-        args: ModelGenRequest = self.kwargs["args"]
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
         args.gen_args.eos_token_id = 198
+        args.gen_args.min_length = 1
+        response = await self.generate_async(args)
+        return response
+
+
+class OobaModel(ModelProvider):
+    """Abstract class for model providers that provide access to generative AI models."""
+
+    def __init__(self, endpoint_url: str, **kwargs):
+        """Constructor for ModelProvider.
+
+        :param endpoint_url: The URL of the endpoint.
+        :type endpoint_url: str
+        """
+        self.session = aiohttp.ClientSession()
+        self.client = requests.Session()
+        super().__init__(endpoint_url, **kwargs)
+        self.auth()
+
+    def auth(self) -> bool:
+        """
+        :drollwide: (hi yoinked!)
+        text-generation-webui doesn't have authentication so this just returns true
+        """
+        return True
+
+    def convert_gen_request(self, req: Union[Dict[str, Any], ModelGenRequest]) -> str:
+        if isinstance(req, ModelGenRequest):
+            if req.sample_args.logit_biases is not None:
+                raise ValueError("logit_biases is not supported by this model provider")
+            if req.sample_args.phrase_biases is not None:
+                raise ValueError("phrase_biases is not supported by this model provider")
+
+            if req.sample_args.stop_sequence is not None:
+                if req.gen_args.stopping_strings is None:
+                    req.gen_args.stopping_strings = [req.sample_args.stop_sequence]
+                else:
+                    req.gen_args.stopping_strings = req.gen_args.stopping_strings.append(
+                        req.sample_args.stop_sequence
+                    )
+
+            ret = OobaGenRequest(
+                prompt=req.prompt,
+                do_sample=req.sample_args.do_sample,
+                temperature=req.sample_args.temp,
+                top_p=req.sample_args.top_p,
+                typical_p=req.sample_args.typical_p,
+                repetition_penalty=req.sample_args.rep_p,
+                top_k=req.sample_args.top_k,
+                no_repeat_ngram_size=req.sample_args.no_repeat_ngram_size,
+                num_beams=req.sample_args.num_beams,
+                penalty_alpha=req.sample_args.penalty_alpha,
+                length_penalty=req.sample_args.length_penalty,
+                early_stopping=req.sample_args.early_stopping,
+                max_new_tokens=req.gen_args.max_length,
+                min_length=req.gen_args.min_length,
+                seed=req.gen_args.seed,
+                add_bos_token=req.gen_args.add_bos_token,
+                truncation_length=req.gen_args.truncation_length,
+                ban_eos_token=req.gen_args.ban_eos_token,
+                skip_special_tokens=req.gen_args.skip_special_tokens,
+                stopping_strings=req.gen_args.stopping_strings,
+            )
+        else:
+            ret = OobaGenRequest(**req)
+        return ret
+
+    def generate(self, args: Union[Dict[str, Any], ModelGenRequest, OobaGenRequest]) -> str:
+        """
+        Generate a response from the ModelProvider's endpoint.
+
+        :param args: The arguments to pass to the endpoint.
+        :type args: dict
+        :raises NotImplementedError: If the generate method is not implemented.
+        """
+        if isinstance(args, (ModelGenRequest, Dict[str, Any])):
+            args: ModelGenRequest = self.convert_gen_request(args)
+
+        try:
+            r = requests.post(f"{self.endpoint_url}", data=args.asjson())
+            r.raise_for_status()
+        except Exception as e:
+            raise e
+        if r.status_code == 200:
+            return r.json()["results"]["text"]
+        else:
+            raise Exception(f"Could not generate text with text-generation-webui. Error: {r.json()}")
+
+    async def generate_async(self, args: Union[Dict[str, Any], ModelGenRequest, OobaGenRequest]) -> str:
+        """Generate a response from the ModelProvider's endpoint asynchronously.
+
+        :param args: The arguments to pass to the endpoint.
+        :type args: dict
+        :raises NotImplementedError: If the generate method is not implemented.
+        """
+        if isinstance(args, (ModelGenRequest, Dict[str, Any])):
+            args: ModelGenRequest = self.convert_gen_request(args)
+            try:
+                async with self.session.post(f"{self.endpoint_url}", json=args.asjson()) as resp:
+                    if resp.status == 200:
+                        ret = await resp.json()
+                        return ret["results"]["text"]
+                    else:
+                        raise Exception(f"Could not generate response. Error: {await resp.text()}")
+            except Exception as e:
+                raise e
+
+    async def hidden_async(self, model, text, layer):
+        """Fetch a layer's hidden states from text.
+
+        :param model: The model to extract hidden states from.
+        :type model: str
+        :param text: The text to use.
+        :type text: str
+        :param layer: The layer to fetch the hidden states from.
+        :type layer: int
+        """
+
+        raise NotImplementedError("hidden_async method is not implemented for this model provider")
+
+    async def image_label_async(self, model, url, labels):
+        """Classify an image with labels (CLIP).
+
+        :param model: The model to use for classification.
+        :type model: str
+        :param url: The image URL to use.
+        :type url: str
+        :param labels: The labels to use.
+        :type labels: list
+        """
+
+        raise NotImplementedError("image_label_async method is not implemented for this model provider")
+
+    def should_respond(self, context, name):
+        """Determine if the Enma endpoint predicts that the name should respond to the given context.
+        :param context: The context to use.
+        :type context: str
+        :param name: The name to check.
+        :type name: str
+        :return: Whether or not the name should respond to the given context.
+        :rtype: bool
+        """
+
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
+        args.prompt = context
+        args.sample_args.temp = 0.25
+        args.sample_args.top_p = 0.9
+        args.sample_args.top_k = 40
+        args.sample_args.rep_p = None
+        args.sample_args.do_sample = True
+        args.sample_args.penalty_alpha = None
+        args.sample_args.num_return_sequences = 1  # i have no idea what these should be
+        args.sample_args.stop_sequence = None
+        response = self.generate(args)
+        if name in response:
+            return True
+        else:
+            return False
+
+    async def should_respond_async(self, context, name):
+        """Determine if the Enma endpoint predicts that the name should respond to the given context asynchronously.
+        :param context: The context to use.
+        :type context: str
+        :param name: The name to check.
+        :type name: str
+        :return: Whether or not the name should respond to the given context.
+        :rtype: bool
+        """
+
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
+        args.prompt = context
+        args.sample_args.temp = 0.25
+        args.sample_args.top_p = 0.9
+        args.sample_args.top_k = 40
+        args.sample_args.rep_p = None
+        args.sample_args.do_sample = True
+        args.sample_args.penalty_alpha = None
+        args.sample_args.num_return_sequences = 1  # i have no idea what these should be
+        args.sample_args.stop_sequence = None
+        response = await self.generate_async(args)
+        if response.startswith(name):
+            return True
+        else:
+            return False
+
+    def response(self, context):
+        """Generate a response from the Enma endpoint.
+        :param context: The context to use.
+        :type context: str
+        :return: The response from the endpoint.
+        :rtype: str
+        """
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
+        args.prompt = context
+        args.gen_args.min_length = 1
+        response = self.generate(args)
+        return response
+
+    async def response_async(self, context):
+        """Generate a response from the Enma endpoint asynchronously.
+        :param context: The context to use.
+        :type context: str
+        :return: The response from the endpoint.
+        :rtype: str
+        """
+        args: ModelGenRequest = copy.deepcopy(self.default_args)
+        args.prompt = context
         args.gen_args.min_length = 1
         response = await self.generate_async(args)
         return response
