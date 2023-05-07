@@ -2,6 +2,7 @@ import json
 import logging
 import re
 from asyncio import sleep
+from copy import deepcopy
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,13 +20,14 @@ from disnake import (
     TextChannel,
     Thread,
     User,
+    MessageInteraction,
 )
 from disnake.ext import commands, tasks
 from Levenshtein import distance as lev_distance
 from shimeji import ChatBot
 from shimeji.memory import array_to_str, memory_context
 from shimeji.memory.providers import PostgresMemoryStore
-from shimeji.model_provider import EnmaModel, SukimaModel
+from shimeji.model_provider import EnmaModel, OobaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
 from shimeji.util import (
@@ -35,11 +37,11 @@ from shimeji.util import (
     TRIM_TYPE_SENTENCE,
     ContextEntry,
 )
-from transformers import GPT2Tokenizer
+from transformers import AutoTokenizer
 
 import logsnake
 from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
-from ai.model import get_enma_model, get_sukima_model
+from ai.model import get_enma_model, get_ooba_model
 from ai.types import MessageChannel
 from ai.utils import (
     anti_spam,
@@ -49,6 +51,7 @@ from ai.utils import (
     get_role_by_name,
     restore_mentions_emotes,
 )
+from ai.imagen import Imagen
 from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
 from helpers import checks
@@ -73,6 +76,11 @@ re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
 re_unescape_format = re.compile(r"\\([*_~`])")
 re_strip_special = re.compile(r"[^a-zA-Z0-9]+")
+re_take_pic = re.compile(
+    r"\b(take|post|paint|generate|make|draw|create|show|give|snap|capture|send|display|share|shoot|see|provide|another)"
+    + r"\b.*(\S\s{0,10})?(image|picture|screenshot|screenie|painting|pic|photo|photograph|portrait|selfie)\b\s?",
+    flags=re.IGNORECASE,
+)
 
 
 class Ai(commands.Cog, name=COG_UID):
@@ -105,13 +113,16 @@ class Ai(commands.Cog, name=COG_UID):
 
         # we will populate these later during async init
         self.memory_store: PostgresMemoryStore = None
-        self.model_provider: Union[SukimaModel, EnmaModel] = None
+        self.model_provider: Union[OobaModel, EnmaModel] = None
         self.model_provider_type: str = self.model_provider_cfg.type
         self.chatbot: ChatBot = None
         self.logging_channel: Optional[TextChannel] = None
         self.guilds: dict = {}
-        self.tokenizer: GPT2Tokenizer = None
+        self.tokenizer: AutoTokenizer = None
         self.bad_words: List[str] = self.config.bad_words
+
+        # selfietron
+        self.imagen = Imagen()
 
         # somewhere to put the last context we generated for debugging
         self.debug_datadir: Path = LOGDIR_PATH.joinpath("ai")
@@ -122,9 +133,22 @@ class Ai(commands.Cog, name=COG_UID):
     def name(self) -> str:
         return self.config.name
 
-    @property
-    def prompt(self) -> str:
-        return self.config.prompt
+    def get_prompt(self, ctx: Optional[MessageInteraction] = None) -> str:
+        if ctx is None:
+            location_context = f'with your friends in the "{self.bot.home_guild.name}" Discord server'
+        else:
+            if ctx.guild is not None:
+                location_context = f'with your friends in the "{ctx.guild.name}" Discord server'
+            elif ctx.channel is not None:
+                location_context = (
+                    f'with your friends in the "{ctx.channel.name}" channel of a Discord server'
+                )
+            elif ctx.user is not None:
+                location_context = f"with {ctx.user.name} in a Discord DM"
+
+        return self.config.prompt.replace("{bot_name}", self.name).replace(
+            "{location_context}", location_context
+        )
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -142,8 +166,8 @@ class Ai(commands.Cog, name=COG_UID):
             logger.debug("Memory Store is disabled, skipping...")
             self.memory_store = None
 
-        if self.model_provider_type == "sukima":
-            self.model_provider = get_sukima_model(cfg=self.model_provider_cfg)
+        if self.model_provider_type == "ooba":
+            self.model_provider = get_ooba_model(cfg=self.model_provider_cfg)
         elif self.model_provider_type == "enma":
             self.model_provider = get_enma_model(cfg=self.model_provider_cfg)
         else:
@@ -156,8 +180,9 @@ class Ai(commands.Cog, name=COG_UID):
             postprocessors=[NewlinePrunerPostprocessor()],
         )
 
-        self.tokenizer = GPT2Tokenizer.from_pretrained(
+        self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizer").as_posix(),
+            local_files_only=True,
         )
 
         _logchannel = self.bot.get_channel(self.logging_channel_id)
@@ -214,17 +239,16 @@ class Ai(commands.Cog, name=COG_UID):
                 logger.info(f"Message: {message_content}")
 
             conversation = await self.get_msg_ctx(message.channel)
-
             if self.bot.user.mentioned_in(message) or any(t in message_content for t in self.nicknames):
-                await self.respond(conversation, message)
+                await self.respond(conversation, message, "mention")
 
             elif isinstance(message.channel, DMChannel) and len(message_content) > 0:
-                await self.respond(conversation, message)
+                await self.respond(conversation, message, "DM")
 
             elif self.conditional_response is True:
                 if await self.chatbot.should_respond_async(conversation, push_chain=False):
                     logger.debug("Model wants to respond, responding...")
-                    await self.respond(conversation, message)
+                    await self.respond(conversation, message, "conditional")
                     return
                 else:
                     logger.debug("No conditional response.")
@@ -232,7 +256,7 @@ class Ai(commands.Cog, name=COG_UID):
             elif message.channel.id in self.activity_channels and self.last_response < datetime.now(
                 timezone.utc
             ) - timedelta(seconds=(self.idle_messaging_interval / 2)):
-                await self.respond(conversation, message)
+                await self.respond(conversation, message, "activity")
 
         except Exception as e:
             logger.error(e)
@@ -262,7 +286,7 @@ class Ai(commands.Cog, name=COG_UID):
                 else:
                     await message.channel.send(embed=embed, file=File(error_file), delete_after=300.0)
 
-    # build a context from the last 40 messages in the channel
+    # get the last 40 messages in the channel (or however many there are if less than 40)
     async def get_msg_ctx(self, channel: MessageChannel) -> str:
         messages = await channel.history(limit=40).flatten()
         messages, to_remove = anti_spam(messages)
@@ -285,11 +309,12 @@ class Ai(commands.Cog, name=COG_UID):
         chain = [x.strip() for x in chain if x.strip() != ""]
         return "\n".join(chain)
 
-    async def build_ctx(self, conversation: str):
+    # assemble a prompt/context for the model
+    async def build_ctx(self, conversation: str, message: Optional[Message] = None):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
 
         prompt_entry = ContextEntry(
-            text=self.prompt + "\n<START>",
+            text=self.get_prompt(message),
             prefix="",
             suffix="\n",
             reserved_tokens=512,
@@ -316,7 +341,7 @@ class Ai(commands.Cog, name=COG_UID):
                 memories_entry = ContextEntry(
                     text=memories_ctx,
                     prefix="",
-                    suffix="\n",
+                    suffix="</s>\n",
                     reserved_tokens=0,
                     insertion_order=800,
                     insertion_position=-1,
@@ -329,7 +354,7 @@ class Ai(commands.Cog, name=COG_UID):
                 contextmgr.add_entry(memories_entry)
 
         # conversation
-        conv_prefix = "\n<START>" if self.memory_store is not None and self.memory_enable is True else ""
+        conv_prefix = "</s>\n" if self.memory_store is not None and self.memory_enable is True else ""
         conversation_entry = ContextEntry(
             text=conversation,
             prefix=conv_prefix,
@@ -347,6 +372,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         return contextmgr.context(self.context_size)
 
+    # actual response logic
     async def respond(self, conversation: str, message: Message, trigger: str = None) -> str:
         async with message.channel.typing():
             encoded_image_label = ""
@@ -370,9 +396,18 @@ class Ai(commands.Cog, name=COG_UID):
             try:
                 debug_data["gensettings"] = asdict(self.model_provider_cfg)["gensettings"]
                 # remove bad_words from debug data because it's long and irrelevant
-                debug_data["gensettings"]["sample_args"]["bad_words"] = []
             except Exception as e:
                 logger.error(f"Failed to get gensettings: {e}\n{format_exc()}")
+
+            if re_take_pic.search(message.content):
+                logger.info("Hold up, let me take a selfie...")
+                try:
+                    response_image = await self.take_pic(message=message)
+                except Exception as e:
+                    logger.error(f"Failed to generate image label: {e}\n{format_exc()}")
+                    response_image = None
+            else:
+                response_image = None
 
             if self.memory_store is not None and message.guild is not None:
                 private_role = get_role_by_name(name="Private", guild=message.guild)
@@ -410,7 +445,7 @@ class Ai(commands.Cog, name=COG_UID):
             debug_data["conversation"] = conversation.splitlines()
 
             # Build conversation context
-            conversation = await self.build_ctx(conversation + encoded_image_label)
+            conversation = await self.build_ctx(conversation + encoded_image_label, message)
             debug_data["context"] = conversation.splitlines()
 
             # Generate response
@@ -437,14 +472,17 @@ class Ai(commands.Cog, name=COG_UID):
                 )
             debug_data["response"] = response
 
-            self.bot.get_emoji
-
             # Send response if not empty
             if response == "":
                 logger.info("Response was empty.")
-            else:
+            elif response_image is not None:
+                logger.info("Responding with image...")
+                await message.channel.send(response, file=response_image)
                 logger.info(f"Response: {response}")
+            else:
                 await message.channel.send(response)
+                logger.info(f"Response: {response}")
+
                 self.last_response = datetime.now(timezone.utc)
 
         if self.debug:
@@ -472,6 +510,7 @@ class Ai(commands.Cog, name=COG_UID):
                     ),
                 )
 
+    # Idle loop stuff
     @tasks.loop(seconds=21)
     async def idle_loop(self) -> None:
         if self.idle_messaging is True:
@@ -500,20 +539,7 @@ class Ai(commands.Cog, name=COG_UID):
         await self.bot.wait_until_ready()
         logger.info("Idle loop running!")
 
-    @tasks.loop(hours=1)
-    async def log_archive_loop(self) -> None:
-        """
-        Move message log files over 24h old to the archive directory
-        """
-        self.archive_logs(seconds=86400)
-
-    def archive_logs(self, seconds: int = 86400):
-        for file in self.debug_datadir.glob("*.json"):
-            file_age = (datetime.now() - datetime.fromtimestamp(file.stat().st_mtime)).total_seconds()
-            if file_age >= seconds:
-                logger.debug(f"Archiving debug log {file.name}")
-                file = file.rename(file.parent / "archive" / file.name)
-
+    # Helper functions
     def get_msg_content_clean(self, message: Message, content: str = None) -> str:
         content = content if content is not None else message.content
 
@@ -575,6 +601,57 @@ class Ai(commands.Cog, name=COG_UID):
         if len(found_words) > 0:
             logger.warn(f"Found bad words: {' | '.join(found_words)}")
         return found_words
+
+    # Loop stuff to archive logs
+    @tasks.loop(hours=1)
+    async def log_archive_loop(self) -> None:
+        """
+        Move message log files over 24h old to the archive directory
+        """
+        self.archive_logs(seconds=86400)
+
+    def archive_logs(self, seconds: int = 86400):
+        for file in self.debug_datadir.glob("*.json"):
+            file_age = (datetime.now() - datetime.fromtimestamp(file.stat().st_mtime)).total_seconds()
+            if file_age >= seconds:
+                logger.debug(f"Archiving debug log {file.name}")
+                file = file.rename(file.parent / "archive" / file.name)
+
+    # Image generation stuff
+    async def take_pic(self, message: Message) -> File:
+        """
+        hold up, let me take a selfie
+        """
+        # get the message content
+        message_content = self.get_msg_content_clean(message).lower()
+        if message_content == "":
+            logger.info("Message was empty after cleaning.")
+            return ""
+
+        # get the image description and remove newlines
+        message_content = message_content.replace("\n", " ").replace(self.name + " ", "")
+
+        # build the LLM prompt for the image
+        await self.model_provider.generate_async()
+        llm_prompt = self.imagen.get_llm_prompt("a photo of" + re_take_pic.sub("", message_content))
+        logger.info(f"[take_pic] LLM Prompt: {llm_prompt}")
+
+        # get the LLM to create tags for the image
+        llm_tags = await self.chatbot.respond_async(llm_prompt, push_chain=False)
+        logger.info(f"[take_pic] LLM Tags: {llm_tags}")
+
+        # build the SD API request
+        sdapi_request = self.imagen.build_request(llm_tags, message_content)
+        logger.info(f"[take_pic] SD API Request: {json.dumps(sdapi_request)}")
+        # submit it
+        result_path = await self.imagen.submit_request(sdapi_request)
+        # drop the meta next to it
+        result_path.with_suffix(".json").write_text(
+            json.dumps(sdapi_request, indent=4, skipkeys=True, default=str)
+        )
+        # return a discord File object to upstream
+        result_file = File(result_path, filename=result_path.name)
+        return result_file
 
 
 def setup(bot):

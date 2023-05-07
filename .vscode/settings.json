@@ -27,8 +27,7 @@
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "ms-python.black-formatter",
         "editor.codeActionsOnSave": {
-            "source.fixAll": true,
-            "source.organizeImports": true
+            "source.organizeImports": false
         }
     },
     "ruff.args": ["--line-length=110", "--extend-ignore=F401,F841,E501"],

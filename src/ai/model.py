@@ -1,7 +1,15 @@
 from pydantic import BaseModel
 
 
-from shimeji.model_provider import ModelGenArgs, ModelGenRequest, ModelSampleArgs, SukimaModel, EnmaModel
+from shimeji.model_provider import (
+    ModelGenArgs,
+    ModelGenRequest,
+    ModelSampleArgs,
+    SukimaModel,
+    EnmaModel,
+    OobaModel,
+    OobaGenRequest,
+)
 
 from ai.config import ModelProviderConfig
 
@@ -51,4 +59,19 @@ def get_enma_model(cfg: ModelProviderConfig) -> EnmaModel:
         args=request,
     )
 
-    pass
+
+def get_ooba_model(cfg: ModelProviderConfig) -> OobaModel:
+    # load model provider gen_args into basemodel
+    gen_settings = ModelGenSettings(**cfg.gensettings)
+
+    request = ModelGenRequest(
+        model=None,
+        prompt="",
+        sample_args=gen_settings.sample_args,
+        gen_args=gen_settings.gen_args,
+    )
+
+    return OobaModel(
+        endpoint_url=cfg.endpoint,
+        args=request,
+    )

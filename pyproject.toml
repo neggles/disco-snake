@@ -19,6 +19,6 @@ line-length = 110
 target-version = 'py310'
 extend-exclude = ['F841', 'F401', 'E501']
 
-[tool.ruff.isort]
-combine-as-imports = true
-force-wrap-aliases = true
+# [tool.ruff.isort]
+# combine-as-imports = true
+# force-wrap-aliases = true
