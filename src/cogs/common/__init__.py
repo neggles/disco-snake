@@ -6,4 +6,12 @@ from .upscaler import Upscaler
 
 MessageChannel = Union[TextChannel, Thread, DMChannel, GroupChannel]
 
-__all__ = "Upscaler", "MessageChannel", "utils"
+
+def setup(*args, **kwargs):
+    """
+    Stub function for setup so the cog loader doesn't complain
+    """
+    pass
+
+
+__all__ = "Upscaler", "MessageChannel", "utils", "setup"
