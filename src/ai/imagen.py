@@ -33,16 +33,26 @@ logger = logsnake.setup_logger(
 IMAGEN_IMG_DIR = DATADIR_PATH.joinpath("ai", "images")
 IMAGEN_CFG_PATH = DATADIR_PATH.joinpath("ai", "imagen.json")
 
+# IMAGE_SIZE_STEPS = [512, 544, 576, 608, 640, 672, 704, 736, 768, 800, 832, 864, 896, 928, 960]
+# IMAGE_TARGET_PIXELS = 524288  # no more than this many pixels in pre-upscale image
+
+# Just using hardcoded options for now
 IMAGE_SIZE_OPTS = [
-    (1024, 576),
     (512, 1024),
     (544, 960),
-    (576, 1024),
     (576, 896),
-    (600, 864),
+    (608, 864),
     (640, 832),
-    (720, 800),
+    (672, 768),
+    (720, 744),
+    (768, 688),
     (768, 768),
+    (800, 640),
+    (848, 544),
+    (864, 600),
+    (896, 585),
+    (928, 564),
+    (960, 480),
 ]
 
 
@@ -132,14 +142,14 @@ class Imagen:
                 format_tags = f"{format_tags}, holding"
 
         if len(llm_tags) > 0:
-            llm_tags = f"({llm_tags}:1.15)"
+            llm_tags = f", ({llm_tags}:1.15)"
 
-        image_prompt = self.sd_prompt.prompt(f"{time_tag}, {format_tags}, {llm_tags}")
+        image_prompt = self.sd_prompt.prompt(f", {time_tag}{format_tags}{llm_tags}")
 
         # Generate at random aspect ratios, but same total pixels
         width, height = get_image_dimensions()
 
-        # make sure we do portrait if the user asks for a selfie or portrait
+        # make sure we do portrait if the user asks for a portrait
         if "portrait" in user_prompt:
             if width > height:
                 width, height = height, width

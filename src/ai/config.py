@@ -82,6 +82,7 @@ class ImagenApiParams:
         request_obj = {
             "prompt": prompt,
             "negative_prompt": negative,
+            "steps": self.steps,
             "cfg_scale": self.cfg_scale,
             "seed": self.seed,
             "width": width if width > 0 else self.default_width,
