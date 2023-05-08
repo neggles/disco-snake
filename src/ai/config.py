@@ -147,7 +147,7 @@ class ImagenSDPrompt:
     def prompt(self, prompt: str) -> str:
         leading_tags = ", ".join(self.leading)
         trailing_tags = ", ".join(self.trailing)
-        return "\n".join((f"{leading_tags}, " f"\n{prompt}, ", f"\n{trailing_tags}"))
+        return f"{leading_tags}, {prompt}, {trailing_tags}"
 
     def negative_prompt(self) -> str:
         return ", ".join(self.negative)
