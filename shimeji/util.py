@@ -1,7 +1,7 @@
 import re
-from transformers import AutoTokenizer
+from transformers import GPT2TokenizerFast
 
-tokenizer = AutoTokenizer.from_pretrained("gpt2")
+tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
 TRIM_DIR_TOP = 0
 TRIM_DIR_BOTTOM = 1

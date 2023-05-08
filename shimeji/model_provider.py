@@ -5,8 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 import aiohttp
 import requests
 from pydantic import BaseModel
-
-from shimeji.util import tokenizer
+from transformers import GPT2TokenizerFast
 
 
 class DictJsonMixin:
@@ -719,6 +718,7 @@ class TextSynthModel(ModelProvider):
         """
         super().__init__(endpoint_url, **kwargs)
         self.auth()
+        self.tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
     def auth(self):
         """Authenticate with the TextSynth endpoint.
@@ -745,7 +745,7 @@ class TextSynthModel(ModelProvider):
             "temperature": args.sample_args.temp,
             "top_p": args.sample_args.top_p,
             "top_k": args.sample_args.top_k,
-            "stop": tokenizer.decode(args.gen_args.eos_token_id),
+            "stop": self.tokenizer.decode(args.gen_args.eos_token_id),
         }
         async with aiohttp.ClientSession() as session:
             try:
