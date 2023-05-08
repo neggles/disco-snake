@@ -142,7 +142,7 @@ class Imagen:
                 format_tags = f"{format_tags}, holding"
 
         if len(llm_tags) > 0:
-            llm_tags = f", ({llm_tags}:1.15)"
+            llm_tags = f", ({llm_tags}:1.125)"
 
         image_prompt = self.sd_prompt.prompt(f", {time_tag}{format_tags}{llm_tags}")
 

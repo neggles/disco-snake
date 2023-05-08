@@ -78,6 +78,7 @@ re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
 re_unescape_format = re.compile(r"\\([*_~`])")
 re_strip_special = re.compile(r"[^a-zA-Z0-9]+")
+re_linebreak_name = re.compile(r"(?:.+)(\n|\r|\r\n)(\S+): ")
 
 
 class Ai(commands.Cog, name=COG_UID):
@@ -471,6 +472,10 @@ class Ai(commands.Cog, name=COG_UID):
                         break
 
                 debug_data["response_raw"] = response
+
+                # if bot did a "\n<someusername:" cut it off
+                if bool(re_linebreak_name.match(response)):
+                    response = response.splitlines()[0]
 
                 # replace "<USER>" with user mention, same for "<BOT>"
                 response = self.fixup_bot_user_tokens(response, message)
