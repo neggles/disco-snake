@@ -105,7 +105,6 @@ class ImagenLMPrompt:
     tags: List[str]
     header: List[str]
     trailer: str
-    stopping_strings: List[str]
     gensettings: Dict[str, Any]
 
     def __post_init__(self):

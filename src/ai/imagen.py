@@ -105,7 +105,7 @@ class Imagen:
             raise Exception(f"Could not generate response. Error: {await resp.text()}") from e
 
     def get_lm_stopping_strings(self) -> List[str]:
-        return self.lm_prompt.stopping_strings
+        return self.lm_prompt.gensettings["stopping_strings"]
 
     def build_request(self, llm_tags: str, user_prompt: str) -> Dict[str, Any]:
         time_tag = get_time_tag()
