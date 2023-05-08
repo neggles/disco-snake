@@ -47,12 +47,12 @@ IMAGE_SIZE_OPTS = [
 
 
 re_take_pic = re.compile(
-    r"(another|capture|create|display|draw|give|make|message|paint|post|provide|see|send|send|share|shoot|show|snap|take)"
+    r".*(another|capture|create|display|draw|give|make|message|paint|post|provide|see|send|send|share|shoot|show|snap|take)"
     + r"\b(.+)?\b(image|pic(ture)?|photo(graph)?|screen(shot|ie)|(paint|draw)ing|portrait|selfie)s?",
     flags=re.I + re.M,
 )
 re_take_pic_alt = re.compile(
-    r"(send|mail|message|me a)\b.+?\b(image|pic(ture)?|photo|snap(shot)?|selfie)s?\b",
+    r".*(send|mail|message|me a)\b.+?\b(image|pic(ture)?|photo|snap(shot)?|selfie)s?\b",
     flags=re.I + re.M,
 )
 take_pic_regexes = [re_take_pic, re_take_pic_alt]

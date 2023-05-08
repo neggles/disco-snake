@@ -639,7 +639,7 @@ class Ai(commands.Cog, name=COG_UID):
         message_content = message_content.replace("\n", " ").replace(self.name + " ", "")
 
         # build the LLM prompt for the image
-        lm_prompt = self.imagen.get_lm_prompt(self.imagen.strip_take_pic(message_content))
+        lm_prompt = self.imagen.get_lm_prompt("a photo of" + self.imagen.strip_take_pic(message_content))
         logger.info(f"[take_pic] LLM Prompt: {lm_prompt}")
 
         # get the LLM to create tags for the image
