@@ -51,6 +51,7 @@ from ai.utils import (
     get_full_class_name,
     get_role_by_name,
     restore_mentions_emotes,
+    get_lm_prompt_time,
 )
 from ai.imagen import Imagen
 from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
@@ -147,8 +148,10 @@ class Ai(commands.Cog, name=COG_UID):
             elif ctx.user is not None:
                 location_context = f"with {ctx.user.name} in a Discord DM"
 
-        return self.config.prompt.replace("{bot_name}", self.name).replace(
-            "{location_context}", location_context
+        return (
+            self.config.prompt.replace("{bot_name}", self.name)
+            .replace("{location_context}", location_context)
+            .replace("{current_time}", get_lm_prompt_time())
         )
 
     async def cog_load(self) -> None:
@@ -639,7 +642,7 @@ class Ai(commands.Cog, name=COG_UID):
         message_content = message_content.replace("\n", " ").replace(self.name + " ", "")
 
         # build the LLM prompt for the image
-        lm_prompt = self.imagen.get_lm_prompt("a photo of" + self.imagen.strip_take_pic(message_content))
+        lm_prompt = self.imagen.get_lm_prompt(self.imagen.strip_take_pic(message_content))
         logger.info(f"[take_pic] LLM Prompt: {lm_prompt}")
 
         # get the LLM to create tags for the image

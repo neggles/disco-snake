@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Tuple
 
@@ -54,6 +55,7 @@ class ImagenParams:
     enabled: bool
     api_host: str
     timezone: str
+    default_prompt: str
 
 
 @dataclass
@@ -99,6 +101,7 @@ class ImagenLMPrompt:
     header: List[str]
     trailer: str
     stopping_strings: List[str]
+    re_subject = re.compile(r".* of")
 
     def get_tags(self) -> str:
         return ", ".join(self.tags)
@@ -125,7 +128,7 @@ class ImagenSDPrompt:
     def prompt(self, prompt: str) -> str:
         leading_tags = ", ".join(self.leading)
         trailing_tags = ", ".join(self.trailing)
-        return "\n".join((f"{leading_tags}, " f"BREAK {prompt}, ", f"BREAK {trailing_tags}"))
+        return "\n".join((f"{leading_tags}, " f"\n{prompt}, ", f"\n{trailing_tags}"))
 
     def negative_prompt(self) -> str:
         return ", ".join(self.negative)

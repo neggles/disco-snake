@@ -16,7 +16,7 @@ from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from PIL import Image
 
 from ai.config import ImagenApiParams, ImagenConfig, ImagenLMPrompt, ImagenParams, ImagenSDPrompt
-from ai.utils import any_in_text, get_current_time
+from ai.utils import any_in_text
 
 # setup cog logger
 logger = logsnake.setup_logger(
@@ -47,7 +47,7 @@ IMAGE_SIZE_OPTS = [
 
 
 re_take_pic = re.compile(
-    r".*(another|capture|create|display|draw|give|make|message|paint|post|provide|see|send|send|share|shoot|show|snap|take)"
+    r".*(how about|another|capture|create|display|draw|give|make|message|paint|post|provide|see|send|send|share|shoot|show|snap|take)"
     + r"\b(.+)?\b(image|pic(ture)?|photo(graph)?|screen(shot|ie)|(paint|draw)ing|portrait|selfie)s?",
     flags=re.I + re.M,
 )
@@ -80,7 +80,17 @@ class Imagen:
         # logger.info(json.dumps(self.config.asdict(), indent=2))
 
     def get_lm_prompt(self, user_request: str) -> str:
-        return self.lm_prompt.prompt(user_request)
+        if len(user_request.split("of", 1)) > 1:
+            user_request = user_request.split("of", 1)[1]
+            user_request = "a photo of" + user_request
+
+        for word in ["yourself ", "you "]:
+            user_request = user_request.replace(word, "a girl ")
+
+        prompt = self.lm_prompt.prompt(user_request)
+        if len(prompt.strip()) == 0:
+            prompt = self.params.default_prompt
+        return prompt
 
     def get_lm_stopping_strings(self) -> List[str]:
         return self.lm_prompt.stopping_strings
@@ -101,22 +111,22 @@ class Imagen:
                 format_tags = ""  # no 'standing next to' etc. when it's just the bot
             elif "with a" in user_prompt:
                 format_tags = ", she has"
-            elif "of you with" in user_prompt:
+            elif "of you with" in user_prompt or "of yourself with" in user_prompt:
                 format_tags = ", she is with"
 
             if "holding" in user_prompt:
                 format_tags = f"{format_tags}, holding"
 
         if len(llm_tags) > 0:
-            llm_tags = f"({llm_tags}:1.2)"
+            llm_tags = f"({llm_tags}:1.15)"
 
-        image_prompt = self.sd_prompt.prompt(f"{time_tag}, {format_tags} {llm_tags}")
+        image_prompt = self.sd_prompt.prompt(f"{time_tag}, {format_tags}, {llm_tags}")
 
         # Generate at random aspect ratios, but same total pixels
         width, height = get_image_dimensions()
 
         # make sure we do portrait if the user asks for a selfie or portrait
-        if "selfie" in user_prompt or "portrait" in user_prompt:
+        if "portrait" in user_prompt:
             if width > height:
                 width, height = height, width
 

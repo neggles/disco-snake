@@ -158,14 +158,12 @@ TZ_MAP = {
 }
 
 
-def get_current_time(tzname: str) -> str:
-    if tzname not in TZ_MAP.keys():
-        try:
-            tz = ZoneInfo(tzname)
-            return datetime.now(tz=tz).strftime("%H:%M")
-        except Exception as e:
-            raise ValueError(f"Unmapped timezone: {tzname}") from e
-    return datetime.now(tz=TZ_MAP[tzname]).strftime("%H:%M")
+def get_lm_prompt_time(tz: Union[str, ZoneInfo] = ZoneInfo("Asia/Tokyo")) -> str:
+    if not isinstance(tz, ZoneInfo):
+        if tz not in TZ_MAP.keys():
+            raise ValueError(f"Unmapped timezone: {tz}")
+        tz = TZ_MAP[tz]
+    return datetime.now(tz=tz).strftime("%-I:%M %p")
 
 
 def any_in_text(strings: list[str], text: str) -> bool:
