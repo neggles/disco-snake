@@ -101,7 +101,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.activity_channels: List[int] = self.config.params.activity_channels
         self.conditional_response: bool = self.config.params.conditional_response
         self.context_size: int = self.config.params.context_size
-        self.idle_messaging_interval: int = self.config.params.idle_messaging_interval
+        self.idle_msg_sec: int = self.config.params.idle_messaging_interval
         self.idle_messaging: bool = self.config.params.idle_messaging
         self.logging_channel_id: int = self.config.params.logging_channel_id
         self.nicknames: List[str] = self.config.params.nicknames
@@ -253,18 +253,17 @@ class Ai(commands.Cog, name=COG_UID):
             elif isinstance(message.channel, DMChannel) and len(message_content) > 0:
                 await self.respond(conversation, message, "DM")
 
-            elif self.conditional_response is True:
-                if await self.chatbot.should_respond_async(conversation, push_chain=False):
-                    logger.debug("Model wants to respond, responding...")
-                    await self.respond(conversation, message, "conditional")
-                    return
-                else:
-                    logger.debug("No conditional response.")
-
-            elif message.channel.id in self.activity_channels and self.last_response < datetime.now(
-                timezone.utc
-            ) - timedelta(seconds=(self.idle_messaging_interval / 2)):
-                await self.respond(conversation, message, "activity")
+            elif message.channel.id in self.activity_channels:
+                if self.conditional_response is True:
+                    if await self.chatbot.should_respond_async(conversation, push_chain=False):
+                        logger.debug("Model wants to respond, responding...")
+                        await self.respond(conversation, message, "conditional")
+                        return
+                    else:
+                        logger.debug("No conditional response.")
+                elif self.last_response < datetime.utcnow() - timedelta(seconds=(self.idle_msg_sec / 2)):
+                    self.last_response = datetime.utcnow()  # prevent infinite loops if things go wrong
+                    await self.respond(conversation, message, "activity")
 
         except Exception as e:
             logger.error(e)
@@ -546,7 +545,7 @@ class Ai(commands.Cog, name=COG_UID):
                     return
 
                 idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
-                if idle_sec >= self.idle_messaging_interval:
+                if idle_sec >= self.idle_msg_sec:
                     if self.get_msg_content_clean(message) == "":
                         return
                     logger.debug(f"Running idle response to message {message.id}")
