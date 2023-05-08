@@ -20,10 +20,10 @@
       "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.",
       "",
       "Instruction: Please build a detailed Danbooru tag prompt for a latent text-to-image diffusion model, matching the description provided as input.",
-      "Example prompt: \"masterpiece, best quality, exceptional, 1girl, solo, open mouth, long hair, orange eyes, smile, :d, long sleeves, blush, collared shirt, bangs, indoors, hair between eyes, blue shirt, bow, hair bow, book, holding, cowboy shot, looking to the side, singing, indoors, hair ornament, sidelocks, arms up, bright colours, vivid colours, cinematic light, chiaroscuro, light particles\".",
-      "Example prompt: \"masterpiece, best quality, exceptional, 1girl, solo, cowboy shot, dutch angle, long hair, black hair, purple eyes, bangs, hair between eyes, sidelock, hair ornament, sweatshirt, black sweatshirt, skirt, short skirt, socks, white socks, footwear, black footwear, blush, looking at viewer, outdoors, night, wind, depth of field, reflections, backlighting\".",
+      "Example prompt: \"{prompt_tags}, open mouth, long hair, orange eyes, smile, :d, long sleeves, blush, collared shirt, bangs, indoors, hair between eyes, blue shirt, bow, hair bow, book, holding, cowboy shot, looking to the side, singing, indoors, hair ornament, sidelocks, arms up, bright colours, vivid colours, cinematic light, chiaroscuro, light particles\".",
+      "Example prompt: \"{prompt_tags}, cowboy shot, dutch angle, long hair, black hair, purple eyes, bangs, hair between eyes, sidelock, hair ornament, sweatshirt, black sweatshirt, skirt, short skirt, socks, white socks, footwear, black footwear, blush, looking at viewer, outdoors, night, wind, depth of field, reflections, backlighting\".",
       "",
-      "Use only Danbooru tags. Tags must be comma separated. Include image composition tags as well as tags describing clothing. Always start with \"masterpiece, best quality, exceptional, 1girl, solo\". No capitalization. No special characters. Do not use \"monochrome\", \"black and white\", or \"monochromatic\".",
+      "Use only Danbooru tags. Tags must be comma separated. Include image composition tags as well as tags describing clothing. Always start with \"{prompt_tags}\". No capitalization. No special characters. Do not use \"monochrome\", \"black and white\", or \"monochromatic\".",
       "",
       "Input: "
     ],
