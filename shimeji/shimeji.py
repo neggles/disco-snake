@@ -103,7 +103,7 @@ class ChatBot:
 
         return response
 
-    async def respond_async(self, text: str, push_chain: bool = False):
+    async def respond_async(self, text: str, push_chain: bool = False, is_respond: bool = True):
         """Respond to the given text or conversation chain asynchronously.
 
         :param text: The response text.
@@ -119,7 +119,7 @@ class ChatBot:
 
         if self.preprocessors:
             for preprocessor in self.preprocessors:
-                text = preprocessor.__call__(text, is_respond=True, name=self.name)
+                text = preprocessor.__call__(text, is_respond=is_respond, name=self.name)
 
         response = await self.model_provider.response_async(text)
 

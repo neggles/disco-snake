@@ -132,9 +132,11 @@ class ModelProvider:
         """
         self.endpoint_url = endpoint_url
         self.kwargs = kwargs
-        if "args" not in kwargs:
-            raise Exception("default args is required")
+        if "args" not in kwargs.keys():
+            raise ValueError("default args is required")
         self.default_args = self.kwargs.get("args", None)
+        if self.default_args is None:
+            raise ValueError("default args is required")
         self.auth()
 
     def auth(self):
@@ -236,7 +238,6 @@ class SukimaModel(ModelProvider):
         :param endpoint_url: The URL for the Sukima endpoint.
         :type endpoint_url: str
         """
-        self.session = aiohttp.ClientSession()
         self.client = requests.Session()
         super().__init__(endpoint_url, **kwargs)
         self.auth()
@@ -529,7 +530,6 @@ class EnmaModel(ModelProvider):
         :param endpoint_url: The URL for the Enma endpoint. (this is the completion endpoint on the gateway!)
         :type endpoint_url: str
         """
-        self.session = aiohttp.ClientSession()
         self.client = requests.Session()
         super().__init__(endpoint_url, **kwargs)
         self.auth()
@@ -807,9 +807,9 @@ class OobaModel(ModelProvider):
         :param endpoint_url: The URL of the endpoint.
         :type endpoint_url: str
         """
-        self.session = aiohttp.ClientSession()
         self.client = requests.Session()
         super().__init__(endpoint_url, **kwargs)
+        self.default_ooba_args = self.convert_gen_request(self.default_args)
         self.auth()
 
     def auth(self) -> bool:
@@ -819,48 +819,41 @@ class OobaModel(ModelProvider):
         """
         return True
 
-    def convert_gen_request(self, req: Union[Dict[str, Any], ModelGenRequest]) -> str:
-        if isinstance(req, ModelGenRequest):
-            if req.sample_args.logit_biases is not None:
-                raise ValueError("logit_biases is not supported by this model provider")
-            if req.sample_args.phrase_biases is not None:
-                raise ValueError("phrase_biases is not supported by this model provider")
+    def convert_gen_request(self, req: ModelGenRequest):
+        if req.sample_args.stop_sequence is not None:
+            if req.gen_args.stopping_strings is None:
+                req.gen_args.stopping_strings = [req.sample_args.stop_sequence]
+            else:
+                req.gen_args.stopping_strings = req.gen_args.stopping_strings.append(
+                    req.sample_args.stop_sequence
+                )
 
-            if req.sample_args.stop_sequence is not None:
-                if req.gen_args.stopping_strings is None:
-                    req.gen_args.stopping_strings = [req.sample_args.stop_sequence]
-                else:
-                    req.gen_args.stopping_strings = req.gen_args.stopping_strings.append(
-                        req.sample_args.stop_sequence
-                    )
-
-            ret = OobaGenRequest(
-                prompt=req.prompt,
-                do_sample=req.sample_args.do_sample,
-                temperature=req.sample_args.temp,
-                top_p=req.sample_args.top_p,
-                typical_p=req.sample_args.typical_p,
-                repetition_penalty=req.sample_args.rep_p,
-                top_k=req.sample_args.top_k,
-                no_repeat_ngram_size=req.sample_args.no_repeat_ngram_size,
-                num_beams=req.sample_args.num_beams,
-                penalty_alpha=req.sample_args.penalty_alpha,
-                length_penalty=req.sample_args.length_penalty,
-                early_stopping=req.sample_args.early_stopping,
-                max_new_tokens=req.gen_args.max_length,
-                min_length=req.gen_args.min_length,
-                seed=req.gen_args.seed,
-                add_bos_token=req.gen_args.add_bos_token,
-                truncation_length=req.gen_args.truncation_length,
-                ban_eos_token=req.gen_args.ban_eos_token,
-                skip_special_tokens=req.gen_args.skip_special_tokens,
-                stopping_strings=req.gen_args.stopping_strings,
-            )
-        else:
-            ret = OobaGenRequest(**req)
+        ret = {
+            "prompt": req.prompt,
+            "max_new_tokens": req.gen_args.max_length,
+            "do_sample": req.sample_args.do_sample,
+            "temperature": req.sample_args.temp,
+            "top_p": req.sample_args.top_p,
+            "typical_p": req.sample_args.typical_p,
+            "repetition_penalty": req.sample_args.rep_p,
+            "top_k": req.sample_args.top_k,
+            "no_repeat_ngram_size": req.sample_args.no_repeat_ngram_size,
+            "num_beams": req.sample_args.num_beams,
+            "penalty_alpha": req.sample_args.penalty_alpha,
+            "length_penalty": req.sample_args.length_penalty,
+            "early_stopping": req.sample_args.early_stopping,
+            "min_length": req.gen_args.min_length,
+            "seed": req.gen_args.seed,
+            "add_bos_token": req.gen_args.add_bos_token,
+            "truncation_length": req.gen_args.truncation_length,
+            "ban_eos_token": req.gen_args.ban_eos_token,
+            "skip_special_tokens": req.gen_args.skip_special_tokens,
+            "stopping_strings": req.gen_args.stopping_strings,
+        }
+        ret = OobaGenRequest.parse_obj(ret)
         return ret
 
-    def generate(self, args: Union[Dict[str, Any], ModelGenRequest, OobaGenRequest]) -> str:
+    def generate(self, args: Union[ModelGenRequest, OobaGenRequest]) -> str:
         """
         Generate a response from the ModelProvider's endpoint.
 
@@ -868,39 +861,37 @@ class OobaModel(ModelProvider):
         :type args: dict
         :raises NotImplementedError: If the generate method is not implemented.
         """
-        if isinstance(args, (ModelGenRequest, Dict[str, Any])):
-            args: ModelGenRequest = self.convert_gen_request(args)
+        if not isinstance(args, OobaGenRequest):
+            args: OobaGenRequest = self.convert_gen_request(args)
 
         try:
-            r = requests.post(f"{self.endpoint_url}/api/v1/generate", data=args.asjson())
-            r.raise_for_status()
+            r = requests.post(f"{self.endpoint_url}/api/v1/generate", json=args.asdict())
         except Exception as e:
             raise e
         if r.status_code == 200:
-            return r.json()["results"]["text"]
+            return r.json()["results"][0]["text"]
         else:
             raise Exception(f"Could not generate text with text-generation-webui. Error: {r.json()}")
 
-    async def generate_async(self, args: Union[Dict[str, Any], ModelGenRequest, OobaGenRequest]) -> str:
+    async def generate_async(self, args: Union[ModelGenRequest, OobaGenRequest]) -> str:
         """Generate a response from the ModelProvider's endpoint asynchronously.
 
         :param args: The arguments to pass to the endpoint.
         :type args: dict
         :raises NotImplementedError: If the generate method is not implemented.
         """
-        if isinstance(args, (ModelGenRequest, Dict[str, Any])):
-            args: ModelGenRequest = self.convert_gen_request(args)
-            try:
-                async with self.session.post(
-                    f"{self.endpoint_url}/api/v1/generate", json=args.asjson()
-                ) as resp:
+        if not isinstance(args, OobaGenRequest):
+            args: OobaGenRequest = self.convert_gen_request(args)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.endpoint_url}/api/v1/generate", json=args.asdict()) as resp:
                     if resp.status == 200:
                         ret = await resp.json()
-                        return ret["results"]["text"]
+                        return ret["results"][0]["text"]
                     else:
                         raise Exception(f"Could not generate response. Error: {await resp.text()}")
-            except Exception as e:
-                raise e
+        except Exception as e:
+            raise ValueError(f"Something went fucky so here's the payload and shit: {args.asjson()}") from e
 
     async def hidden_async(self, model, text, layer):
         """Fetch a layer's hidden states from text.
@@ -989,7 +980,7 @@ class OobaModel(ModelProvider):
         """
         args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
-        args.gen_args.min_length = 1
+        args.gen_args.min_length = 1 if args.gen_args.min_length is None else args.gen_args.min_length
         response = self.generate(args)
         return response
 
@@ -1001,7 +992,9 @@ class OobaModel(ModelProvider):
         :rtype: str
         """
         args: ModelGenRequest = copy.deepcopy(self.default_args)
+        if context is None:
+            raise ValueError("where the shit is my context?")
         args.prompt = context
-        args.gen_args.min_length = 1
+        args.gen_args.min_length = 1 if args.gen_args.min_length is None else args.gen_args.min_length
         response = await self.generate_async(args)
         return response
