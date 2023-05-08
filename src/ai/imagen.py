@@ -77,7 +77,6 @@ class Imagen:
         IMAGEN_IMG_DIR.mkdir(exist_ok=True, parents=True)
 
         logger.info("Initialized Imagen.")
-        # logger.info(json.dumps(self.config.asdict(), indent=2))
 
     def get_lm_prompt(self, user_request: str) -> str:
         if len(user_request.split("of", 1)) > 1:
@@ -91,6 +90,19 @@ class Imagen:
         if len(prompt.strip()) == 0:
             prompt = self.params.default_prompt
         return prompt
+
+    async def submit_lm_prompt(self, prompt: Optional[str] = None) -> str:
+        request = self.lm_prompt.get_request(prompt)
+        try:
+            async with aiohttp.ClientSession(base_url=self.api_host) as session:
+                async with session.post(self.api_endpoint, json=request.asdict()) as resp:
+                    if resp.status == 200:
+                        ret = await resp.json()
+                        return ret["results"][0]["text"]
+                    else:
+                        resp.raise_for_status()
+        except Exception as e:
+            raise Exception(f"Could not generate response. Error: {await resp.text()}") from e
 
     def get_lm_stopping_strings(self) -> List[str]:
         return self.lm_prompt.stopping_strings
@@ -146,21 +158,29 @@ class Imagen:
         req_string = req_string.replace(" ", "-").replace(",", "")
         # submit the request and save the image
         async with aiohttp.ClientSession(base_url=self.api_host) as session:
-            async with session.post("/sdapi/v1/txt2img", json=request) as r:
+            async with session.post(self.api_endpoint, json=request) as r:
                 if r.status == 200:
                     response = await r.json()
-                    image_data = response["images"][0]
+                    # get the generation metadata and build the filename
                     image_info = json.loads(response["info"])
-                    image = Image.open(BytesIO(b64decode(image_data)))
                     imagefile_path = IMAGEN_IMG_DIR.joinpath(
                         f"{image_info['job_timestamp']}_{image_info['seed']}-{req_string}.png"
                     )
+                    # save the metadata and the image
+                    imagefile_path.with_suffix(".json").write_text(json.dumps(image_info, indent=2))
+                    image = Image.open(BytesIO(b64decode(response["images"][0])))
                     image.save(imagefile_path)
+                    # this could return the image object, but we're saving it anyway and it's easier to
+                    # load a disnake File() from a path, so, uh... memory leak prevention? :sweat_smile:
                     return imagefile_path
                 else:
                     r.raise_for_status()
 
     def should_take_pic(self, message: str) -> bool:
+        """
+        Dumb regex matcher to detect photo requests
+        TODO: Use a model instead of regexes? RoBERTa in multi-choice mode?
+        """
         message = remove_surrounded_chars(message)
         for regex in take_pic_regexes:
             if bool(regex.search(message)) is True:
@@ -169,6 +189,9 @@ class Imagen:
         return False
 
     def strip_take_pic(self, message: str) -> str:
+        """
+        Strip everything before "take a (photo|etc)" from a message
+        """
         message = remove_surrounded_chars(message)
         for regex in take_pic_regexes:
             message = regex.sub("", message)
@@ -177,6 +200,10 @@ class Imagen:
 
 # picks a random image size from the above list, swapping width and height 50% of the time
 def get_image_dimensions() -> Tuple[int, int]:
+    """
+    Pick a random image size from <this>.IMAGE_SIZE_OPTS, swap the width and height 50% of the time.
+    Used to decide what resolution the diffusion model should generate at.
+    """
     dims = choice(IMAGE_SIZE_OPTS)
     if randint(0, 1) == 0:
         return dims
@@ -185,6 +212,9 @@ def get_image_dimensions() -> Tuple[int, int]:
 
 
 def get_time_tag(time: Optional[datetime] = None, tz=ZoneInfo("Asia/Tokyo")) -> str:
+    """
+    Get a natural language word for the time of day it is. We use this to prompt the diffusion model.
+    """
     hour = time.hour if time is not None else datetime.now(tz=tz).hour
     if hour in range(5, 12):
         return "morning"
@@ -199,6 +229,10 @@ def get_time_tag(time: Optional[datetime] = None, tz=ZoneInfo("Asia/Tokyo")) -> 
 
 
 def remove_surrounded_chars(string):
-    # this expression matches to 'as few symbols as possible (0 upwards) between any asterisks' OR
-    # 'as few symbols as possible (0 upwards) between an asterisk and the end of the string'
+    """
+    Removes as few symbols as possible between any asterisk pairs, or everything from the last
+    asterisk to the end of the string (if there's an odd number of asterisks)
+
+    I think. Regexes are weird.
+    """
     return re_surrounded.sub("", string)

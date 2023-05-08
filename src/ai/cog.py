@@ -107,6 +107,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.nicknames: List[str] = self.config.params.nicknames
         self.debug: bool = self.config.params.debug
         self.memory_enable = self.config.params.memory_enable
+        self.max_retries = self.config.params.max_retries
 
         # we will populate these later during async init
         self.memory_store: PostgresMemoryStore = None
@@ -457,7 +458,21 @@ class Ai(commands.Cog, name=COG_UID):
 
             # Generate response
             try:
-                response: str = await self.chatbot.respond_async(conversation, push_chain=False)
+                # Generate the response, and retry if it contains bad words (up to self.max_retries times)
+                for attempt in range(self.max_retries):
+                    attempt = attempt + 1  # deal with range() starting from 0
+                    response: str = await self.chatbot.respond_async(conversation, push_chain=False)
+                    bad_words = self.find_bad_words(response)
+                    if len(bad_words) == 0:
+                        break
+                    if attempt < self.max_retries:
+                        logger.info(f"Response {attempt} contained bad words: {bad_words}\nRetrying...")
+                        continue
+                    else:
+                        logger.info(f"Final response contained bad words: {bad_words}\nGiving up... :(")
+                        response = ""
+                        break
+
                 debug_data["response_raw"] = response
 
                 # replace "<USER>" with user mention, same for "<BOT>"
@@ -596,7 +611,7 @@ class Ai(commands.Cog, name=COG_UID):
                 return False
         return True if text != "" else False
 
-    def like_bad_word(self, input: str) -> str:
+    def find_bad_words(self, input: str) -> str:
         found_words: List[str] = []
         input_words: str = input.split()
 
@@ -646,7 +661,7 @@ class Ai(commands.Cog, name=COG_UID):
         logger.info(f"[take_pic] LLM Prompt: {lm_prompt}")
 
         # get the LLM to create tags for the image
-        lm_tags = await self.chatbot.respond_async(lm_prompt, push_chain=False, is_respond=False)
+        lm_tags = await self.imagen.submit_lm_prompt(lm_prompt)
         logger.info(f"[take_pic] LLM Tags: {lm_tags}")
 
         # build the SD API request

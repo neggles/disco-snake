@@ -1,6 +1,10 @@
 import re
+from copy import deepcopy
 from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Any
+
+from pydantic import Field
+from shimeji.model_provider import OobaGenRequest
 
 
 class AsDictMixin:
@@ -38,6 +42,7 @@ class BotParameters:
     activity_channels: List[int]
     debug: bool
     memory_enable: bool
+    max_retries: int = 3
 
 
 @dataclass
@@ -101,7 +106,10 @@ class ImagenLMPrompt:
     header: List[str]
     trailer: str
     stopping_strings: List[str]
-    re_subject = re.compile(r".* of")
+    gensettings: Dict[str, Any]
+
+    def __post_init__(self):
+        self.re_subject = re.compile(r".* of")
 
     def get_tags(self) -> str:
         return ", ".join(self.tags)
@@ -117,6 +125,12 @@ class ImagenLMPrompt:
 
     def clean_tags(self, prompt: str) -> str:
         return prompt.replace(self.get_tags() + ", ", "")
+
+    def get_request(self, prompt: Optional[str] = None) -> OobaGenRequest:
+        gensettings = deepcopy(self.gensettings)
+        if prompt is not None and prompt != "":
+            gensettings["prompt"] = prompt
+        return OobaGenRequest.parse_obj(gensettings)
 
 
 @dataclass
