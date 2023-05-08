@@ -1,16 +1,12 @@
 import re
 from datetime import datetime
 from difflib import SequenceMatcher
-from random import (
-    choice as randchoice,
-    randint,
-)
+
 from typing import Any, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 import Levenshtein as lev
-from disnake import Emoji, Guild, Member, Message, Role, User
-from humanize import naturaltime
+from disnake import Emoji, Guild, Message, Role
 
 from ai.types import ListOfUsers
 
@@ -170,47 +166,6 @@ def get_current_time(tzname: str) -> str:
         except Exception as e:
             raise ValueError(f"Unmapped timezone: {tzname}") from e
     return datetime.now(tz=TZ_MAP[tzname]).strftime("%H:%M")
-
-
-def get_time_word(time: datetime) -> str:
-    hour = time.hour
-    if hour in range(5, 12):
-        return "morning"
-    elif hour in range(12, 17):
-        return "afternoon"
-    elif hour in range(18, 21):
-        return "evening"
-    elif hour == 21:
-        return "dusk"
-    else:
-        return "night"
-
-
-def get_image_time_tag(tz=ZoneInfo("Asia/Tokyo"), time=None):
-    if time is None:
-        time = datetime.now(tz=tz)
-    return get_time_word(time)
-
-
-IMAGE_SIZE_OPTS = [
-    (1024, 576),
-    (512, 1024),
-    (544, 960),
-    (576, 1024),
-    (576, 896),
-    (600, 864),
-    (640, 832),
-    (720, 800),
-    (768, 768),
-]
-
-
-def get_image_dimensions() -> Tuple[int, int]:
-    dims = randchoice(IMAGE_SIZE_OPTS)
-    if randint(0, 1) == 0:
-        return dims
-    else:
-        return (dims[1], dims[0])
 
 
 def any_in_text(strings: list[str], text: str) -> bool:

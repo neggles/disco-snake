@@ -1,18 +1,22 @@
-import logging
 import json
+import logging
+import re
 from base64 import b64decode
+from datetime import datetime
 from io import BytesIO
-from typing import Dict, Any, Optional, List
 from pathlib import Path
+from random import choice, randint
+from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import aiohttp
+import logsnake
 from dacite import from_dict
+from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from PIL import Image
 
-import logsnake
-from ai.config import ImagenConfig, ImagenApiParams, ImagenParams, ImagenSDPrompt, ImagenLMPrompt
-from ai.utils import any_in_text, get_current_time, get_image_dimensions, get_image_time_tag
-from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
+from ai.config import ImagenApiParams, ImagenConfig, ImagenLMPrompt, ImagenParams, ImagenSDPrompt
+from ai.utils import any_in_text, get_current_time
 
 # setup cog logger
 logger = logsnake.setup_logger(
@@ -28,6 +32,32 @@ logger = logsnake.setup_logger(
 
 IMAGEN_IMG_DIR = DATADIR_PATH.joinpath("ai", "images")
 IMAGEN_CFG_PATH = DATADIR_PATH.joinpath("ai", "imagen.json")
+
+IMAGE_SIZE_OPTS = [
+    (1024, 576),
+    (512, 1024),
+    (544, 960),
+    (576, 1024),
+    (576, 896),
+    (600, 864),
+    (640, 832),
+    (720, 800),
+    (768, 768),
+]
+
+
+re_take_pic = re.compile(
+    r"(another|capture|create|display|draw|give|make|message|paint|post|provide|see|send|send|share|shoot|show|snap|take)"
+    + r"\b(.+)?\b(image|pic(ture)?|photo(graph)?|screen(shot|ie)|(paint|draw)ing|portrait|selfie)s?",
+    flags=re.I + re.M,
+)
+re_take_pic_alt = re.compile(
+    r"(send|mail|message|me a)\b.+?\b(image|pic(ture)?|photo|snap(shot)?|selfie)s?\b",
+    flags=re.I + re.M,
+)
+take_pic_regexes = [re_take_pic, re_take_pic_alt]
+
+re_surrounded = re.compile(r"\*[^*]*?(\*|$)", flags=re.I + re.M)
 
 
 class Imagen:
@@ -46,11 +76,8 @@ class Imagen:
         self.api_endpoint = "/sdapi/v1/txt2img"
         IMAGEN_IMG_DIR.mkdir(exist_ok=True, parents=True)
 
-        logger.info("Initialized Imagen. Dump config:")
-        logger.info(json.dumps(self.config.asdict(), indent=2))
-
-    async def close(self):
-        await self.session.close()
+        logger.info("Initialized Imagen.")
+        # logger.info(json.dumps(self.config.asdict(), indent=2))
 
     def get_lm_prompt(self, user_request: str) -> str:
         return self.lm_prompt.prompt(user_request)
@@ -59,7 +86,7 @@ class Imagen:
         return self.lm_prompt.stopping_strings
 
     def build_request(self, llm_tags: str, user_prompt: str) -> Dict[str, Any]:
-        time_tag = get_image_time_tag()
+        time_tag = get_time_tag()
         user_prompt = user_prompt.lower()
         llm_tags = llm_tags.lower()
         format_tags = ""
@@ -122,3 +149,46 @@ class Imagen:
                     return imagefile_path
                 else:
                     r.raise_for_status()
+
+    def should_take_pic(self, message: str) -> bool:
+        message = remove_surrounded_chars(message)
+        for regex in take_pic_regexes:
+            if bool(regex.search(message)) is True:
+                logger.debug(f"Matched take pic regex: {regex.pattern}")
+                return True
+        return False
+
+    def strip_take_pic(self, message: str) -> str:
+        message = remove_surrounded_chars(message)
+        for regex in take_pic_regexes:
+            message = regex.sub("", message)
+        return message.strip()
+
+
+# picks a random image size from the above list, swapping width and height 50% of the time
+def get_image_dimensions() -> Tuple[int, int]:
+    dims = choice(IMAGE_SIZE_OPTS)
+    if randint(0, 1) == 0:
+        return dims
+    else:
+        return (dims[1], dims[0])
+
+
+def get_time_tag(time: Optional[datetime] = None, tz=ZoneInfo("Asia/Tokyo")) -> str:
+    hour = time.hour if time is not None else datetime.now(tz=tz).hour
+    if hour in range(5, 12):
+        return "morning"
+    elif hour in range(12, 17):
+        return "afternoon"
+    elif hour in range(18, 21):
+        return "evening"
+    elif hour == 21:
+        return "dusk"
+    else:
+        return "night"
+
+
+def remove_surrounded_chars(string):
+    # this expression matches to 'as few symbols as possible (0 upwards) between any asterisks' OR
+    # 'as few symbols as possible (0 upwards) between an asterisk and the end of the string'
+    return re_surrounded.sub("", string)

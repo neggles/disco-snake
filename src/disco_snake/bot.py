@@ -115,10 +115,11 @@ class DiscoSnake(commands.Bot):
 
     def available_cogs(self):
         cogs = [
-            f.stem
-            for f in self.cogdir_path.glob("*.py")
-            if f.stem != "template" and not f.stem.endswith("_wip")
+            p.stem
+            for p in self.cogdir_path.iterdir()
+            if (p.is_dir() or p.suffix == ".py") and not p.name.startswith("_")
         ]
+
         if isinstance(self.config["disable_cogs"], list):
             cogs = [x for x in cogs if x not in self.config["disable_cogs"]]
         return cogs

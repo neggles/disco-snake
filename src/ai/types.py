@@ -1,3 +1,5 @@
+import re
+from dataclasses import dataclass
 from typing import List, Union
 
 from disnake import Member, User, TextChannel, DMChannel, GroupChannel, Thread

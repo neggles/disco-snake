@@ -37,7 +37,8 @@ from shimeji.util import (
     TRIM_TYPE_SENTENCE,
     ContextEntry,
 )
-from transformers import AutoTokenizer
+from transformers import LlamaTokenizerFast
+from transformers.utils import logging as transformers_logging
 
 import logsnake
 from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
@@ -76,11 +77,6 @@ re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
 re_unescape_format = re.compile(r"\\([*_~`])")
 re_strip_special = re.compile(r"[^a-zA-Z0-9]+")
-re_take_pic = re.compile(
-    r"\b(take|post|paint|generate|make|draw|create|show|give|snap|capture|send|display|share|shoot|see|provide|another)"
-    + r"\b.*(\S\s{0,10})?(image|picture|screenshot|screenie|painting|pic|photo|photograph|portrait|selfie)\b\s?",
-    flags=re.IGNORECASE,
-)
 
 
 class Ai(commands.Cog, name=COG_UID):
@@ -118,7 +114,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.chatbot: ChatBot = None
         self.logging_channel: Optional[TextChannel] = None
         self.guilds: dict = {}
-        self.tokenizer: AutoTokenizer = None
+        self.tokenizer: LlamaTokenizerFast = None
         self.bad_words: List[str] = self.config.bad_words
 
         # selfietron
@@ -127,6 +123,11 @@ class Ai(commands.Cog, name=COG_UID):
         # somewhere to put the last context we generated for debugging
         self.debug_datadir: Path = LOGDIR_PATH.joinpath("ai")
         self.debug_datadir.mkdir(parents=True, exist_ok=True)
+
+        if self.debug is True:
+            transformers_logging.set_verbosity_debug()
+        else:
+            transformers_logging.set_verbosity_info()
 
     # Getters for config object sub-properties
     @property
@@ -182,7 +183,7 @@ class Ai(commands.Cog, name=COG_UID):
         )
 
         logger.debug("Initializing Tokenizer...")
-        self.tokenizer = AutoTokenizer.from_pretrained(
+        self.tokenizer = LlamaTokenizerFast.from_pretrained(
             pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizer").as_posix(),
             local_files_only=True,
         )
@@ -308,7 +309,7 @@ class Ai(commands.Cog, name=COG_UID):
                     chain.append(f"{message.author.name}: {content}")
                 continue
             elif message:
-                chain.append(f"{message.author.name}: [Image attached]")
+                chain.append(f"{message.author.name}: pic.png")
         chain = [x.strip() for x in chain if x.strip() != ""]
         return "\n".join(chain)
 
@@ -361,7 +362,7 @@ class Ai(commands.Cog, name=COG_UID):
         conversation_entry = ContextEntry(
             text=conversation,
             prefix=conv_prefix,
-            suffix=f"\n{self.name}: ",
+            suffix="",
             reserved_tokens=512,
             insertion_order=0,
             insertion_position=-1,
@@ -402,7 +403,7 @@ class Ai(commands.Cog, name=COG_UID):
             except Exception as e:
                 logger.error(f"Failed to get gensettings: {e}\n{format_exc()}")
 
-            if re_take_pic.search(message.content):
+            if self.imagen.should_take_pic(message.content) is True:
                 logger.info("Hold up, let me take a selfie...")
                 try:
                     response_image = await self.take_pic(message=message)
@@ -452,66 +453,69 @@ class Ai(commands.Cog, name=COG_UID):
             debug_data["context"] = conversation.splitlines()
 
             # Generate response
-            response: str = await self.chatbot.respond_async(conversation, push_chain=False)
-            debug_data["response_raw"] = response
+            try:
+                response: str = await self.chatbot.respond_async(conversation, push_chain=False)
+                debug_data["response_raw"] = response
 
-            # replace "<USER>" with user mention, same for "<BOT>"
-            response = self.fixup_bot_user_tokens(response, message)
+                # replace "<USER>" with user mention, same for "<BOT>"
+                response = self.fixup_bot_user_tokens(response, message)
 
-            # Clean response - trim left whitespace and fix emojis and pings
-            response = cut_trailing_sentence(response)
-            response = response.lstrip()
+                # Clean response - trim left whitespace and fix emojis and pings
+                response = cut_trailing_sentence(response)
+                response = response.lstrip()
 
-            if isinstance(message.channel, (TextChannel, Thread)):
-                members = (
-                    message.channel.guild.members
-                    if message.channel.guild is not None and isinstance(message.channel, Thread)
-                    else message.channel.members
-                )
-                response = restore_mentions_emotes(
-                    text=response,
-                    users=members,
-                    emojis=self.bot.emojis,
-                )
-            debug_data["response"] = response
+                if isinstance(message.channel, (TextChannel, Thread)):
+                    members = (
+                        message.channel.guild.members
+                        if message.channel.guild is not None and isinstance(message.channel, Thread)
+                        else message.channel.members
+                    )
+                    response = restore_mentions_emotes(
+                        text=response,
+                        users=members,
+                        emojis=self.bot.emojis,
+                    )
+                debug_data["response"] = response
 
-            # Send response if not empty
-            if response == "":
-                logger.info("Response was empty.")
-            elif response_image is not None:
-                logger.info("Responding with image...")
-                await message.channel.send(response, file=response_image)
-                logger.info(f"Response: {response}")
-            else:
-                await message.channel.send(response)
-                logger.info(f"Response: {response}")
+                # Send response if not empty
+                if response == "":
+                    logger.info("Response was empty.")
+                elif response_image is not None:
+                    logger.info("Responding with image...")
+                    await message.channel.send(response, file=response_image)
+                    logger.info(f"Response: {response}")
+                else:
+                    await message.channel.send(response)
+                    logger.info(f"Response: {response}")
 
-                self.last_response = datetime.now(timezone.utc)
+                    self.last_response = datetime.now(timezone.utc)
 
-        if self.debug:
-            dump_file = self.debug_datadir.joinpath(f"msg-{message.id}-{msg_timestamp}.json")
-            dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
-            logger.debug(f"Dumped message debug data to {dump_file.name}")
-
-        # add to memory store in background
-        if self.memory_store is not None:
-            # encode bot response
-            response = self.get_msg_content_clean(message, response)
-            is_dupe = await self.memory_store.check_duplicates(text=response, duplicate_ratio=0.8)
-            if response != "" and not is_dupe and self.is_memorable(response):
-                await self.memory_store.add(
-                    author_id=self.bot.user.id,
-                    author=self.name,
-                    text=response,
-                    encoding_model=self.memory_store.model,
-                    encoding=array_to_str(
-                        await self.model_provider.hidden_async(
-                            self.memory_store.model,
-                            f"{self.name}: {response}",
-                            layer=self.memory_store.model_layer,
+                # add to memory store in background
+                if self.memory_store is not None:
+                    # encode bot response
+                    response = self.get_msg_content_clean(message, response)
+                    is_dupe = await self.memory_store.check_duplicates(text=response, duplicate_ratio=0.8)
+                    if response != "" and not is_dupe and self.is_memorable(response):
+                        await self.memory_store.add(
+                            author_id=self.bot.user.id,
+                            author=self.name,
+                            text=response,
+                            encoding_model=self.memory_store.model,
+                            encoding=array_to_str(
+                                await self.model_provider.hidden_async(
+                                    self.memory_store.model,
+                                    f"{self.name}: {response}",
+                                    layer=self.memory_store.model_layer,
+                                )
+                            ),
                         )
-                    ),
-                )
+            except Exception as e:
+                logger.exception(e)
+            finally:
+                if self.debug:
+                    dump_file = self.debug_datadir.joinpath(f"msg-{message.id}-{msg_timestamp}.json")
+                    dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
+                    logger.debug(f"Dumped message debug data to {dump_file.name}")
 
     # Idle loop stuff
     @tasks.loop(seconds=21)
@@ -635,16 +639,15 @@ class Ai(commands.Cog, name=COG_UID):
         message_content = message_content.replace("\n", " ").replace(self.name + " ", "")
 
         # build the LLM prompt for the image
-        await self.model_provider.generate_async()
-        llm_prompt = self.imagen.get_llm_prompt("a photo of" + re_take_pic.sub("", message_content))
-        logger.info(f"[take_pic] LLM Prompt: {llm_prompt}")
+        lm_prompt = self.imagen.get_lm_prompt(self.imagen.strip_take_pic(message_content))
+        logger.info(f"[take_pic] LLM Prompt: {lm_prompt}")
 
         # get the LLM to create tags for the image
-        llm_tags = await self.chatbot.respond_async(llm_prompt, push_chain=False)
-        logger.info(f"[take_pic] LLM Tags: {llm_tags}")
+        lm_tags = await self.chatbot.respond_async(lm_prompt, push_chain=False, is_respond=False)
+        logger.info(f"[take_pic] LLM Tags: {lm_tags}")
 
         # build the SD API request
-        sdapi_request = self.imagen.build_request(llm_tags, message_content)
+        sdapi_request = self.imagen.build_request(lm_tags, message_content)
         logger.info(f"[take_pic] SD API Request: {json.dumps(sdapi_request)}")
         # submit it
         result_path = await self.imagen.submit_request(sdapi_request)
