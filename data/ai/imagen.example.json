@@ -12,7 +12,12 @@
     "default_height": 768,
     "sampler_name": "Euler a",
     "checkpoint": "SomethingV2_2",
-    "vae": "blessed2.vae.pt"
+    "vae": "blessed2.vae.pt",
+    "enable_hr": true,
+    "hr_steps": 8,
+    "hr_denoise": 0.55,
+    "hr_scale": 1.5,
+    "hr_upscaler": "Latent"
   },
   "lm_prompt": {
     "tags": ["masterpiece", "best quality", "exceptional", "1girl", "solo"],

@@ -64,7 +64,7 @@ class ImagenParams:
 
 @dataclass
 class ImagenApiParams:
-    steps: int = 31
+    steps: int = 25
     cfg_scale: float = 7.75
     seed: int = -1
     default_width: int = 576
@@ -72,6 +72,11 @@ class ImagenApiParams:
     sampler_name: str = "Euler a"
     checkpoint: Optional[str] = None
     vae: Optional[str] = None
+    enable_hr: bool = False
+    hr_steps: int = 0
+    hr_denoise: float = 0.55
+    hr_scale: float = 1.5
+    hr_upscaler: str = "Latent"
 
     def get_request(self, prompt: str, negative: str, width: int = -1, height: int = -1):
         request_obj = {
@@ -86,7 +91,11 @@ class ImagenApiParams:
             "send_images": True,
             "save_images": True,
             "sampler_name": self.sampler_name,
-            "enable_hr": 0,
+            "enable_hr": int(self.enable_hr),
+            "hr_scale": self.hr_scale,
+            "hr_second_pass_steps": self.hr_steps,
+            "denoising_strength": self.hr_denoise,
+            "hr_upscaler": self.hr_upscaler,
         }
         overrides = {}
         if self.checkpoint is not None:
