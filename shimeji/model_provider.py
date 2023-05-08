@@ -820,6 +820,9 @@ class OobaModel(ModelProvider):
         return True
 
     def convert_gen_request(self, req: ModelGenRequest):
+        """
+        Converts a ModelGenRequest to an OobaGenRequest since the format is quite a bit different.
+        """
         if req.sample_args.stop_sequence is not None:
             if req.gen_args.stopping_strings is None:
                 req.gen_args.stopping_strings = [req.sample_args.stop_sequence]
@@ -874,7 +877,8 @@ class OobaModel(ModelProvider):
             raise Exception(f"Could not generate text with text-generation-webui. Error: {r.json()}")
 
     async def generate_async(self, args: Union[ModelGenRequest, OobaGenRequest]) -> str:
-        """Generate a response from the ModelProvider's endpoint asynchronously.
+        """
+        Generate a response from the ModelProvider's endpoint asynchronously.
 
         :param args: The arguments to pass to the endpoint.
         :type args: dict
@@ -883,18 +887,19 @@ class OobaModel(ModelProvider):
         if not isinstance(args, OobaGenRequest):
             args: OobaGenRequest = self.convert_gen_request(args)
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.endpoint_url}/api/v1/generate", json=args.asdict()) as resp:
+            async with aiohttp.ClientSession(base_url=self.endpoint_url) as session:
+                async with session.post("/api/v1/generate", json=args.asdict()) as resp:
                     if resp.status == 200:
                         ret = await resp.json()
                         return ret["results"][0]["text"]
                     else:
-                        raise Exception(f"Could not generate response. Error: {await resp.text()}")
+                        resp.raise_for_status()
         except Exception as e:
-            raise ValueError(f"Something went fucky so here's the payload and shit: {args.asjson()}") from e
+            raise Exception(f"Could not generate response. Error: {await resp.text()}") from e
 
     async def hidden_async(self, model, text, layer):
-        """Fetch a layer's hidden states from text.
+        """
+        Fetch a layer's hidden states from text.
 
         :param model: The model to extract hidden states from.
         :type model: str
@@ -907,7 +912,8 @@ class OobaModel(ModelProvider):
         raise NotImplementedError("hidden_async method is not implemented for this model provider")
 
     async def image_label_async(self, model, url, labels):
-        """Classify an image with labels (CLIP).
+        """
+        Classify an image with labels (CLIP).
 
         :param model: The model to use for classification.
         :type model: str
@@ -920,7 +926,8 @@ class OobaModel(ModelProvider):
         raise NotImplementedError("image_label_async method is not implemented for this model provider")
 
     def should_respond(self, context, name):
-        """Determine if the Enma endpoint predicts that the name should respond to the given context.
+        """
+        Determine if the Enma endpoint predicts that the name should respond to the given context.
         :param context: The context to use.
         :type context: str
         :param name: The name to check.
@@ -934,13 +941,13 @@ class OobaModel(ModelProvider):
         args.sample_args.temp = 0.25
         args.sample_args.top_p = 0.9
         args.sample_args.top_k = 40
-        args.sample_args.rep_p = None
+        args.sample_args.rep_p = 1.0
         args.sample_args.do_sample = True
-        args.sample_args.penalty_alpha = None
-        args.sample_args.num_return_sequences = 1  # i have no idea what these should be
         args.sample_args.stop_sequence = None
+        args.gen_args.max_length = 12
+        args.gen_args.min_length = 0
         response = self.generate(args)
-        if name in response:
+        if response.strip().startswith(name):
             return True
         else:
             return False
@@ -960,13 +967,12 @@ class OobaModel(ModelProvider):
         args.sample_args.temp = 0.25
         args.sample_args.top_p = 0.9
         args.sample_args.top_k = 40
-        args.sample_args.rep_p = None
+        args.sample_args.rep_p = 1.0
         args.sample_args.do_sample = True
-        args.sample_args.penalty_alpha = None
-        args.sample_args.num_return_sequences = 1  # i have no idea what these should be
-        args.sample_args.stop_sequence = None
+        args.gen_args.max_length = 12
+        args.gen_args.min_length = 0
         response = await self.generate_async(args)
-        if response.startswith(name):
+        if response.strip().startswith(name):
             return True
         else:
             return False
