@@ -87,6 +87,7 @@ class Imagen:
         for word in ["yourself ", "you "]:
             user_request = user_request.replace(word, "a girl ")
 
+        user_request = user_request.strip("?.!")
         prompt = self.lm_prompt.prompt(user_request)
         if len(prompt.strip()) == 0:
             prompt = self.params.default_prompt
