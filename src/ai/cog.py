@@ -120,7 +120,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.bad_words: List[str] = self.config.bad_words
 
         # selfietron
-        self.imagen = Imagen()
+        self.imagen = Imagen(lm_api_endpoint=self.model_provider_cfg.endpoint)
 
         # somewhere to put the last context we generated for debugging
         self.debug_datadir: Path = LOGDIR_PATH.joinpath("ai")
@@ -407,16 +407,6 @@ class Ai(commands.Cog, name=COG_UID):
             except Exception as e:
                 logger.error(f"Failed to get gensettings: {e}\n{format_exc()}")
 
-            if self.imagen.should_take_pic(message.content) is True:
-                logger.info("Hold up, let me take a selfie...")
-                try:
-                    response_image = await self.take_pic(message=message)
-                except Exception as e:
-                    logger.error(f"Failed to generate image label: {e}\n{format_exc()}")
-                    response_image = None
-            else:
-                response_image = None
-
             if self.memory_store is not None and message.guild is not None:
                 private_role = get_role_by_name(name="Private", guild=message.guild)
                 anonymous_role = get_role_by_name(name="Anonymous", guild=message.guild)
@@ -455,6 +445,14 @@ class Ai(commands.Cog, name=COG_UID):
             # Build conversation context
             conversation = await self.build_ctx(conversation + encoded_image_label, message)
             debug_data["context"] = conversation.splitlines()
+
+            response_image = None
+            if self.imagen.should_take_pic(message.content) is True:
+                logger.info("Hold up, let me take a selfie...")
+                try:
+                    response_image = await self.take_pic(message=message)
+                except Exception as e:
+                    raise Exception("Failed to generate image response") from e
 
             # Generate response
             try:

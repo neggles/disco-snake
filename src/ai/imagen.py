@@ -61,7 +61,7 @@ re_surrounded = re.compile(r"\*[^*]*?(\*|$)", flags=re.I + re.M)
 
 
 class Imagen:
-    def __init__(self, config: Optional[ImagenConfig] = None):
+    def __init__(self, lm_api_endpoint: str, config: Optional[ImagenConfig] = None):
         if config is None:
             config = from_dict(ImagenConfig, json.loads(IMAGEN_CFG_PATH.read_text()))
 
@@ -72,6 +72,7 @@ class Imagen:
         self.timezone: str = config.params.timezone
         self.api_host: str = config.params.api_host.rstrip("/")
         self.api_params: ImagenApiParams = config.api_params
+        self.lm_api_endpoint: str = lm_api_endpoint.rstrip("/")
 
         self.api_endpoint = "/sdapi/v1/txt2img"
         IMAGEN_IMG_DIR.mkdir(exist_ok=True, parents=True)
@@ -94,8 +95,8 @@ class Imagen:
     async def submit_lm_prompt(self, prompt: Optional[str] = None) -> str:
         request = self.lm_prompt.get_request(prompt)
         try:
-            async with aiohttp.ClientSession(base_url=self.api_host) as session:
-                async with session.post(self.api_endpoint, json=request.asdict()) as resp:
+            async with aiohttp.ClientSession(self.lm_api_endpoint) as session:
+                async with session.post("/api/v1/generate", json=request.asdict()) as resp:
                     if resp.status == 200:
                         ret = await resp.json()
                         return ret["results"][0]["text"]

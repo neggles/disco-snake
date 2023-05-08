@@ -60,7 +60,6 @@ class ImagenParams:
     enabled: bool
     api_host: str
     timezone: str
-    default_prompt: str
 
 
 @dataclass
@@ -109,6 +108,11 @@ class ImagenLMPrompt:
 
     def __post_init__(self):
         self.re_subject = re.compile(r".* of")
+        self.default_prompt = (
+            self.gensettings["prompt"]
+            if len(self.gensettings["prompt"]) > 0
+            else "a cute girl looking out her apartment window"
+        )
 
     def get_tags(self) -> str:
         return ", ".join(self.tags)
@@ -120,6 +124,8 @@ class ImagenLMPrompt:
         return "\n\n" + self.trailer
 
     def prompt(self, user_message: str) -> str:
+        if len(user_message) == 0:
+            user_message = self.gensettings["prompt"]
         return f"{self.get_header()}{user_message}{self.get_trailer()}"
 
     def clean_tags(self, prompt: str) -> str:
