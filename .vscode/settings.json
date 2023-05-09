@@ -36,7 +36,11 @@
     "python.analysis.diagnosticMode": "openFilesOnly",
     "python.analysis.autoFormatStrings": true,
     "python.analysis.fixAll": ["source.convertImportFormat"],
-    "python.analysis.stubPath": "${workspaceFolder}/typings",
+    "python.analysis.exclude": [
+        "**/node_modules",
+        "**/__pycache__",
+        "**/.venv"
+    ],
     "python.linting.enabled": false,
     "python.linting.flake8Enabled": false,
     "python.linting.mypyEnabled": false,

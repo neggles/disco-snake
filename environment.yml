@@ -6,9 +6,9 @@ channels:
   - huggingface
   - defaults
 dependencies:
-  - nvidia::cudatoolkit=11.7
+  - nvidia::cudatoolkit=11.8
   - python=3.10
-  - pytorch::pytorch-cuda=11.7
+  - pytorch::pytorch-cuda=11.8
   - pytorch::torchvision
   - huggingface::transformers
   - conda-forge::huggingface_hub
