@@ -1,5 +1,5 @@
 from random import choice as random_choice
-from typing import Union, List
+from typing import List, Union
 
 from disnake import Colour, Embed, File, Member, User
 from disnake.ext.commands import (

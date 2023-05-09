@@ -1,7 +1,7 @@
+import asyncio
 import json
 import logging
 import sys
-import asyncio
 from zoneinfo import ZoneInfo
 
 import click
@@ -12,7 +12,7 @@ from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
 import logsnake
-from disco_snake import LOGDIR_PATH, CONFIG_PATH, DATADIR_PATH, USERDATA_PATH, PACKAGE, LOG_FORMAT
+from disco_snake import CONFIG_PATH, DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH, PACKAGE, USERDATA_PATH
 from disco_snake.bot import DiscoSnake
 from helpers.misc import parse_log_level
 

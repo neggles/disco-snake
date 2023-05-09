@@ -7,7 +7,7 @@ from random import uniform as rand_float
 from time import perf_counter
 
 import torch
-from diffusers import StableDiffusionPipeline, StableDiffusionKDiffusionPipeline
+from diffusers import StableDiffusionKDiffusionPipeline, StableDiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import logging as d2logging
 from disnake import (
