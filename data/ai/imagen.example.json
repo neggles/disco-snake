@@ -33,7 +33,7 @@
     ],
     "trailer": "Prompt: ",
     "gensettings": {
-      "prompt": "a cute girl looking out het apartment window at the streets of tokyo",
+      "prompt": "a cute girl looking out her apartment window at the streets of tokyo",
       "max_new_tokens": 100,
       "do_sample": true,
       "temperature": 1.3,
