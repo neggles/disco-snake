@@ -1,14 +1,13 @@
 import json
 import logging
 import re
-from asyncio import sleep
-from copy import deepcopy
+from asyncio import Lock
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from dacite import from_dict
 from disnake import (
@@ -17,10 +16,10 @@ from disnake import (
     File,
     GroupChannel,
     Message,
+    MessageInteraction,
     TextChannel,
     Thread,
     User,
-    MessageInteraction,
 )
 from disnake.ext import commands, tasks
 from Levenshtein import distance as lev_distance
@@ -37,11 +36,12 @@ from shimeji.util import (
     TRIM_TYPE_SENTENCE,
     ContextEntry,
 )
-from transformers import LlamaTokenizerFast
+from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
 from transformers.utils import logging as transformers_logging
 
 import logsnake
 from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
+from ai.imagen import Imagen
 from ai.model import get_enma_model, get_ooba_model
 from ai.types import MessageChannel
 from ai.utils import (
@@ -49,14 +49,12 @@ from ai.utils import (
     convert_mentions_emotes,
     cut_trailing_sentence,
     get_full_class_name,
+    get_lm_prompt_time,
     get_role_by_name,
     restore_mentions_emotes,
-    get_lm_prompt_time,
 )
-from ai.imagen import Imagen
 from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
-from helpers import checks
 
 COG_UID = "ai"
 
@@ -109,6 +107,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.debug: bool = self.config.params.debug
         self.memory_enable = self.config.params.memory_enable
         self.max_retries = self.config.params.max_retries
+        self.lm_lock = Lock()  # used to stop multiple conditional responses from happening at once
 
         # we will populate these later during async init
         self.memory_store: PostgresMemoryStore = None
@@ -121,7 +120,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.bad_words: List[str] = self.config.bad_words
 
         # selfietron
-        self.imagen = Imagen(lm_api_endpoint=self.model_provider_cfg.endpoint)
+        self.imagen = Imagen(lm_api_host=self.model_provider_cfg.endpoint)
 
         # somewhere to put the last context we generated for debugging
         self.debug_datadir: Path = LOGDIR_PATH.joinpath("ai")
@@ -239,16 +238,15 @@ class Ai(commands.Cog, name=COG_UID):
             return
 
         try:
-            logger.info(f"Raw message: {message.content}")
+            # logger.debug(f"Raw message: {message.content}")
             message_content = self.get_msg_content_clean(message)
             if message_content == "":
-                logger.info("Message was empty after cleaning.")
+                logger.debug("Message was empty after cleaning.")
                 return
-            else:
-                logger.info(f"Message: {message_content}")
 
             conversation = await self.get_msg_ctx(message.channel)
             if self.bot.user.mentioned_in(message) or any(t in message_content for t in self.nicknames):
+                logger.debug(f"Message: {message_content}")
                 await self.respond(conversation, message, "mention")
 
             elif isinstance(message.channel, DMChannel) and len(message_content) > 0:
@@ -256,6 +254,7 @@ class Ai(commands.Cog, name=COG_UID):
 
             elif message.channel.id in self.activity_channels:
                 if self.conditional_response is True:
+                    logger.debug(f"Message: {message_content}")
                     if await self.chatbot.should_respond_async(conversation, push_chain=False):
                         logger.debug("Model wants to respond, responding...")
                         await self.respond(conversation, message, "conditional")
@@ -645,7 +644,7 @@ class Ai(commands.Cog, name=COG_UID):
                 file = file.rename(file.parent / "archive" / file.name)
 
     # Image generation stuff
-    async def take_pic(self, message: Message) -> File:
+    async def take_pic(self, message: Message) -> Tuple[File, dict]:
         """
         hold up, let me take a selfie
         """

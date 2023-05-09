@@ -18,9 +18,8 @@
     "hr_upscaler": "Latent",
     "checkpoint": "SomethingV2_2",
     "vae": "blessed2.vae.pt",
-    "overrides": {
-      "clip_skip": 2
-    }
+    "clip_skip": 2,
+    "overrides": {}
   },
   "lm_prompt": {
     "tags": ["masterpiece", "best quality", "exceptional", "1girl", "solo"],
@@ -34,7 +33,7 @@
     ],
     "trailer": "Prompt: ",
     "gensettings": {
-      "prompt": "a cute girl looking out her a window at the streets of tokyo",
+      "prompt": "a cute girl looking out het apartment window at the streets of tokyo",
       "max_new_tokens": 100,
       "do_sample": true,
       "temperature": 1.3,
@@ -63,16 +62,16 @@
       "solo",
       "bangs",
       "swept bangs",
-      "(pink hair",
-      "very long hair:1.2)",
-      "(purple eyes:1.2)",
+      "(pink hair, very long hair:1.1)",
+
+      "(purple eyes:1.1)",
       "gradient eyes"
     ],
     "trailing": [
       "happy",
       "(smile:0.6)",
       "colored inner hair",
-      "(cat ears, cat girl:1.2)",
+      "(cat ears:1.1)",
       "(symmetric)",
       "(masterpiece",
       "exceptional",
@@ -81,9 +80,9 @@
       "extremely detailed:1.1)"
     ],
     "negative": [
-      "(short hair:1.1)",
-      "(EasyNegative:1.1)",
       "(nsfw:1.1)",
+      "(EasyNegative:1.1)",
+      "(short hair:1.1)",
       "nude",
       "naked",
       "loli",

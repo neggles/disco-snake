@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from asyncio import Lock
 from base64 import b64decode
 from datetime import datetime
 from io import BytesIO
@@ -10,13 +11,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import aiohttp
-import logsnake
 from dacite import from_dict
-from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from PIL import Image
 
+import logsnake
 from ai.config import ImagenApiParams, ImagenConfig, ImagenLMPrompt, ImagenParams, ImagenSDPrompt
 from ai.utils import any_in_text
+from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 
 # setup cog logger
 logger = logsnake.setup_logger(
@@ -71,20 +72,23 @@ re_surrounded = re.compile(r"\*[^*]*?(\*|$)", flags=re.I + re.M)
 
 
 class Imagen:
-    def __init__(self, lm_api_endpoint: str, config: Optional[ImagenConfig] = None):
+    sd_api_path = "/sdapi/v1/txt2img"
+
+    def __init__(self, lm_api_host: str, config: Optional[ImagenConfig] = None):
         if config is None:
             config = from_dict(ImagenConfig, json.loads(IMAGEN_CFG_PATH.read_text()))
 
         self.config: ImagenConfig = config
         self.params: ImagenParams = config.params
-        self.lm_prompt: ImagenLMPrompt = config.lm_prompt
-        self.sd_prompt: ImagenSDPrompt = config.sd_prompt
         self.timezone: str = config.params.timezone
-        self.api_host: str = config.params.api_host.rstrip("/")
-        self.api_params: ImagenApiParams = config.api_params
-        self.lm_api_endpoint: str = lm_api_endpoint.rstrip("/")
 
-        self.api_endpoint = "/sdapi/v1/txt2img"
+        self.sd_prompt: ImagenSDPrompt = config.sd_prompt
+        self.sd_api_host: str = config.params.api_host.rstrip("/")
+        self.sd_api_params: ImagenApiParams = config.api_params
+
+        self.lm_prompt: ImagenLMPrompt = config.lm_prompt
+        self.lm_api_host: str = lm_api_host.rstrip("/")
+
         IMAGEN_IMG_DIR.mkdir(exist_ok=True, parents=True)
 
         logger.info("Initialized Imagen.")
@@ -106,7 +110,7 @@ class Imagen:
     async def submit_lm_prompt(self, prompt: Optional[str] = None) -> str:
         request = self.lm_prompt.get_request(prompt)
         try:
-            async with aiohttp.ClientSession(self.lm_api_endpoint) as session:
+            async with aiohttp.ClientSession(self.lm_api_host) as session:
                 async with session.post("/api/v1/generate", json=request.asdict()) as resp:
                     if resp.status == 200:
                         ret = await resp.json()
@@ -119,13 +123,13 @@ class Imagen:
     def get_lm_stopping_strings(self) -> List[str]:
         return self.lm_prompt.gensettings["stopping_strings"]
 
-    def build_request(self, llm_tags: str, user_prompt: str) -> Dict[str, Any]:
+    def build_request(self, lm_tags: str, user_prompt: str) -> Dict[str, Any]:
         time_tag = get_time_tag()
         user_prompt = user_prompt.lower()
-        llm_tags = llm_tags.lower()
+        lm_tags = lm_tags.lower()
         format_tags = ""
 
-        if len(user_prompt) > 4 and len(llm_tags.strip()) > 2:
+        if len(user_prompt) > 4 and len(lm_tags.strip()) > 2:
             if "selfie" in user_prompt:
                 format_tags = ", looking into the camera, "
             elif any_in_text(
@@ -141,10 +145,10 @@ class Imagen:
             if "holding" in user_prompt:
                 format_tags = f"{format_tags}, holding"
 
-        if len(llm_tags) > 0:
-            llm_tags = f", ({llm_tags}:1.125)"
+        if len(lm_tags) > 0:
+            lm_tags = f", ({lm_tags}:{self.sd_prompt.lm_weight:.2f})"
 
-        image_prompt = self.sd_prompt.prompt(f", {time_tag}{format_tags}{llm_tags}")
+        image_prompt = self.sd_prompt.prompt(f", {time_tag}{format_tags}{lm_tags}")
 
         # Generate at random aspect ratios, but same total pixels
         width, height = get_image_dimensions()
@@ -155,7 +159,7 @@ class Imagen:
                 width, height = height, width
 
         # Build the request and return it
-        gen_request: Dict[str, Any] = self.api_params.get_request(
+        gen_request: Dict[str, Any] = self.sd_api_params.get_request(
             prompt=image_prompt,
             negative=self.sd_prompt.negative_prompt(),
             width=width,
@@ -169,8 +173,8 @@ class Imagen:
         req_string: str = request["prompt"][:50]
         req_string = req_string.replace(" ", "-").replace(",", "")
         # submit the request and save the image
-        async with aiohttp.ClientSession(base_url=self.api_host) as session:
-            async with session.post(self.api_endpoint, json=request) as r:
+        async with aiohttp.ClientSession(base_url=self.sd_api_host) as session:
+            async with session.post(self.sd_api_path, json=request) as r:
                 if r.status == 200:
                     response = await r.json()
                     # get the generation metadata and build the filename
@@ -196,7 +200,7 @@ class Imagen:
         message = remove_surrounded_chars(message)
         for regex in take_pic_regexes:
             if bool(regex.search(message)) is True:
-                logger.debug(f"Matched take pic regex: {regex.pattern}")
+                logger.debug("Message matched take pic regex")
                 return True
         return False
 

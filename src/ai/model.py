@@ -1,14 +1,11 @@
 from pydantic import BaseModel
-
-
 from shimeji.model_provider import (
+    EnmaModel,
     ModelGenArgs,
     ModelGenRequest,
     ModelSampleArgs,
-    SukimaModel,
-    EnmaModel,
     OobaModel,
-    OobaGenRequest,
+    SukimaModel,
 )
 
 from ai.config import ModelProviderConfig

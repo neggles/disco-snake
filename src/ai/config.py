@@ -1,9 +1,8 @@
 import re
 from copy import deepcopy
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Any
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List, Optional
 
-from pydantic import Field
 from shimeji.model_provider import OobaGenRequest
 
 
@@ -70,13 +69,15 @@ class ImagenApiParams:
     default_width: int = 576
     default_height: int = 768
     sampler_name: str = "Euler a"
-    checkpoint: Optional[str] = None
-    vae: Optional[str] = None
     enable_hr: bool = False
     hr_steps: int = 0
     hr_denoise: float = 0.55
     hr_scale: float = 1.5
     hr_upscaler: str = "Latent"
+    checkpoint: Optional[str] = None
+    vae: Optional[str] = None
+    clip_skip: int = 2
+    overrides: Optional[dict] = None
 
     def get_request(self, prompt: str, negative: str, width: int = -1, height: int = -1):
         request_obj = {
@@ -98,14 +99,23 @@ class ImagenApiParams:
             "denoising_strength": self.hr_denoise,
             "hr_upscaler": self.hr_upscaler,
         }
-        overrides = {}
+        # copy the overrides dict so we don't modify the original
+        overrides = self.overrides.copy() if self.overrides is not None else {}
+
+        # set the checkpoint and VAE if provided
         if self.checkpoint is not None:
             overrides["sd_model_checkpoint"] = self.checkpoint
         if self.vae is not None:
             overrides["sd_vae"] = self.vae
+        # set clip skip
+        overrides["CLIP_stop_at_last_layers"] = self.clip_skip
+
+        # if we have overrides, set them in the request object
         if len(overrides.keys()) > 0:
             request_obj["override_settings"] = overrides
             request_obj["override_settings_restore_afterwards"] = True
+
+        # return the request object
         return request_obj
 
 
@@ -153,6 +163,7 @@ class ImagenSDPrompt:
     leading: List[str]
     trailing: List[str]
     negative: List[str]
+    lm_weight: float = 1.15
 
     def prompt(self, prompt: str) -> str:
         leading_tags = ", ".join(self.leading)
