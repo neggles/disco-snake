@@ -229,6 +229,9 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/linux,windows,macos,visualstudiocode,python
 
+# pyright typings
+/typings/
+
 # version file
 src/disco_snake/_version.py
 
