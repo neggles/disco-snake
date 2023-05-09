@@ -299,6 +299,13 @@ class Ai(commands.Cog, name=COG_UID):
         messages, to_remove = anti_spam(messages)
         if to_remove:
             logger.info(f"Removed {to_remove} messages from context.")
+
+        # magic tag to break context chain to get bot out of librarian mode
+        for idx, message in enumerate(messages):
+            if "<ctxbreak>" in message.content.lower() and message.author.id == self.bot.owner_id:
+                messages = messages[:idx]
+                break
+
         chain = []
         for message in reversed(messages):
             if len(message.embeds) > 0:
@@ -461,6 +468,9 @@ class Ai(commands.Cog, name=COG_UID):
                     response: str = await self.chatbot.respond_async(conversation, push_chain=False)
                     bad_words = self.find_bad_words(response)
                     if len(bad_words) == 0:
+                        if response.startswith("I'm sorry, but") is True:
+                            logger.info("Response was a ChatGPT apology, retrying...")
+                            continue
                         break
                     if attempt < self.max_retries:
                         logger.info(f"Response {attempt} contained bad words: {bad_words}\nRetrying...")
