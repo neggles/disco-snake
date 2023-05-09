@@ -114,7 +114,13 @@ class Imagen:
                 async with session.post("/api/v1/generate", json=request.asdict()) as resp:
                     if resp.status == 200:
                         ret = await resp.json()
-                        return ret["results"][0]["text"]
+                        result: str = ret["results"][0]["text"]
+                        return (
+                            result.replace(self.sd_prompt.get_tags(), "")
+                            .replace(", ,", "")
+                            .replace(",,", ",")
+                            .strip()
+                        )
                     else:
                         resp.raise_for_status()
         except Exception as e:
@@ -131,7 +137,7 @@ class Imagen:
 
         if len(user_prompt) > 4 and len(lm_tags.strip()) > 2:
             if "selfie" in user_prompt:
-                format_tags = ", looking into the camera, "
+                format_tags = ", looking at viewer"
             elif any_in_text(
                 ["person", "you as", "yourself as", "you cosplaying", "yourself cosplaying"],
                 user_prompt,
@@ -146,7 +152,7 @@ class Imagen:
                 format_tags = f"{format_tags}, holding"
 
         if len(lm_tags) > 0:
-            lm_tags = f", ({lm_tags}:{self.sd_prompt.lm_weight:.2f})"
+            lm_tags = f", ({lm_tags}:{self.sd_prompt.lm_weight})"
 
         image_prompt = self.sd_prompt.prompt(f", {time_tag}{format_tags}{lm_tags}")
 

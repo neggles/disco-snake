@@ -173,6 +173,9 @@ class ImagenSDPrompt:
     def negative_prompt(self) -> str:
         return ", ".join(self.negative)
 
+    def get_tags(self) -> str:
+        return ", ".join(self.leading)
+
 
 @dataclass
 class ImagenConfig(AsDictMixin):
