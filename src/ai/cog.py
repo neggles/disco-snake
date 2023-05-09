@@ -188,7 +188,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         logger.debug("Initializing Tokenizer...")
         self.tokenizer = LlamaTokenizerFast.from_pretrained(
-            pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizer").as_posix(),
+            pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizers/llama").as_posix(),
             local_files_only=True,
         )
 
