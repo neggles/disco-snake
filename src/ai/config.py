@@ -45,12 +45,19 @@ class BotParameters:
 
 
 @dataclass
+class VisionConfig:
+    api_host: str
+    api_token: Optional[str] = None
+
+
+@dataclass
 class ChatbotConfig:
     name: str
     prompt: str
     params: BotParameters
     memory_store: MemoryStoreConfig
     model_provider: ModelProviderConfig
+    vision: Optional[VisionConfig]
     bad_words: List[str] = None
 
 

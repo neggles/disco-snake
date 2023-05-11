@@ -96,7 +96,7 @@ class Imagen:
     def get_lm_prompt(self, user_request: str) -> str:
         if len(user_request.split("of", 1)) > 1:
             user_request: str = user_request.split("of", 1)[1]
-            user_request = "a photo of" + user_request.strip()
+            user_request = "a photo of " + user_request.strip()
 
         for word in ["yourself ", "you "]:
             user_request = user_request.replace(word, "a girl ")

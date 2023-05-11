@@ -4,6 +4,7 @@ import re
 from asyncio import Lock
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
@@ -11,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from dacite import from_dict
 from disnake import (
+    Attachment,
     DMChannel,
     Embed,
     File,
@@ -41,6 +43,7 @@ from transformers.utils import logging as transformers_logging
 
 import logsnake
 from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
+from ai.eyes import DiscoEyes
 from ai.imagen import Imagen
 from ai.model import get_enma_model, get_ooba_model
 from ai.types import MessageChannel
@@ -124,6 +127,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         # selfietron
         self.imagen = Imagen(lm_api_host=self.model_provider_cfg.endpoint)
+        self.eyes = DiscoEyes(config=self.config.vision)
 
         # somewhere to put the last context we generated for debugging
         self.debug_datadir: Path = LOGDIR_PATH.joinpath("ai")
@@ -141,16 +145,14 @@ class Ai(commands.Cog, name=COG_UID):
 
     def get_prompt(self, ctx: Optional[MessageInteraction] = None) -> str:
         if ctx is None:
-            location_context = f'with your friends in the "{self.bot.home_guild.name}" Discord server'
+            location_context = f'and her friends in the "{self.bot.home_guild.name}" Discord server'
         else:
-            if ctx.guild is not None:
-                location_context = f'with your friends in the "{ctx.guild.name}" Discord server'
-            elif ctx.channel is not None:
-                location_context = (
-                    f'with your friends in the "{ctx.channel.name}" channel of a Discord server'
-                )
+            if ctx.channel is not None and hasattr(ctx.channel, "name"):
+                location_context = f'and her friends in the "{ctx.channel.name}" channel of the "{ctx.guild.name}" Discord server'
+            elif ctx.guild is not None:
+                location_context = f'and her friends in the "{ctx.guild.name}" Discord server'
             elif ctx.user is not None:
-                location_context = f"with {ctx.user.name} in a Discord DM"
+                location_context = f"and {ctx.user.name} in a Discord DM"
 
         return (
             self.config.prompt.replace("{bot_name}", self.name)
@@ -247,11 +249,9 @@ class Ai(commands.Cog, name=COG_UID):
                 logger.debug("Message was empty after cleaning.")
                 return
 
-            async with self.ctx_lock:
+            async with self.lm_lock:
                 trigger = None
-                # get context, but only if the language model is not busy generating a response
-                async with self.lm_lock:
-                    conversation = await self.get_msg_ctx(message.channel)
+                conversation = None
 
                 if self.bot.user.mentioned_in(message) or any_in_text(self.nicknames, message_content):
                     logger.debug(f"Message: {message_content}")
@@ -262,15 +262,21 @@ class Ai(commands.Cog, name=COG_UID):
 
                 elif message.channel.id in self.activity_channels:
                     if self.conditional_response is True:
+                        conversation = await self.get_msg_ctx(message.channel)
                         if await self.chatbot.should_respond_async(conversation, push_chain=False):
                             logger.debug(f"Model wants to respond to '{message_content}', responding...")
                             trigger = "conditional"
 
-                    elif self.last_response < datetime.utcnow() - timedelta(seconds=(self.idle_msg_sec / 2)):
-                        self.last_response = datetime.utcnow()  # prevent infinite loops if things go wrong
+                    elif self.last_response < (
+                        datetime.now(tz=self.timezone) - timedelta(seconds=(self.idle_msg_sec / 2))
+                    ):
+                        # prevent infinite loops if things go wrong
+                        self.last_response = datetime.now(tz=self.timezone)
                         trigger = "activity"
 
                 if trigger is not None:
+                    if conversation is None:
+                        conversation = await self.get_msg_ctx(message.channel)
                     await self.respond(conversation, message, trigger)
 
         except Exception as e:
@@ -316,23 +322,27 @@ class Ai(commands.Cog, name=COG_UID):
 
         chain = []
         for message in reversed(messages):
-            if len(message.embeds) > 0:
+            if message.content:
+                content = self.get_msg_content_clean(message)
+                if content != "" and "```" not in content:
+                    chain.append(f"{message.author.name}: {content}")
+                else:
+                    continue
+
+            elif len(message.embeds) > 0:
                 content = message.embeds[0].description
                 if content != "":
                     chain.append(f"{message.author.name}: [Embed: {content}]")
                 continue
-            elif message.content:
-                if message.author.id == self.bot.user.id:
-                    # message from self, append EOS token?
-                    content = self.get_msg_content_clean(message)
-                else:
-                    content = self.get_msg_content_clean(message)
 
-                if content != "" and "```" not in content:
-                    chain.append(f"{message.author.name}: {content}")
-                continue
-            if message.attachments:
-                chain.append(f"{message.author.name}: pic.png")
+            for attachment in message.attachments:
+                try:
+                    caption = await self.eyes.perceive_cached(attachment)
+                    if caption is not None:
+                        chain.append(f"{message.author.name}: [image: {caption} ]")
+                except Exception as e:
+                    logger.exception(e)
+                    chain.append(f"{message.author.name}: [image failed to load]")
 
         chain = [x.strip() for x in chain if x.strip() != ""]
         return "\n".join(chain)
@@ -402,11 +412,7 @@ class Ai(commands.Cog, name=COG_UID):
 
     # actual response logic
     async def respond(self, conversation: str, message: Message, trigger: str = None) -> str:
-        if self.lm_lock.locked():
-            logger.info("LLM response is locked, skipping...")
-            return
-
-        async with message.channel.typing(), self.lm_lock:
+        async with message.channel.typing():
             encoded_image_label = ""
             debug_data: Dict[str, Any] = {}
 
@@ -582,8 +588,9 @@ class Ai(commands.Cog, name=COG_UID):
                         return
                     logger.debug(f"Running idle response to message {message.id}")
                     # if it's been more than <idle_messaging_interval> sec, send a response
-                    conversation = await self.get_msg_ctx(message.channel)
-                    await self.respond(conversation, message)
+                    async with self.lm_lock:
+                        conversation = await self.get_msg_ctx(message.channel)
+                        await self.respond(conversation, message)
         else:
             return
 
