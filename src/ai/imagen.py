@@ -139,7 +139,10 @@ class Imagen:
         format_tags = ""
 
         if len(user_prompt) > 4 and len(lm_tags.strip()) > 2:
-            if "selfie" in user_prompt:
+            if any_in_text(
+                ["portrait", "vertical", "of you ", "of yourself ", "selfie"],
+                user_prompt,
+            ):
                 format_tags = ", looking at viewer"
             elif any_in_text(
                 ["person", "you as", "yourself as", "you cosplaying", "yourself cosplaying"],
@@ -148,7 +151,10 @@ class Imagen:
                 format_tags = ""  # no 'standing next to' etc. when it's just the bot
             elif "with a" in user_prompt:
                 format_tags = ", she has"
-            elif any_in_text(["you with", "yourself with", "a selfie with"], user_prompt):
+            elif any_in_text(
+                ["you with", "yourself with", "a selfie with"],
+                user_prompt,
+            ):
                 format_tags = ", she is with "
 
             if "holding" in user_prompt:
@@ -163,9 +169,13 @@ class Imagen:
         width, height = get_image_dimensions()
 
         # make sure we do portrait if the user asks for a portrait
-        if "portrait" in user_prompt:
-            if width > height:
-                width, height = height, width
+        if any_in_text(
+            ["portrait", "vertical", "of you ", "of yourself ", "selfie"],
+            user_prompt,
+        ):
+            width, height = min(width, height), max(width, height)
+            # but clamp the height to 1.5x the width
+            height = min(height, int(width * 1.5))
 
         # Build the request and return it
         gen_request: Dict[str, Any] = self.sd_api_params.get_request(
@@ -188,7 +198,6 @@ class Imagen:
                     response: dict = await r.json()
                 else:
                     r.raise_for_status()
-
                 try:
                     # throw an exception if we got no image
                     if response["images"] is None or len(response["images"]) == 0:
@@ -199,12 +208,14 @@ class Imagen:
                     response.pop("images")  # don't need this anymore
                     # info is a recursively encoded json string, so we need to decode it
                     response["info"] = json.loads(response["info"])
+                    # then glue it onto the image for prompt inspector
+                    image.info = response["info"]
 
                     # work out the path to save the image to, then save it and the job info
                     imagefile_path = IMAGEN_IMG_DIR.joinpath(
                         f'{response["info"]["job_timestamp"]}_{response["info"]["seed"]}-{req_string}.png'
                     )
-                    image.save(imagefile_path)
+                    image.save(imagefile_path, format="PNG")
                     imagefile_path.with_suffix(".json").write_text(
                         json.dumps(response, indent=2, skipkeys=True, default=str)
                     )

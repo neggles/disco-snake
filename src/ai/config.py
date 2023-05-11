@@ -41,7 +41,9 @@ class BotParameters:
     activity_channels: List[int]
     debug: bool
     memory_enable: bool
-    max_retries: int = 3
+    max_retries: int
+    ctxbreak_users: List[int]
+    ctxbreak_roles: List[int]
 
 
 @dataclass

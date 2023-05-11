@@ -5,7 +5,7 @@ from typing import Any, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 import Levenshtein as lev
-from disnake import Emoji, Guild, Message, Role
+from disnake import Emoji, Guild, Member, Message, Role
 
 from ai.types import ListOfUsers
 
@@ -168,3 +168,18 @@ def get_lm_prompt_time(tz: Union[str, ZoneInfo] = ZoneInfo("Asia/Tokyo")) -> str
 def any_in_text(strings: list[str], text: str) -> bool:
     """Returns True if any of the strings are in the text"""
     return any([s in text for s in strings])
+
+
+def member_in_role(member: Member, role: Union[Role, int]) -> bool:
+    """Returns True if the user has the role"""
+    if isinstance(role, Role):
+        role = role.id
+    return role in [x.id for x in member.roles]
+
+
+def member_in_any_role(member: Member, roles: List[Union[Role, int]]) -> bool:
+    """Returns True if the user has any of the roles"""
+    for role in roles:
+        if member_in_role(member, role):
+            return True
+    return False

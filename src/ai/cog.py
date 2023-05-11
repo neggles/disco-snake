@@ -55,6 +55,7 @@ from ai.utils import (
     get_full_class_name,
     get_lm_prompt_time,
     get_role_by_name,
+    member_in_any_role,
     restore_mentions_emotes,
 )
 from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
@@ -111,6 +112,8 @@ class Ai(commands.Cog, name=COG_UID):
         self.debug: bool = self.config.params.debug
         self.memory_enable = self.config.params.memory_enable
         self.max_retries = self.config.params.max_retries
+        self.ctxbreak_users = self.config.params.ctxbreak_users
+        self.ctxbreak_roles = self.config.params.ctxbreak_roles
 
         self.ctx_lock = Lock()  # used to stop multiple context builds from happening at once
         self.lm_lock = Lock()  # used to stop multiple conditional responses from happening at once
@@ -147,9 +150,9 @@ class Ai(commands.Cog, name=COG_UID):
         if ctx is None:
             location_context = f'and her friends in the "{self.bot.home_guild.name}" Discord server'
         else:
-            if ctx.channel is not None and hasattr(ctx.channel, "name"):
-                location_context = f'and her friends in the "{ctx.channel.name}" channel of the "{ctx.guild.name}" Discord server'
-            elif ctx.guild is not None:
+            # if ctx.channel is not None and hasattr(ctx.channel, "name"):
+            # location_context = f'and her friends in the "{ctx.channel.name}" channel of the "{ctx.guild.name}" Discord server'
+            if ctx.guild is not None:
                 location_context = f'and her friends in the "{ctx.guild.name}" Discord server'
             elif ctx.user is not None:
                 location_context = f"and {ctx.user.name} in a Discord DM"
@@ -316,7 +319,10 @@ class Ai(commands.Cog, name=COG_UID):
 
         # magic tag to break context chain to get bot out of librarian mode
         for idx, message in enumerate(messages):
-            if "<ctxbreak>" in message.content.lower() and message.author.id == self.bot.owner_id:
+            if "<ctxbreak>" in message.content.lower() and (
+                message.author.id in self.ctxbreak_users
+                or member_in_any_role(message.author, self.ctxbreak_roles)
+            ):
                 messages = messages[:idx]
                 break
 
@@ -325,24 +331,25 @@ class Ai(commands.Cog, name=COG_UID):
             if message.content:
                 content = self.get_msg_content_clean(message)
                 if content != "" and "```" not in content:
-                    chain.append(f"{message.author.name}: {content}")
-                else:
-                    continue
+                    if message.author.id == self.bot.user.id:
+                        chain.append(f"{message.author.name}: {content}")
+                    else:
+                        chain.append(f"{message.author.name}: {content}")
 
             elif len(message.embeds) > 0:
                 content = message.embeds[0].description
                 if content != "":
-                    chain.append(f"{message.author.name}: [Embed: {content}]")
+                    chain.append(f"{message.author.name}: [embed: {content}]")
                 continue
 
             for attachment in message.attachments:
                 try:
-                    caption = await self.eyes.perceive_cached(attachment)
+                    caption = await self.eyes.perceive_attachment(attachment)
                     if caption is not None:
-                        chain.append(f"{message.author.name}: [image: {caption} ]")
+                        chain.append(f"{message.author.name}: [image: {caption}]")
                 except Exception as e:
                     logger.exception(e)
-                    chain.append(f"{message.author.name}: [image failed to load]")
+                    chain.append(f"{message.author.name}: [image: loading error]")
 
         chain = [x.strip() for x in chain if x.strip() != ""]
         return "\n".join(chain)
@@ -379,7 +386,7 @@ class Ai(commands.Cog, name=COG_UID):
                 memories_entry = ContextEntry(
                     text=memories_ctx,
                     prefix="",
-                    suffix="</s>\n",
+                    suffix="\n",
                     reserved_tokens=0,
                     insertion_order=800,
                     insertion_position=-1,
@@ -508,7 +515,11 @@ class Ai(commands.Cog, name=COG_UID):
 
                 # if bot did a "\n<someusername:" cut it off
                 if bool(re_linebreak_name.match(response)):
-                    response = response.splitlines()[0]
+                    resp_lines = response.splitlines()
+                    if len(resp_lines) > 1 and resp_lines[1].startswith(f"{self.name}:"):
+                        response = "\n".join(resp_lines[0].rstrip("}"), resp_lines[1].rstrip("}"))
+                    else:
+                        response = resp_lines[0]
 
                 # replace "<USER>" with user mention, same for "<BOT>"
                 response = self.fixup_bot_user_tokens(response, message)

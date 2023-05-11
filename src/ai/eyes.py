@@ -5,11 +5,13 @@ from io import BytesIO
 from typing import Optional, TypeAlias, Union
 
 from aiohttp import ClientSession
+from async_lru import alru_cache
 from disnake import Attachment
 from PIL import Image
 
 import logsnake
 from ai.config import VisionConfig
+from ai.types import ImageOrBytes
 from disco_snake import LOG_FORMAT, LOGDIR_PATH
 
 # setup cog logger
@@ -24,8 +26,12 @@ logger = logsnake.setup_logger(
     backupCount=2,
 )
 
+
 API_PATH = "/api/v1/caption"
-ImageOrBytes: TypeAlias = Union[Image.Image, bytes]
+
+IMAGE_MAX_BYTES = 20 * (2**20)
+IMAGE_MAX_PX = 768
+IMAGE_FORMATS = ["PNG", "WEBP", "JPEG", "GIF"]
 
 
 class DiscoEyes:
@@ -40,22 +46,16 @@ class DiscoEyes:
     def api_token(self):
         return self.config.api_token
 
-    async def caption(self, image: ImageOrBytes) -> str:
-        return await self.perceive(image)
-
     async def perceive(self, image: ImageOrBytes) -> str:
         logger.info("Processing image")
         if not isinstance(image, Image.Image):
-            logger.debug("Converting image to PIL Image")
-            image = Image.open(BytesIO(image), formats=["PNG", "WEBP", "JPEG", "GIF"])
+            image = Image.open(BytesIO(image), formats=IMAGE_FORMATS)
 
-        logger.debug("Resizing image")
         buf = BytesIO()
         image = image.copy()
         image.thumbnail((512, 512))
         image.save(buf, format="PNG")
 
-        logger.debug("Sending image to API")
         payload = {"image": b64encode(buf.getvalue()).decode()}
         async with ClientSession(
             base_url=self.api_host,
@@ -68,9 +68,48 @@ class DiscoEyes:
                 logger.info(f"Received caption: {caption}")
                 return caption
 
-    @lru_cache(maxsize=128)
-    async def perceive_cached(self, attachment: Attachment) -> Optional[str]:
-        if not attachment.content_type.startswith("image/"):
+    @alru_cache(maxsize=128)
+    async def perceive_attachment(self, attachment: Attachment) -> Optional[str]:
+        if attachment.size > IMAGE_MAX_BYTES:
+            logger.debug(f"got attachment larger than 20MB: {attachment.size}, skipping")
             return None
-        data = await attachment.read()
-        return await self.perceive(data)
+        if not attachment.content_type.startswith("image/"):
+            logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
+            return None
+
+        if max(attachment.width, attachment.height) > IMAGE_MAX_PX:
+            data = await self.get_attachment_scaled(attachment)
+        else:
+            data = await attachment.read()
+        caption = await self.perceive(data)
+        return caption
+
+    async def get_attachment_scaled(self, attachment: Attachment) -> Optional[Image.Image]:
+        if not attachment.content_type.startswith("image/"):
+            logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
+            return None
+
+        # get width and height of attachment image
+        width, height = attachment.width, attachment.height
+        # scale max dimension to IMAGE_MAX_PX
+        is_portrait = height > width
+        short, long = (width, height) if is_portrait else (height, width)
+        # calculate new dimensions
+        if long > IMAGE_MAX_PX:
+            ratio = IMAGE_MAX_PX / long
+            short = int(short * ratio)
+            long = IMAGE_MAX_PX
+        width, height = (short, long) if is_portrait else (long, short)
+
+        # change cdn url to media url
+        image_url = attachment.url.replace("cdn.discordapp.com", "media.discordapp.net")
+        # add query params to url
+        scaled_url = f"{image_url}?width={width}&height={height}"
+        # fetch image
+        logger.debug(f"Fetching scaled image from {image_url}")
+        async with ClientSession() as session:
+            async with session.get(scaled_url) as resp:
+                resp.raise_for_status()
+                data = await resp.read()
+                image = Image.open(BytesIO(data), formats=IMAGE_FORMATS)
+                return image
