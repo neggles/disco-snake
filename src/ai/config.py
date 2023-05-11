@@ -173,8 +173,11 @@ class ImagenSDPrompt:
     def negative_prompt(self) -> str:
         return ", ".join(self.negative)
 
-    def get_tags(self) -> str:
+    def get_leading(self) -> str:
         return ", ".join(self.leading)
+
+    def get_trailing(self) -> str:
+        return ", ".join(self.trailing)
 
 
 @dataclass

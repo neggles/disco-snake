@@ -46,6 +46,7 @@ from ai.model import get_enma_model, get_ooba_model
 from ai.types import MessageChannel
 from ai.utils import (
     anti_spam,
+    any_in_text,
     convert_mentions_emotes,
     cut_trailing_sentence,
     get_full_class_name,
@@ -71,7 +72,7 @@ logger = logsnake.setup_logger(
     backupCount=3,
 )
 
-re_angle_bracket = re.compile(r"\<([^>]*)\>")
+re_angle_bracket = re.compile(r"\<(.*)\>")
 re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
 re_unescape_format = re.compile(r"\\([*_~`])")
@@ -107,6 +108,8 @@ class Ai(commands.Cog, name=COG_UID):
         self.debug: bool = self.config.params.debug
         self.memory_enable = self.config.params.memory_enable
         self.max_retries = self.config.params.max_retries
+
+        self.ctx_lock = Lock()  # used to stop multiple context builds from happening at once
         self.lm_lock = Lock()  # used to stop multiple conditional responses from happening at once
 
         # we will populate these later during async init
@@ -244,26 +247,31 @@ class Ai(commands.Cog, name=COG_UID):
                 logger.debug("Message was empty after cleaning.")
                 return
 
-            conversation = await self.get_msg_ctx(message.channel)
-            if self.bot.user.mentioned_in(message) or any(t in message_content for t in self.nicknames):
-                logger.debug(f"Message: {message_content}")
-                await self.respond(conversation, message, "mention")
+            async with self.ctx_lock:
+                trigger = None
+                # get context, but only if the language model is not busy generating a response
+                async with self.lm_lock:
+                    conversation = await self.get_msg_ctx(message.channel)
 
-            elif isinstance(message.channel, DMChannel) and len(message_content) > 0:
-                await self.respond(conversation, message, "DM")
-
-            elif message.channel.id in self.activity_channels:
-                if self.conditional_response is True:
+                if self.bot.user.mentioned_in(message) or any_in_text(self.nicknames, message_content):
                     logger.debug(f"Message: {message_content}")
-                    if await self.chatbot.should_respond_async(conversation, push_chain=False):
-                        logger.debug("Model wants to respond, responding...")
-                        await self.respond(conversation, message, "conditional")
-                        return
-                    else:
-                        logger.debug("No conditional response.")
-                elif self.last_response < datetime.utcnow() - timedelta(seconds=(self.idle_msg_sec / 2)):
-                    self.last_response = datetime.utcnow()  # prevent infinite loops if things go wrong
-                    await self.respond(conversation, message, "activity")
+                    trigger = "mention"
+
+                elif isinstance(message.channel, DMChannel) and len(message_content) > 0:
+                    trigger = "DM"
+
+                elif message.channel.id in self.activity_channels:
+                    if self.conditional_response is True:
+                        if await self.chatbot.should_respond_async(conversation, push_chain=False):
+                            logger.debug(f"Model wants to respond to '{message_content}', responding...")
+                            trigger = "conditional"
+
+                    elif self.last_response < datetime.utcnow() - timedelta(seconds=(self.idle_msg_sec / 2)):
+                        self.last_response = datetime.utcnow()  # prevent infinite loops if things go wrong
+                        trigger = "activity"
+
+                if trigger is not None:
+                    await self.respond(conversation, message, trigger)
 
         except Exception as e:
             logger.error(e)
@@ -314,12 +322,18 @@ class Ai(commands.Cog, name=COG_UID):
                     chain.append(f"{message.author.name}: [Embed: {content}]")
                 continue
             elif message.content:
-                content = self.get_msg_content_clean(message)
+                if message.author.id == self.bot.user.id:
+                    # message from self, append EOS token?
+                    content = self.get_msg_content_clean(message)
+                else:
+                    content = self.get_msg_content_clean(message)
+
                 if content != "" and "```" not in content:
                     chain.append(f"{message.author.name}: {content}")
                 continue
-            elif message:
+            if message.attachments:
                 chain.append(f"{message.author.name}: pic.png")
+
         chain = [x.strip() for x in chain if x.strip() != ""]
         return "\n".join(chain)
 
@@ -388,7 +402,11 @@ class Ai(commands.Cog, name=COG_UID):
 
     # actual response logic
     async def respond(self, conversation: str, message: Message, trigger: str = None) -> str:
-        async with message.channel.typing():
+        if self.lm_lock.locked():
+            logger.info("LLM response is locked, skipping...")
+            return
+
+        async with message.channel.typing(), self.lm_lock:
             encoded_image_label = ""
             debug_data: Dict[str, Any] = {}
 

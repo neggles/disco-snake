@@ -7,12 +7,12 @@ charset = utf-8
 end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
-
-[*.{py, ini}]
 indent_style = space
 indent_size = 4
 
-[*.{json, yml, toml}]
+[*.{py, ini}]
+
+[*.{json, yml, yaml, toml}]
 indent_style = space
 indent_size = 2
 
@@ -21,3 +21,4 @@ trim_trailing_whitespace = false
 
 [Makefile]
 indent_style = tab
+indent_size = 8

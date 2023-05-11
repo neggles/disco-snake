@@ -95,16 +95,19 @@ class Imagen:
 
     def get_lm_prompt(self, user_request: str) -> str:
         if len(user_request.split("of", 1)) > 1:
-            user_request = user_request.split("of", 1)[1]
-            user_request = "a photo of" + user_request
+            user_request: str = user_request.split("of", 1)[1]
+            user_request = "a photo of" + user_request.strip()
 
         for word in ["yourself ", "you "]:
             user_request = user_request.replace(word, "a girl ")
 
+        if "your " in user_request:
+            user_request = user_request.replace("your ", "her ")
+
         user_request = user_request.strip("?.!")
         prompt = self.lm_prompt.prompt(user_request)
         if len(prompt.strip()) == 0:
-            prompt = self.params.default_prompt
+            prompt = self.lm_prompt.default_prompt
         return prompt
 
     async def submit_lm_prompt(self, prompt: Optional[str] = None) -> str:
@@ -116,7 +119,7 @@ class Imagen:
                         ret = await resp.json()
                         result: str = ret["results"][0]["text"]
                         return (
-                            result.replace(self.sd_prompt.get_tags(), "")
+                            result.replace(self.sd_prompt.get_leading(), "")
                             .replace(", ,", "")
                             .replace(",,", ",")
                             .strip()
@@ -145,8 +148,8 @@ class Imagen:
                 format_tags = ""  # no 'standing next to' etc. when it's just the bot
             elif "with a" in user_prompt:
                 format_tags = ", she has"
-            elif "of you with" in user_prompt or "of yourself with" in user_prompt:
-                format_tags = ", she is with"
+            elif any_in_text(["you with", "yourself with", "a selfie with"], user_prompt):
+                format_tags = ", she is with "
 
             if "holding" in user_prompt:
                 format_tags = f"{format_tags}, holding"
@@ -154,7 +157,7 @@ class Imagen:
         if len(lm_tags) > 0:
             lm_tags = f", ({lm_tags}:{self.sd_prompt.lm_weight})"
 
-        image_prompt = self.sd_prompt.prompt(f", {time_tag}{format_tags}{lm_tags}")
+        image_prompt = self.sd_prompt.prompt(f"{time_tag}{format_tags}{lm_tags}")
 
         # Generate at random aspect ratios, but same total pixels
         width, height = get_image_dimensions()
@@ -182,21 +185,35 @@ class Imagen:
         async with aiohttp.ClientSession(base_url=self.sd_api_host) as session:
             async with session.post(self.sd_api_path, json=request) as r:
                 if r.status == 200:
-                    response = await r.json()
-                    # get the generation metadata and build the filename
-                    image_info = json.loads(response["info"])
-                    imagefile_path = IMAGEN_IMG_DIR.joinpath(
-                        f"{image_info['job_timestamp']}_{image_info['seed']}-{req_string}.png"
-                    )
-                    # save the metadata and the image
-                    imagefile_path.with_suffix(".json").write_text(json.dumps(image_info, indent=2))
+                    response: dict = await r.json()
+                else:
+                    r.raise_for_status()
+
+                try:
+                    # throw an exception if we got no image
+                    if response["images"] is None or len(response["images"]) == 0:
+                        raise ValueError("No image data returned from Imagen API", args=response)
+
+                    # load and decode the image
                     image = Image.open(BytesIO(b64decode(response["images"][0])))
+                    response.pop("images")  # don't need this anymore
+                    # info is a recursively encoded json string, so we need to decode it
+                    response["info"] = json.loads(response["info"])
+
+                    # work out the path to save the image to, then save it and the job info
+                    imagefile_path = IMAGEN_IMG_DIR.joinpath(
+                        f'{response["info"]["job_timestamp"]}_{response["info"]["seed"]}-{req_string}.png'
+                    )
                     image.save(imagefile_path)
+                    imagefile_path.with_suffix(".json").write_text(
+                        json.dumps(response, indent=2, skipkeys=True, default=str)
+                    )
                     # this could return the image object, but we're saving it anyway and it's easier to
                     # load a disnake File() from a path, so, uh... memory leak prevention? :sweat_smile:
                     return imagefile_path
-                else:
-                    r.raise_for_status()
+                except Exception as e:
+                    logger.exception("Error saving image")
+                    raise e
 
     def should_take_pic(self, message: str) -> bool:
         """
