@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  db:
+    container_name: disco-snake-db
+    image: postgres:14-bullseye
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres}
+      POSTGRES_DB: ${PG_DB:-discosnake}
+    ports:
+      - mode: ingress
+        target: 5432
+        published: 2027
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: ./data/pgdata/
+        target: /var/lib/postgresql/data/
+        bind:
+          create_host_path: true
+    healthcheck:
+      test: pg_isready -U postgres -h 127.0.0.1
+      interval: 5s
+
+  pgweb:
+    container_name: pgweb
+    image: sosedoff/pgweb:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres}
+      POSTGRES_DB: ${PG_DB:-discosnake}
+      POSTGRES_SERVER: db
+      PGWEB_DATABASE_URL: postgres://${PG_USER}:${PG_PASSWORD}@${PG_SERVER}:5432/${PG_DB}?sslmode=disable
+    ports:
+      - mode: ingress
+        target: 8081
+        published: 8081
+        protocol: tcp
+    depends_on:
+      postgres:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "nc", "-vz", "127.0.0.1", "8081"]
+      interval: 5s
