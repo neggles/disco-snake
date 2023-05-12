@@ -9,6 +9,7 @@ from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
 from typing import Any, Dict, List, Optional, Tuple, Union
+from unicodedata import normalize
 
 from dacite import from_dict
 from disnake import (
@@ -265,7 +266,7 @@ class Ai(commands.Cog, name=COG_UID):
 
                 elif message.channel.id in self.activity_channels:
                     if self.conditional_response is True:
-                        conversation = await self.get_msg_ctx(message.channel)
+                        conversation = await self.get_context_messages(message.channel)
                         if await self.chatbot.should_respond_async(conversation, push_chain=False):
                             logger.debug(f"Model wants to respond to '{message_content}', responding...")
                             trigger = "conditional"
@@ -279,7 +280,7 @@ class Ai(commands.Cog, name=COG_UID):
 
                 if trigger is not None:
                     if conversation is None:
-                        conversation = await self.get_msg_ctx(message.channel)
+                        conversation = await self.get_context_messages(message.channel)
                     await self.respond(conversation, message, trigger)
 
         except Exception as e:
@@ -311,7 +312,7 @@ class Ai(commands.Cog, name=COG_UID):
                     await message.channel.send(embed=embed, file=File(error_file), delete_after=300.0)
 
     # get the last 40 messages in the channel (or however many there are if less than 40)
-    async def get_msg_ctx(self, channel: MessageChannel) -> str:
+    async def get_context_messages(self, channel: MessageChannel) -> str:
         messages = await channel.history(limit=40).flatten()
         messages, to_remove = anti_spam(messages)
         if to_remove:
@@ -328,28 +329,29 @@ class Ai(commands.Cog, name=COG_UID):
 
         chain = []
         for message in reversed(messages):
+            author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
             if message.content:
                 content = self.get_msg_content_clean(message)
                 if content != "" and "```" not in content:
                     if message.author.id == self.bot.user.id:
-                        chain.append(f"{message.author.name}: {content}")
+                        chain.append(f"{author_name}: {content}")
                     else:
-                        chain.append(f"{message.author.name}: {content}")
+                        chain.append(f"{author_name}: {content}")
 
             elif len(message.embeds) > 0:
                 content = message.embeds[0].description
                 if content != "":
-                    chain.append(f"{message.author.name}: [embed: {content}]")
+                    chain.append(f"{author_name}: [embed: {content}]")
                 continue
 
             for attachment in message.attachments:
                 try:
                     caption = await self.eyes.perceive_attachment(attachment)
                     if caption is not None:
-                        chain.append(f"{message.author.name}: [image: {caption}]")
+                        chain.append(f"{author_name}: [image: {caption}]")
                 except Exception as e:
                     logger.exception(e)
-                    chain.append(f"{message.author.name}: [image: loading error]")
+                    chain.append(f"{author_name}: [image: loading error]")
 
         chain = [x.strip() for x in chain if x.strip() != ""]
         return "\n".join(chain)
@@ -423,6 +425,8 @@ class Ai(commands.Cog, name=COG_UID):
             encoded_image_label = ""
             debug_data: Dict[str, Any] = {}
 
+            author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
+
             msg_timestamp = message.created_at.astimezone(tz=self.bot.timezone).strftime(
                 "%Y-%m-%d-%H:%M:%S%z"
             )
@@ -453,8 +457,6 @@ class Ai(commands.Cog, name=COG_UID):
                 elif private_role not in message.author.roles:
                     if anonymous_role is not None and anonymous_role in message.author.roles:
                         author_name = "Deleted User"
-                    else:
-                        author_name = message.author.name
 
                     message_content = self.get_msg_content_clean(message)
                     encoded_user_message = f"{author_name}: {message_content}"
@@ -600,7 +602,7 @@ class Ai(commands.Cog, name=COG_UID):
                     logger.debug(f"Running idle response to message {message.id}")
                     # if it's been more than <idle_messaging_interval> sec, send a response
                     async with self.lm_lock:
-                        conversation = await self.get_msg_ctx(message.channel)
+                        conversation = await self.get_context_messages(message.channel)
                         await self.respond(conversation, message)
         else:
             return
@@ -644,7 +646,8 @@ class Ai(commands.Cog, name=COG_UID):
         """
         Fix <USER>, <BOT>, etc tokens in the response, and unescape any escaped markdown formatting
         """
-        response = re_user_token.sub(f"@{message.author.name}", response)
+        author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
+        response = re_user_token.sub(f"@{author_name}", response)
         response = re_bot_token.sub(f"{self.name}", response)
         response = re_unescape_format.sub(r"\1", response)
         return response
