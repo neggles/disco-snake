@@ -111,6 +111,7 @@ def setup_logger(
     isRootLogger=False,
     json=False,
     json_ensure_ascii=False,
+    propagate=False,
 ):
     """
     Configures and returns a fully configured logger instance, no hassles.
@@ -128,21 +129,22 @@ def setup_logger(
         logger = setup_logger()
         logger.info("hello")
 
-    :arg string name: Name of the `Logger object <https://docs.python.org/2/library/logging.html#logger-objects>`_. Multiple calls to ``setup_logger()`` with the same name will always return a reference to the same Logger object. (default: ``__name__``)
+    :arg string name: Name of the `Logger object <https://docs.python.org/3/library/logging.html#logger-objects>`_. Multiple calls to ``setup_logger()`` with the same name will always return a reference to the same Logger object. (default: ``__name__``)
     :arg string logfile: If set, also write logs to the specified filename.
-    :arg int level: Minimum `logging-level <https://docs.python.org/2/library/logging.html#logging-levels>`_ to display (default: ``DEBUG``).
-    :arg Formatter formatter: `Python logging Formatter object <https://docs.python.org/2/library/logging.html#formatter-objects>`_ (by default uses the internal LogFormatter).
+    :arg int level: Minimum `logging-level <https://docs.python.org/3/library/logging.html#logging-levels>`_ to display (default: ``DEBUG``).
+    :arg Formatter formatter: `Python logging Formatter object <https://docs.python.org/3/library/logging.html#formatter-objects>`_ (by default uses the internal LogFormatter).
     :arg int maxBytes: Size of the logfile when rollover should occur. Defaults to 0, rollover never occurs.
     :arg int backupCount: Number of backups to keep. Defaults to 0, rollover never occurs.
-    :arg int fileLoglevel: Minimum `logging-level <https://docs.python.org/2/library/logging.html#logging-levels>`_ for the file logger (is not set, it will use the loglevel from the ``level`` argument)
+    :arg int fileLoglevel: Minimum `logging-level <https://docs.python.org/3/library/logging.html#logging-levels>`_ for the file logger (is not set, it will use the loglevel from the ``level`` argument)
     :arg bool disableStderrLogger: Should the default stderr logger be disabled. Defaults to False.
     :arg bool isRootLogger: If True then returns a root logger. Defaults to False. (see also the `Python docs <https://docs.python.org/3/library/logging.html#logging.getLogger>`_).
     :arg bool json: If True then log in JSON format. Defaults to False. (uses `python-json-logger <https://github.com/madzak/python-json-logger>`_).
     :arg bool json_ensure_ascii: Passed to json.dumps as `ensure_ascii`, default: False (if False: writes utf-8 characters, if True: ascii only representation of special characters - eg. '\u00d6\u00df')
-    :return: A fully configured Python logging `Logger object <https://docs.python.org/2/library/logging.html#logger-objects>`_ you can use with ``.debug("msg")``, etc.
+    :arg bool propagate: passed to `logger.propagate <https://docs.python.org/3/library/logging.html#logging.Logger.propagate>`_, default: False (if False: log messages will not be passed to the handlers of the parent logger)
+    :return: A fully configured Python logging `Logger object <https://docs.python.org/3/library/logging.html#logger-objects>`_ you can use with ``.debug("msg")``, etc.
     """
     _logger = logging.getLogger(None if isRootLogger else name)
-    _logger.propagate = False
+    _logger.propagate = propagate
 
     # set the minimum level needed for the logger itself (the lowest handler level)
     minLevel = fileLoglevel if fileLoglevel and fileLoglevel < level else level
@@ -337,8 +339,8 @@ def setup_default_logger(
         logger.info("hello")  # this will not be displayed anymore because minimum loglevel was set to WARN
 
     :arg string logfile: If set, also write logs to the specified filename.
-    :arg int level: Minimum `logging-level <https://docs.python.org/2/library/logging.html#logging-levels>`_ to display (default: `DEBUG`).
-    :arg Formatter formatter: `Python logging Formatter object <https://docs.python.org/2/library/logging.html#formatter-objects>`_ (by default uses the internal LogFormatter).
+    :arg int level: Minimum `logging-level <https://docs.python.org/3/library/logging.html#logging-levels>`_ to display (default: `DEBUG`).
+    :arg Formatter formatter: `Python logging Formatter object <https://docs.python.org/3/library/logging.html#formatter-objects>`_ (by default uses the internal LogFormatter).
     :arg int maxBytes: Size of the logfile when rollover should occur. Defaults to 0, rollover never occurs.
     :arg int backupCount: Number of backups to keep. Defaults to 0, rollover never occurs.
     :arg bool disableStderrLogger: Should the default stderr logger be disabled. Defaults to False.
@@ -389,7 +391,7 @@ def loglevel(level=DEBUG, update_custom_handlers=False):
     This reconfigures only the internal handlers of the default logger (eg. stream and logfile).
     You can also update the loglevel for custom handlers by using `update_custom_handlers=True`.
 
-    :arg int level: Minimum `logging-level <https://docs.python.org/2/library/logging.html#logging-levels>`_ to display (default: `DEBUG`).
+    :arg int level: Minimum `logging-level <https://docs.python.org/3/library/logging.html#logging-levels>`_ to display (default: `DEBUG`).
     :arg bool update_custom_handlers: If you added custom handlers to this logger and want this to update them too, you need to set `update_custom_handlers` to `True`
     """
     logger.setLevel(level)
@@ -418,7 +420,7 @@ def formatter(formatter, update_custom_handlers=False):
     Beware that setting a formatter which uses colors also may write the color codes
     to logfiles.
 
-    :arg Formatter formatter: `Python logging Formatter object <https://docs.python.org/2/library/logging.html#formatter-objects>`_ (by default uses the internal LogFormatter).
+    :arg Formatter formatter: `Python logging Formatter object <https://docs.python.org/3/library/logging.html#formatter-objects>`_ (by default uses the internal LogFormatter).
     :arg bool update_custom_handlers: If you added custom handlers to this logger and want this to update them too, you need to set ``update_custom_handlers`` to `True`
     """
     for handler in list(logger.handlers):
@@ -440,7 +442,7 @@ def logfile(
     disableStderrLogger=False,
 ):
     """
-    Setup logging to file (using a `RotatingFileHandler <https://docs.python.org/2/library/logging.handlers.html#rotatingfilehandler>`_ internally).
+    Setup logging to file (using a `RotatingFileHandler <https://docs.python.org/3/library/logging.handlers.html#rotatingfilehandler>`_ internally).
 
     By default, the file grows indefinitely (no rotation). You can use the ``maxBytes`` and
     ``backupCount`` values to allow the file to rollover at a predetermined size. When the
@@ -456,7 +458,7 @@ def logfile(
     then they are renamed to app.log.2, app.log.3 etc. respectively.
 
     :arg string filename: Filename of the logfile. Set to `None` to disable logging to the logfile.
-    :arg Formatter formatter: `Python logging Formatter object <https://docs.python.org/2/library/logging.html#formatter-objects>`_ (by default uses the internal LogFormatter).
+    :arg Formatter formatter: `Python logging Formatter object <https://docs.python.org/3/library/logging.html#formatter-objects>`_ (by default uses the internal LogFormatter).
     :arg string mode: mode to open the file with. Defaults to ``a``
     :arg int maxBytes: Size of the logfile when rollover should occur. Defaults to 0, rollover never occurs.
     :arg int backupCount: Number of backups to keep. Defaults to 0, rollover never occurs.

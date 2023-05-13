@@ -1,7 +1,7 @@
 import re
 from copy import deepcopy
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from shimeji.model_provider import OobaGenRequest
 
@@ -55,7 +55,7 @@ class VisionConfig:
 @dataclass
 class ChatbotConfig:
     name: str
-    prompt: str
+    prompt: Union[str, List[str]]
     params: BotParameters
     memory_store: MemoryStoreConfig
     model_provider: ModelProviderConfig

@@ -1,19 +1,15 @@
 import json
-import logging
 import re
 from asyncio import Lock
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
 from typing import Any, Dict, List, Optional, Tuple, Union
-from unicodedata import normalize
 
 from dacite import from_dict
 from disnake import (
-    Attachment,
     DMChannel,
     Embed,
     File,
@@ -42,7 +38,7 @@ from shimeji.util import (
 from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
 from transformers.utils import logging as transformers_logging
 
-import logsnake
+from ai import logger
 from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
 from ai.eyes import DiscoEyes
 from ai.imagen import Imagen
@@ -59,23 +55,11 @@ from ai.utils import (
     member_in_any_role,
     restore_mentions_emotes,
 )
-from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
+from disco_snake import DATADIR_PATH, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
 
 COG_UID = "ai"
 
-
-# setup cog logger
-logger = logsnake.setup_logger(
-    level=logging.DEBUG,
-    isRootLogger=False,
-    name=COG_UID,
-    formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
-    logfile=LOGDIR_PATH.joinpath(f"{COG_UID}.log"),
-    fileLoglevel=logging.DEBUG,
-    maxBytes=1 * (2**20),
-    backupCount=3,
-)
 
 re_angle_bracket = re.compile(r"\<(.*)\>")
 re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
@@ -103,6 +87,8 @@ class Ai(commands.Cog, name=COG_UID):
         self.model_provider_cfg: ModelProviderConfig = self.config.model_provider
 
         # Load config params up into top level properties
+        self.params = self.config.params
+
         self.activity_channels: List[int] = self.config.params.activity_channels
         self.conditional_response: bool = self.config.params.conditional_response
         self.context_size: int = self.config.params.context_size
@@ -149,17 +135,21 @@ class Ai(commands.Cog, name=COG_UID):
 
     def get_prompt(self, ctx: Optional[MessageInteraction] = None) -> str:
         if ctx is None:
-            location_context = f'and her friends in the "{self.bot.home_guild.name}" Discord server'
+            location_context = "and her friends in a Discord server"
+        elif hasattr(ctx, "guild") and ctx.guild is not None:
+            location_context = f"and her friends in the {ctx.guild.name} Discord server"
+        elif hasattr(ctx, "author") and ctx.author is not None:
+            location_context = f"and {ctx.author.display_name} in a Discord DM"
         else:
-            # if ctx.channel is not None and hasattr(ctx.channel, "name"):
-            # location_context = f'and her friends in the "{ctx.channel.name}" channel of the "{ctx.guild.name}" Discord server'
-            if ctx.guild is not None:
-                location_context = f'and her friends in the "{ctx.guild.name}" Discord server'
-            elif ctx.user is not None:
-                location_context = f"and {ctx.user.name} in a Discord DM"
+            location_context = "and a friend in a Discord DM"
+
+        if isinstance(self.config.prompt, List):
+            prompt = "\n".join(self.config.prompt)
+        else:
+            prompt = self.config.prompt
 
         return (
-            self.config.prompt.replace("{bot_name}", self.name)
+            prompt.replace("{bot_name}", self.name)
             .replace("{location_context}", location_context)
             .replace("{current_time}", get_lm_prompt_time())
         )
@@ -330,6 +320,8 @@ class Ai(commands.Cog, name=COG_UID):
         chain = []
         for message in reversed(messages):
             author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
+            author_name = f"@{author_name}"
+
             if message.content:
                 content = self.get_msg_content_clean(message)
                 if content != "" and "```" not in content:
@@ -401,12 +393,11 @@ class Ai(commands.Cog, name=COG_UID):
                 contextmgr.add_entry(memories_entry)
 
         # conversation
-        conv_prefix = "</s>\n" if self.memory_store is not None and self.memory_enable is True else ""
         conversation_entry = ContextEntry(
             text=conversation,
-            prefix=conv_prefix,
+            prefix="",
             suffix="",
-            reserved_tokens=512,
+            reserved_tokens=self.context_size - 512,
             insertion_order=0,
             insertion_position=-1,
             trim_direction=TRIM_DIR_TOP,
@@ -517,11 +508,7 @@ class Ai(commands.Cog, name=COG_UID):
 
                 # if bot did a "\n<someusername:" cut it off
                 if bool(re_linebreak_name.match(response)):
-                    resp_lines = response.splitlines()
-                    if len(resp_lines) > 1 and resp_lines[1].startswith(f"{self.name}:"):
-                        response = "\n".join(resp_lines[0].rstrip("}"), resp_lines[1].rstrip("}"))
-                    else:
-                        response = resp_lines[0]
+                    response = response.splitlines()[0]
 
                 # replace "<USER>" with user mention, same for "<BOT>"
                 response = self.fixup_bot_user_tokens(response, message)
@@ -570,7 +557,7 @@ class Ai(commands.Cog, name=COG_UID):
                             encoding=array_to_str(
                                 await self.model_provider.hidden_async(
                                     self.memory_store.model,
-                                    f"{self.name}: {response}",
+                                    f"@{self.name}: {response}",
                                     layer=self.memory_store.model_layer,
                                 )
                             ),
@@ -648,7 +635,7 @@ class Ai(commands.Cog, name=COG_UID):
         """
         author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
         response = re_user_token.sub(f"@{author_name}", response)
-        response = re_bot_token.sub(f"{self.name}", response)
+        response = re_bot_token.sub(f"@{self.name}", response)
         response = re_unescape_format.sub(r"\1", response)
         return response
 

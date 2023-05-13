@@ -21,17 +21,18 @@ from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 
 # setup cog logger
 logger = logsnake.setup_logger(
+    name=__name__,
     level=logging.DEBUG,
     isRootLogger=False,
-    name="imagen",
     formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
-    logfile=LOGDIR_PATH.joinpath("imagen.log"),
+    logfile=LOGDIR_PATH.joinpath(f"{__name__}.log"),
     fileLoglevel=logging.DEBUG,
     maxBytes=1 * (2**20),
     backupCount=2,
 )
 
-IMAGEN_IMG_DIR = DATADIR_PATH.joinpath("ai", "images")
+IMAGEN_IMG_DIR = LOGDIR_PATH.joinpath("ai", "images")
+
 IMAGEN_CFG_PATH = DATADIR_PATH.joinpath("ai", "imagen.json")
 
 # IMAGE_SIZE_STEPS = [512, 544, 576, 608, 640, 672, 704, 736, 768, 800, 832, 864, 896, 928, 960]
