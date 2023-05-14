@@ -1,7 +1,7 @@
 import re
-from transformers import GPT2TokenizerFast
+from typing import Any, List
 
-tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+from shimeji.tokenizers import GPT2, PreTrainedTokenizerFast
 
 TRIM_DIR_TOP = 0
 TRIM_DIR_BOTTOM = 1
@@ -16,12 +16,12 @@ INSERTION_TYPE_SENTENCE = 7
 INSERTION_TYPE_TOKEN = 8
 
 
-def split_into_sentences(str):
+def split_into_sentences(str) -> list[str | Any]:
     # preserve line breaks too
     return re.split(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s", str)
 
 
-def trim_newlines(tokens, trim_dir, limit):
+def trim_newlines(tokenizer: PreTrainedTokenizerFast, tokens, trim_dir, limit):
     if (trim_dir == TRIM_DIR_NONE) or (len(tokens) <= limit):
         return tokens
 
@@ -55,7 +55,7 @@ def trim_newlines(tokens, trim_dir, limit):
     return acc_tokens
 
 
-def trim_sentences(tokens, trim_dir, limit):
+def trim_sentences(tokenizer: PreTrainedTokenizerFast, tokens, trim_dir, limit):
     if (trim_dir == TRIM_DIR_NONE) or (len(tokens) <= limit):
         return tokens
 
@@ -120,19 +120,20 @@ def trim_tokens(tokens, trim_dir, limit):
 class ContextEntry:
     def __init__(
         self,
-        keys=[""],
-        text="",
-        prefix="",
-        suffix="\n",
-        token_budget=2048,
-        reserved_tokens=0,
-        insertion_order=100,
-        insertion_position=-1,
-        trim_direction=TRIM_DIR_BOTTOM,
-        trim_type=TRIM_TYPE_SENTENCE,
-        insertion_type=INSERTION_TYPE_SENTENCE,
-        forced_activation=False,
-        cascading_activation=False,
+        keys: List[str] = [""],
+        text: str = "",
+        prefix: str = "",
+        suffix: str = "\n",
+        token_budget: int = 2048,
+        reserved_tokens: int = 0,
+        insertion_order: int = 100,
+        insertion_position: int = -1,
+        trim_direction: int = TRIM_DIR_BOTTOM,
+        trim_type: int = TRIM_TYPE_SENTENCE,
+        insertion_type: int = INSERTION_TYPE_SENTENCE,
+        forced_activation: bool = False,
+        cascading_activation: bool = False,
+        tokenizer: PreTrainedTokenizerFast = None,
     ):
         self.keys = keys  # key used to activate this context entry
         self.text = prefix + text + suffix  # text associated with this context entry
@@ -147,11 +148,12 @@ class ContextEntry:
             forced_activation  # if True, this context entry is activated even if it is not activated
         )
         self.cascading_activation = cascading_activation  # when activated, this context entry will search for other entries and activate them if found
+        self.tokenizer = tokenizer if tokenizer is not None else GPT2
 
     # max_length is in tokens
     def trim(self, max_length, token_budget):
         target = 0
-        tokens = tokenizer.encode(self.text)
+        tokens = self.tokenizer.encode(self.text)
         num_tokens = len(tokens)
         projected = max_length - num_tokens
         if projected > token_budget:
@@ -169,4 +171,4 @@ class ContextEntry:
         return tokens
 
     def get_text(self, max_length, token_budget):
-        return tokenizer.decode(self.trim(max_length, token_budget))
+        return self.tokenizer.decode(self.trim(max_length, token_budget))

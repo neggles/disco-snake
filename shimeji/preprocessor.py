@@ -1,23 +1,11 @@
 from typing import List
 
-from shimeji.memory import memory_context, memory_sort
+from shimeji.memory import memory_context
 from shimeji.memory.provider import MemoryStore
 from shimeji.util import (
     TRIM_DIR_TOP,
-    TRIM_DIR_BOTTOM,
-    TRIM_DIR_NONE,
-    TRIM_TYPE_NEWLINE,
-    TRIM_TYPE_SENTENCE,
-    TRIM_TYPE_TOKEN,
     INSERTION_TYPE_NEWLINE,
-    INSERTION_TYPE_SENTENCE,
-    INSERTION_TYPE_TOKEN,
-    split_into_sentences,
-    trim_newlines,
-    trim_sentences,
-    trim_tokens,
     ContextEntry,
-    tokenizer,
 )
 from transformers import PreTrainedTokenizer
 
@@ -70,7 +58,7 @@ class MemoryPreprocessor(Preprocessor):
 class ContextPreprocessor(Preprocessor):
     """A Preprocessor that builds a context from a list of ContextEntry objects."""
 
-    def __init__(self, token_budget=1024, tokenizer: PreTrainedTokenizer = None):
+    def __init__(self, token_budget=1024, tokenizer=None):
         """Initialize a ContextPreprocessor.
 
         :param token_budget: The maximum number of tokens that can be used in the context, defaults to 1024.
@@ -167,7 +155,7 @@ class ContextPreprocessor(Preprocessor):
                     activated_entries.append(i)
             if i.insertion_position > 0 or i.insertion_position < 0:
                 if i.reserved_tokens == 0:
-                    i.reserved_tokens = len(tokenizer.encode(i.text))
+                    i.reserved_tokens = len(self.tokenizer.encode(i.text))
 
         activated_entries = list(set(activated_entries))
         # sort activated_entries by insertion_order
@@ -177,7 +165,7 @@ class ContextPreprocessor(Preprocessor):
         for i in activated_entries:
             reserved = 0
             if i.reserved_tokens > 0:
-                len_tokens = len(tokenizer.encode(i.text))
+                len_tokens = len(self.tokenizer.encode(i.text))
                 if len_tokens < i.reserved_tokens:
                     budget -= len_tokens
                 else:
@@ -189,7 +177,7 @@ class ContextPreprocessor(Preprocessor):
 
             text = i.get_text(budget + reserved, self.token_budget)
             ctxtext = text.splitlines(keepends=False)
-            trimmed_tokenized = tokenizer.encode(text)
+            trimmed_tokenized = self.tokenizer.encode(text)
             budget -= len(trimmed_tokenized) - reserved
             ctxinsertion = i.insertion_position
 
@@ -234,7 +222,7 @@ class ContextPreprocessor(Preprocessor):
         if is_respond:
             main_entry = ContextEntry(
                 text=context,
-                suffix=f"\n{name}:",
+                suffix=f"\n@{name}:",
                 reserved_tokens=512,
                 insertion_order=0,
                 trim_direction=TRIM_DIR_TOP,
