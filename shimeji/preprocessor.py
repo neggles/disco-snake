@@ -7,7 +7,6 @@ from shimeji.util import (
     INSERTION_TYPE_NEWLINE,
     ContextEntry,
 )
-from transformers import PreTrainedTokenizer
 
 
 class Preprocessor:
