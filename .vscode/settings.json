@@ -104,6 +104,7 @@
 
     "[dockercompose]": {
         "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
         "editor.tabSize": 2,
         "editor.autoIndent": "advanced",
         "editor.quickSuggestions": {

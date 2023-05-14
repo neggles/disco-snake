@@ -70,7 +70,7 @@ services:
       PGADMIN_LISTEN_PORT: "5050"
       PGADMIN_CONFIG_SERVER_MODE: "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "20" # INFO
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "30" # 10=DEBUG, 20=INFO, 30=WARN, 40=ERROR, 50=CRITICAL
     volumes:
       - type: bind
         source: ./data/pgdata/pgadmin/
