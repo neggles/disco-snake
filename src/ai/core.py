@@ -317,7 +317,7 @@ class Ai(commands.Cog, name=COG_UID):
 
     # get the last 40 messages in the channel (or however many there are if less than 40)
     async def get_context_messages(self, channel: MessageChannel) -> str:
-        messages = await channel.history(limit=40).flatten()
+        messages = await channel.history(limit=50).flatten()
         messages, to_remove = anti_spam(messages)
         if to_remove:
             logger.info(f"Removed {to_remove} messages from context.")
