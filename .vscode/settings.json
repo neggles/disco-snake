@@ -3,6 +3,7 @@
     "editor.tabSize": 4,
     "editor.rulers": [100, 120],
     "editor.trimAutoWhitespace": true,
+    "editor.formatOnSaveMode": "file",
 
     "files.trimTrailingWhitespace": true,
     "files.trimFinalNewlines": true,
@@ -31,7 +32,8 @@
         "**/node_modules": true,
         "**/bower_components": true,
         "**/*.code-search": true,
-        "**/.venv": true
+        "**/.venv": true,
+        "**/__pycache__": true
     },
 
     "[python]": {
