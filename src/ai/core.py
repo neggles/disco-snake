@@ -393,6 +393,7 @@ class Ai(commands.Cog, name=COG_UID):
             insertion_type=INSERTION_TYPE_NEWLINE,
             forced_activation=True,
             cascading_activation=False,
+            tokenizer=self.tokenizer,
         )
         contextmgr.add_entry(prompt_entry)
 
@@ -420,6 +421,7 @@ class Ai(commands.Cog, name=COG_UID):
                     insertion_type=INSERTION_TYPE_NEWLINE,
                     forced_activation=True,
                     cascading_activation=False,
+                    tokenizer=self.tokenizer,
                 )
                 contextmgr.add_entry(memories_entry)
 
@@ -436,6 +438,7 @@ class Ai(commands.Cog, name=COG_UID):
             insertion_type=INSERTION_TYPE_NEWLINE,
             forced_activation=True,
             cascading_activation=False,
+            tokenizer=self.tokenizer,
         )
         contextmgr.add_entry(conversation_entry)
 
