@@ -183,10 +183,17 @@ class Ai(commands.Cog, name=COG_UID):
             logger.debug("Memory Store is disabled, skipping...")
             self.memory_store = None
 
+        logger.debug("Initializing Tokenizer...")
+        self.tokenizer = LlamaTokenizerFast.from_pretrained(
+            pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizers/llama").as_posix(),
+            local_files_only=True,
+        )
+
+        logger.debug("Initializing Model Provider...")
         if self.model_provider_type == "ooba":
-            self.model_provider = get_ooba_model(cfg=self.model_provider_cfg)
+            self.model_provider = get_ooba_model(cfg=self.model_provider_cfg, tokenizer=self.tokenizer)
         elif self.model_provider_type == "enma":
-            self.model_provider = get_enma_model(cfg=self.model_provider_cfg)
+            self.model_provider = get_enma_model(cfg=self.model_provider_cfg, tokenizer=self.tokenizer)
         else:
             raise ValueError(f"Unknown model provider type: {self.model_provider_type}")
 
@@ -196,12 +203,6 @@ class Ai(commands.Cog, name=COG_UID):
             model_provider=self.model_provider,
             preprocessors=[ContextPreprocessor(self.context_size)],
             postprocessors=[NewlinePrunerPostprocessor()],
-        )
-
-        logger.debug("Initializing Tokenizer...")
-        self.tokenizer = LlamaTokenizerFast.from_pretrained(
-            pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizers/llama").as_posix(),
-            local_files_only=True,
         )
 
         logger.debug("Setting logging channel...")
