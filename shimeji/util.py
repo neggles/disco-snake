@@ -21,7 +21,7 @@ def split_into_sentences(str) -> list[str | Any]:
     return re.split(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s", str)
 
 
-def trim_newlines(tokenizer: PreTrainedTokenizerFast, tokens, trim_dir, limit):
+def trim_newlines(tokens, trim_dir, limit, tokenizer: PreTrainedTokenizerFast):
     if (trim_dir == TRIM_DIR_NONE) or (len(tokens) <= limit):
         return tokens
 
@@ -55,7 +55,7 @@ def trim_newlines(tokenizer: PreTrainedTokenizerFast, tokens, trim_dir, limit):
     return acc_tokens
 
 
-def trim_sentences(tokenizer: PreTrainedTokenizerFast, tokens, trim_dir, limit):
+def trim_sentences(tokens, trim_dir, limit, tokenizer: PreTrainedTokenizerFast):
     if (trim_dir == TRIM_DIR_NONE) or (len(tokens) <= limit):
         return tokens
 
@@ -163,12 +163,21 @@ class ContextEntry:
         else:
             target = max_length
         if self.trim_type == TRIM_TYPE_NEWLINE:
-            tokens = trim_newlines(tokens, self.trim_direction, target)
+            tokens = self.trim_newlines(tokens, self.trim_direction, target)
         elif self.trim_type == TRIM_TYPE_SENTENCE or len(tokens) > target:
-            tokens = trim_sentences(tokens, self.trim_direction, target)
+            tokens = self.trim_sentences(tokens, self.trim_direction, target)
         elif self.trim_type == TRIM_TYPE_TOKEN or len(tokens) > target:
-            tokens = trim_tokens(tokens, self.trim_direction, target)
+            tokens = self.trim_tokens(tokens, self.trim_direction, target)
         return tokens
 
     def get_text(self, max_length, token_budget):
         return self.tokenizer.decode(self.trim(max_length, token_budget))
+
+    def trim_newlines(self, tokens, trim_dir, limit):
+        return trim_newlines(tokens, trim_dir, limit, self.tokenizer)
+
+    def trim_sentences(self, tokens, trim_dir, limit):
+        return trim_sentences(tokens, trim_dir, limit, self.tokenizer)
+
+    def trim_tokens(self, tokens, trim_dir, limit):
+        return trim_tokens(tokens, trim_dir, limit)
