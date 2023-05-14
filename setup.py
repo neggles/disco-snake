@@ -5,11 +5,11 @@ with open("requirements.txt") as f:
 
 setup(
     name="Shimeji",
-    description="Shimeji is a framework to create GPT-powered chatbots.",
-    version="0.1.1",
+    description="Shimeji is a framework to create chatbots.",
+    version="0.2.0",
     license="GPLv2",
-    author="Hitomi-Team",
-    url="https://github.com/hitomi-team/shimeji",
+    author="Hitomi-Team, neggles",
+    url="https://github.com/neggles/Shimeji",
     packages=["shimeji"],
     install_requires=required,
 )
