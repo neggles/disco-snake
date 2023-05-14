@@ -35,7 +35,7 @@ services:
     image: sosedoff/pgweb:latest
     restart: unless-stopped
     profiles:
-        - pgweb
+      - pgweb
     environment:
       POSTGRES_USER: ${PG_USER:-postgres}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres}
@@ -52,7 +52,7 @@ services:
         condition: service_started
     healthcheck:
       disable: false
-      test: ["CMD", "nc", "-vz", "127.0.0.1", "8081"]
+      test: [ "CMD", "nc", "-vz", "127.0.0.1", "8081" ]
       start_period: 30s
       interval: 5s
       retries: 1
@@ -65,11 +65,12 @@ services:
     profiles:
       - pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-'admin@localhost'}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-'admin'}
-      PGADMIN_LISTEN_PORT: 5050
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@db.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_LISTEN_PORT: "5050"
       PGADMIN_CONFIG_SERVER_MODE: "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "20" # INFO
     volumes:
       - type: bind
         source: ./data/pgdata/pgadmin/
@@ -81,7 +82,7 @@ services:
         protocol: tcp
     healthcheck:
       disable: false
-      test: ["CMD", "nc", "-vz", "127.0.0.1", "${PGADMIN_LISTEN_PORT:-5050}"]
+      test: [ "CMD", "nc", "-vz", "127.0.0.1", "5050" ]
       start_period: 30s
       interval: 5s
       retries: 1
