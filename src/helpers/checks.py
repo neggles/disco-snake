@@ -16,7 +16,7 @@ def is_owner() -> Callable[[T], T]:
 
     async def predicate(context: commands.Context) -> bool:
         data = json.loads(CONFIG_PATH.read_bytes())
-        if context.author.id not in data["owners"]:
+        if context.author.id not in data["owner_ids"]:
             raise UserNotOwner
         return True
 

@@ -10,17 +10,62 @@ from disnake import (
     DMChannel,
     Embed,
     GroupChannel,
+    Message,
+    MessageCommandInteraction,
+    ModalInteraction,
     Option,
     OptionType,
     StageChannel,
     TextChannel,
+    TextInput,
+    TextInputStyle,
     Thread,
 )
 from disnake.ext import commands
+from disnake.ui import Modal, View
 
 from helpers import checks, json_manager
 
 logger = logging.getLogger(__package__)
+
+
+class EditMessageModal(Modal):
+    def __init__(self, message: Message):
+        self.message: Message = message
+        components = [
+            TextInput(
+                label="Message Content",
+                custom_id="content",
+                style=TextInputStyle.paragraph,
+                placeholder="Message Content",
+                value=message.content,
+                required=True,
+                max_length=2000,
+            )
+        ]
+        super().__init__(title="Edit Message", components=components)
+
+    async def callback(self, ctx: ModalInteraction):
+        await ctx.response.defer(ephemeral=True)
+        embed = Embed(title="Edit Message", description="Failed!", colour=Colour.red())
+        embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.display_avatar.url)
+        embed.add_field(name="Message ID", value=self.message.id, inline=True)
+        try:
+            content = ctx.text_values.get("content", "").strip()
+            if len(content) == 0:
+                raise ValueError("No content entered")
+            embed.add_field(name="Original Content", value=self.message.content[:1024], inline=False)
+            await self.message.edit(content=content)
+        except Exception as e:
+            if isinstance(e, ValueError):
+                embed.color = Colour.red()
+                if e.args[0] == "No content entered":
+                    embed.add_field(name="Error", value="You didn't enter any content...", inline=False)
+                else:
+                    embed.add_field(name="Error", value="An unknown error occurred", inline=False)
+                    embed.add_field(name="Exception", value=e, inline=False)
+        finally:
+            await ctx.edit_original_response(embed=embed, ephemeral=True)
 
 
 class Owner(commands.Cog, name="owner"):
@@ -38,7 +83,7 @@ class Owner(commands.Cog, name="owner"):
         :param interaction: The application command interaction.
         """
         embed = disnake.Embed(description="Shutting down. Bye! :wave:", color=0x9C84EF)
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
         await self.bot.close()
 
     @commands.slash_command(name="blacklist", description="Manage blacklisted users")
@@ -150,8 +195,8 @@ class Owner(commands.Cog, name="owner"):
             name="count",
             default=10.0,
             ge=0.0,
-            le=250.0,
-            description="Number of messages to delete",
+            le=100.0,
+            description="Target number of messages to delete (max 100, may delete less if all=False)",
         ),
         clear_all: bool = commands.Param(
             name="all",
@@ -178,7 +223,7 @@ class Owner(commands.Cog, name="owner"):
 
         delet_self = 0
         delet_other = 0
-        async for message in channel.history(limit=max(min(count, 250), 100)):
+        async for message in channel.history(limit=100):
             try:
                 if message.author.id == self.bot.user.id:
                     await message.delete()
@@ -204,6 +249,14 @@ class Owner(commands.Cog, name="owner"):
         delet_embed.set_footer(text=f"Requested by {ctx.author.name}")
 
         await ctx.send(embed=delet_embed, ephemeral=True)
+
+    @commands.message_command(
+        name="Edit Message",
+        dm_permission=True,
+    )
+    @commands.is_owner()
+    async def message_edit(self, ctx: MessageCommandInteraction):
+        await ctx.response.send_modal(EditMessageModal(ctx.target))
 
 
 def setup(bot):

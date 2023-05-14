@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from asyncio import Lock
 from dataclasses import asdict
@@ -38,7 +39,7 @@ from shimeji.util import (
 from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
 from transformers.utils import logging as transformers_logging
 
-from ai import logger
+import logsnake
 from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
 from ai.eyes import DiscoEyes
 from ai.imagen import Imagen
@@ -46,7 +47,6 @@ from ai.model import get_enma_model, get_ooba_model
 from ai.types import MessageChannel
 from ai.utils import (
     anti_spam,
-    any_in_text,
     convert_mentions_emotes,
     cut_trailing_sentence,
     get_full_class_name,
@@ -55,18 +55,31 @@ from ai.utils import (
     member_in_any_role,
     restore_mentions_emotes,
 )
-from disco_snake import DATADIR_PATH, LOGDIR_PATH
+from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from disco_snake.bot import DiscoSnake
 
 COG_UID = "ai"
 
+logger = logsnake.setup_logger(
+    name=__name__,
+    level=logging.DEBUG,
+    isRootLogger=False,
+    formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
+    logfile=LOGDIR_PATH.joinpath(f"{__name__}.log"),
+    fileLoglevel=logging.DEBUG,
+    maxBytes=1 * (2**20),
+    backupCount=3,
+    propagate=True,
+)
 
-re_angle_bracket = re.compile(r"\<(.*)\>")
+
+re_angle_bracket = re.compile(r"\<(.*)\>", re.M)
 re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
 re_unescape_format = re.compile(r"\\([*_~`])")
-re_strip_special = re.compile(r"[^a-zA-Z0-9]+")
-re_linebreak_name = re.compile(r"(?:.+)(\n|\r|\r\n)(\S+): ")
+re_strip_special = re.compile(r"[^a-zA-Z0-9]+", re.M)
+re_linebreak_name = re.compile(r"(\n|\r|\r\n)(\S+): ", re.M)
+re_start_expression = re.compile(r"^\s*\(\w+\)\s*", re.I + re.M)
 
 
 class Ai(commands.Cog, name=COG_UID):
@@ -222,7 +235,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         # Ignore messages from unapproved users in DMs/groups
         if isinstance(message.channel, (DMChannel, GroupChannel)):
-            if message.author.id not in self.bot.config["owners"]:
+            if message.author.id not in self.bot.config["owner_ids"]:
                 logger.info(
                     f"Got a DM from non-owner {message.author.name}#{message.author.discriminator}. Ignoring..."
                 )
@@ -247,7 +260,7 @@ class Ai(commands.Cog, name=COG_UID):
                 trigger = None
                 conversation = None
 
-                if self.bot.user.mentioned_in(message) or any_in_text(self.nicknames, message_content):
+                if self.bot.user.mentioned_in(message) or self.name_in_text(message_content):
                     logger.debug(f"Message: {message_content}")
                     trigger = "mention"
 
@@ -322,19 +335,36 @@ class Ai(commands.Cog, name=COG_UID):
             author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
             author_name = f"@{author_name}"
 
-            if message.content:
+            if message.author.bot is True and message.author.id != self.bot.user.id:
+                logger.debug("Skipping non-self bot message")
+                continue
+
+            if len(message.embeds) > 0:
+                for embed in message.embeds:
+                    if embed.type == "image":
+                        try:
+                            caption = await self.eyes.perceive_image_embed(embed.thumbnail.url)
+                            if caption is not None:
+                                chain.append(f"{author_name}: [image: {caption}]")
+                        except Exception as e:
+                            logger.exception(e)
+                            chain.append(f"{author_name}: [image: loading error]")
+                    elif embed.description is not None:
+                        chain.append(f"{author_name}: [embed: {embed.description}]")
+                    elif embed.title is not None:
+                        chain.append(f"{author_name}: [embed: {embed.title}]")
+
+            if message.content and len(message.embeds) == 0:
                 content = self.get_msg_content_clean(message)
-                if content != "" and "```" not in content:
+                if content.startswith("http"):
+                    chain.append(f"{author_name}: [a link to a webpage]")
+                elif content != "" and "```" not in content and not content.startswith("-"):
                     if message.author.id == self.bot.user.id:
+                        # strip (laughs) from start of own context
+                        content = re_start_expression.sub("", content)
                         chain.append(f"{author_name}: {content}")
                     else:
                         chain.append(f"{author_name}: {content}")
-
-            elif len(message.embeds) > 0:
-                content = message.embeds[0].description
-                if content != "":
-                    chain.append(f"{author_name}: [embed: {content}]")
-                continue
 
             for attachment in message.attachments:
                 try:
@@ -435,7 +465,6 @@ class Ai(commands.Cog, name=COG_UID):
 
             try:
                 debug_data["gensettings"] = asdict(self.model_provider_cfg)["gensettings"]
-                # remove bad_words from debug data because it's long and irrelevant
             except Exception as e:
                 logger.error(f"Failed to get gensettings: {e}\n{format_exc()}")
 
@@ -495,7 +524,12 @@ class Ai(commands.Cog, name=COG_UID):
                         if response.startswith("I'm sorry, but") is True:
                             logger.info("Response was a ChatGPT apology, retrying...")
                             continue
+                        # if bool(re_start_expression.match(response)):
+                        #     response = re_start_expression.sub("", response)
+                        #     logger.info("Response started with an expression, replacing...")
+                        #     break
                         break
+
                     if attempt < self.max_retries:
                         logger.info(f"Response {attempt} contained bad words: {bad_words}\nRetrying...")
                         continue
@@ -663,6 +697,14 @@ class Ai(commands.Cog, name=COG_UID):
         if len(found_words) > 0:
             logger.warn(f"Found bad words: {' | '.join(found_words)}")
         return found_words
+
+    def name_in_text(self, text: str) -> bool:
+        return any(
+            [
+                bool(re.search(rf"\b({name})({name[-1]}*)\b", text, re.I + re.M))
+                for name in self.params.nicknames
+            ]
+        )
 
     # Loop stuff to archive logs
     @tasks.loop(hours=1)

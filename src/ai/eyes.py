@@ -1,13 +1,13 @@
 import logging
 from base64 import b64encode
-from functools import lru_cache
 from io import BytesIO
-from typing import Optional, TypeAlias, Union
+from typing import Optional
 
 from aiohttp import ClientSession
 from async_lru import alru_cache
-from disnake import Attachment
+from disnake import Attachment, Embed
 from PIL import Image
+from requests import get as requests_get
 
 import logsnake
 from ai.config import VisionConfig
@@ -82,6 +82,13 @@ class DiscoEyes:
         else:
             data = await attachment.read()
         caption = await self.perceive(data)
+        return caption
+
+    @alru_cache(maxsize=128)
+    async def perceive_image_embed(self, embed: Embed) -> Optional[str]:
+        if embed.type != "image":
+            raise ValueError("Embed is not an image embed")
+        caption = await self.perceive(requests_get(embed.image.url).raw)
         return caption
 
     async def get_attachment_scaled(self, attachment: Attachment) -> Optional[Image.Image]:

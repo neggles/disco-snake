@@ -2,8 +2,8 @@ version: "3.8"
 
 services:
   db:
-    container_name: disco-snake-db
-    image: postgres:14-bullseye
+    container_name: disco-db
+    image: postgres:15.3-bullseye
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${PG_USER:-postgres}
@@ -25,7 +25,7 @@ services:
       interval: 5s
 
   pgweb:
-    container_name: pgweb
+    container_name: disco-pgweb
     image: sosedoff/pgweb:latest
     restart: unless-stopped
     environment:

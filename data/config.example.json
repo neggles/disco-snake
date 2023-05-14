@@ -2,7 +2,7 @@
   "application_id": "your_discord_application_id",
   "token": "your_discord_api_token",
   "permissions": "your_bot_permission_mask",
-  "owners": [123456789, 987654321],
+  "owner_ids": [123456789, 987654321],
   "timezone": "UTC",
   "owner": "user#1234",
   "repo_url": "https://github.com/username/repo-name",

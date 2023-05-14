@@ -138,9 +138,11 @@ def start_bot(ctx: click.Context = None):
         logger.debug(f"    {key}: {json.dumps(config[key], default=str)}")
 
     bot.config = config
-    bot.timezone = ZoneInfo(config["timezone"])
     bot.userdata = userdata
-    bot.reload = config["reload"]
+
+    bot.owner_ids = config.get("owner_ids", [])
+    bot.timezone = ZoneInfo(config.get("timezone", "UTC"))
+    bot.reload = config.get("reload", False)
 
     bot.load_cogs()
     bot.run(config["token"])

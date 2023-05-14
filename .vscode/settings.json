@@ -31,6 +31,8 @@
         }
     },
     "ruff.args": ["--line-length=110", "--extend-ignore=F401,F841,E501"],
+    "ruff.fixAll": true,
+    "ruff.organizeImports": true,
     "python.formatting.provider": "none",
     "black-formatter.args": ["--line-length=110"],
     "python.analysis.diagnosticMode": "openFilesOnly",
@@ -78,5 +80,6 @@
     "[makefile]": {
         "editor.insertSpaces": false,
         "editor.tabSize": 8
-    }
+    },
+    "ruff.logLevel": "warn"
 }
