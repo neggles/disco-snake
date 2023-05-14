@@ -1,7 +1,7 @@
 from typing import Any, Generic, List, Optional, Type, TypeVar
 
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, Column, Integer, String, Table, func, select
+from sqlalchemy import BigInteger, Column, String, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
 
