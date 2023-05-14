@@ -1,11 +1,12 @@
 import copy
 import json
+from os import PathLike
 from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
 import requests
 from pydantic import BaseModel
-from transformers import GPT2TokenizerFast
+from shimeji.tokenizers import Llama, GPT2, AutoTokenizer
 
 
 class DictJsonMixin:
@@ -71,6 +72,7 @@ class ModelSampleArgs(BaseModel, DictJsonMixin):
     penalty_alpha: Optional[float] = None
     length_penalty: Optional[float] = None
     early_stopping: Optional[bool] = None
+    encoder_rep_p: Optional[float] = None
 
 
 class ModelGenRequest(BaseModel, DictJsonMixin):
@@ -96,6 +98,7 @@ class OobaGenRequest(BaseModel, DictJsonMixin):
     top_p: float = 0.5
     typical_p: float = 1.0
     repetition_penalty: float = 1.125
+    encoder_repetition_penalty: float = 1.2
     top_k: int = 40
     min_length: int = 0
     no_repeat_ngram_size: int = 0
@@ -228,6 +231,15 @@ class ModelProvider:
         :raises NotImplementedError: If the response method is not implemented.
         """
         raise NotImplementedError("response method is required")
+
+    def tokenize(self, text):
+        """Tokenize a string and return it.
+
+        :param text: The text to tokenize.
+        :type text: str
+        :return: The tokenized text.
+        :raises NotImplementedError: If the tokenize method is not implemented.
+        """
 
 
 class SukimaModel(ModelProvider):
@@ -718,7 +730,7 @@ class TextSynthModel(ModelProvider):
         """
         super().__init__(endpoint_url, **kwargs)
         self.auth()
-        self.tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+        self.tokenizer = GPT2
 
     def auth(self):
         """Authenticate with the TextSynth endpoint.
@@ -807,8 +819,15 @@ class OobaModel(ModelProvider):
         :param endpoint_url: The URL of the endpoint.
         :type endpoint_url: str
         """
-        self.client = requests.Session()
+        tokenizer = kwargs.pop("tokenizer", None)
+        if tokenizer is None:
+            tokenizer = Llama
+        elif isinstance(tokenizer, PathLike):
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer)
+
+        self.tokenizer = tokenizer
         super().__init__(endpoint_url, **kwargs)
+
         self.default_ooba_args = self.convert_gen_request(self.default_args)
         self.auth()
 
@@ -819,7 +838,7 @@ class OobaModel(ModelProvider):
         """
         return True
 
-    def convert_gen_request(self, req: ModelGenRequest):
+    def convert_gen_request(self, req: ModelGenRequest) -> OobaGenRequest:
         """
         Converts a ModelGenRequest to an OobaGenRequest since the format is quite a bit different.
         """
@@ -839,6 +858,7 @@ class OobaModel(ModelProvider):
             "top_p": req.sample_args.top_p,
             "typical_p": req.sample_args.typical_p,
             "repetition_penalty": req.sample_args.rep_p,
+            "encoder_repetition_penalty": req.sample_args.encoder_rep_p,
             "top_k": req.sample_args.top_k,
             "no_repeat_ngram_size": req.sample_args.no_repeat_ngram_size,
             "num_beams": req.sample_args.num_beams,
@@ -925,9 +945,9 @@ class OobaModel(ModelProvider):
 
         raise NotImplementedError("image_label_async method is not implemented for this model provider")
 
-    def should_respond(self, context, name):
+    def should_respond(self, context, name) -> bool:
         """
-        Determine if the Enma endpoint predicts that the name should respond to the given context.
+        Determine if the Ooba endpoint predicts that the name should respond to the given context.
         :param context: The context to use.
         :type context: str
         :param name: The name to check.
@@ -952,8 +972,8 @@ class OobaModel(ModelProvider):
         else:
             return False
 
-    async def should_respond_async(self, context, name):
-        """Determine if the Enma endpoint predicts that the name should respond to the given context asynchronously.
+    async def should_respond_async(self, context, name) -> bool:
+        """Determine if the Ooba endpoint predicts that the name should respond to the given context asynchronously.
         :param context: The context to use.
         :type context: str
         :param name: The name to check.
@@ -977,8 +997,8 @@ class OobaModel(ModelProvider):
         else:
             return False
 
-    def response(self, context):
-        """Generate a response from the Enma endpoint.
+    def response(self, context) -> str:
+        """Generate a response from the Ooba endpoint.
         :param context: The context to use.
         :type context: str
         :return: The response from the endpoint.
@@ -990,8 +1010,8 @@ class OobaModel(ModelProvider):
         response = self.generate(args)
         return response
 
-    async def response_async(self, context):
-        """Generate a response from the Enma endpoint asynchronously.
+    async def response_async(self, context) -> str:
+        """Generate a response from the Ooba endpoint asynchronously.
         :param context: The context to use.
         :type context: str
         :return: The response from the endpoint.
