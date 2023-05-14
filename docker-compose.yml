@@ -9,6 +9,8 @@ services:
       POSTGRES_USER: ${PG_USER:-postgres}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres}
       POSTGRES_DB: ${PG_DB:-discosnake}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    user: 1000:1000
     ports:
       - mode: ingress
         target: 5432
@@ -21,13 +23,19 @@ services:
         bind:
           create_host_path: true
     healthcheck:
+      disable: false
       test: pg_isready -U postgres -h 127.0.0.1
+      start_period: 30s
       interval: 5s
+      retries: 1
+      timeout: 5s
 
   pgweb:
     container_name: disco-pgweb
     image: sosedoff/pgweb:latest
     restart: unless-stopped
+    profiles:
+        - pgweb
     environment:
       POSTGRES_USER: ${PG_USER:-postgres}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres}
@@ -37,11 +45,44 @@ services:
     ports:
       - mode: ingress
         target: 8081
-        published: 8081
+        published: 5050
         protocol: tcp
     depends_on:
       postgres:
         condition: service_started
     healthcheck:
+      disable: false
       test: ["CMD", "nc", "-vz", "127.0.0.1", "8081"]
+      start_period: 30s
       interval: 5s
+      retries: 1
+      timeout: 5s
+
+  pgadmin4:
+    container_name: disco-pgadmin
+    image: dpage/pgadmin4:6
+    restart: unless-stopped
+    profiles:
+      - pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-'admin@localhost'}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-'admin'}
+      PGADMIN_LISTEN_PORT: 5050
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - type: bind
+        source: ./data/pgdata/pgadmin/
+        target: /var/lib/pgadmin/
+    ports:
+      - mode: ingress
+        target: 5050
+        published: 5050
+        protocol: tcp
+    healthcheck:
+      disable: false
+      test: ["CMD", "nc", "-vz", "127.0.0.1", "${PGADMIN_LISTEN_PORT:-5050}"]
+      start_period: 30s
+      interval: 5s
+      retries: 1
+      timeout: 5s

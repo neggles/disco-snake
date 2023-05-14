@@ -2,8 +2,10 @@
     "editor.insertSpaces": true,
     "editor.tabSize": 4,
     "editor.rulers": [100, 120],
+    "editor.trimAutoWhitespace": true,
 
     "files.trimTrailingWhitespace": true,
+    "files.trimFinalNewlines": true,
     "files.associations": {
         ".clang-format": "yaml",
         ".config": "shellscript",
@@ -33,6 +35,7 @@
     "ruff.args": ["--line-length=110", "--extend-ignore=F401,F841,E501"],
     "ruff.fixAll": true,
     "ruff.organizeImports": true,
+    "ruff.logLevel": "warn",
     "python.formatting.provider": "none",
     "black-formatter.args": ["--line-length=110"],
     "python.analysis.diagnosticMode": "openFilesOnly",
@@ -74,12 +77,30 @@
         "editor.formatOnSave": true,
         "editor.tabSize": 2
     },
+
     "[markdown]": {
-        "files.trimTrailingWhitespace": false
+        "files.trimTrailingWhitespace": false,
+        "files.trimFinalNewlines": true
     },
+
     "[makefile]": {
         "editor.insertSpaces": false,
         "editor.tabSize": 8
     },
-    "ruff.logLevel": "warn"
+
+    "[yaml]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2
+    },
+
+    "[dockercompose]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2,
+        "editor.autoIndent": "advanced",
+        "editor.quickSuggestions": {
+            "other": true,
+            "comments": false,
+            "strings": true
+        }
+    }
 }
