@@ -17,12 +17,11 @@ from disnake import (
     OptionType,
     StageChannel,
     TextChannel,
-    TextInput,
     TextInputStyle,
     Thread,
 )
 from disnake.ext import commands
-from disnake.ui import Modal, View
+from disnake.ui import Modal, TextInput
 
 from helpers import checks, json_manager
 
@@ -34,13 +33,12 @@ class EditMessageModal(Modal):
         self.message: Message = message
         components = [
             TextInput(
-                label="Message Content",
+                label="Content",
                 custom_id="content",
                 style=TextInputStyle.paragraph,
-                placeholder="Message Content",
                 value=message.content,
                 required=True,
-                max_length=2000,
+                max_length=2048,
             )
         ]
         super().__init__(title="Edit Message", components=components)
@@ -61,9 +59,10 @@ class EditMessageModal(Modal):
                 embed.color = Colour.red()
                 if e.args[0] == "No content entered":
                     embed.add_field(name="Error", value="You didn't enter any content...", inline=False)
-                else:
-                    embed.add_field(name="Error", value="An unknown error occurred", inline=False)
-                    embed.add_field(name="Exception", value=e, inline=False)
+            else:
+                logger.exception(e)
+                embed.add_field(name="Error", value="An unknown error occurred", inline=False)
+                embed.add_field(name="Exception", value=e, inline=False)
         finally:
             await ctx.edit_original_response(embed=embed, ephemeral=True)
 
@@ -254,9 +253,18 @@ class Owner(commands.Cog, name="owner"):
         name="Edit Message",
         dm_permission=True,
     )
-    @commands.is_owner()
+    @checks.is_owner()
     async def message_edit(self, ctx: MessageCommandInteraction):
-        await ctx.response.send_modal(EditMessageModal(ctx.target))
+        logger.debug(f"Received edit message command for message {ctx.target.id}")
+        if ctx.target.author.id != self.bot.user.id:
+            await ctx.send("I can only edit my own messages!", ephemeral=True)
+            return
+        try:
+            modal = EditMessageModal(ctx.target)
+            await ctx.response.send_modal(modal)
+        except Exception as e:
+            logger.exception(e)
+            raise e
 
 
 def setup(bot):
