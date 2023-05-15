@@ -120,7 +120,7 @@ class Imagen:
                         ret = await resp.json()
                         result: str = ret["results"][0]["text"]
                         return (
-                            result.replace(self.sd_prompt.get_leading(), "")
+                            result.replace(self.lm_prompt.get_tags() + ", ", "")
                             .replace(", ,", "")
                             .replace(",,", ",")
                             .strip()

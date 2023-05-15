@@ -57,7 +57,7 @@ def get_enma_model(cfg: ModelProviderConfig) -> EnmaModel:
     )
 
 
-def get_ooba_model(cfg: ModelProviderConfig) -> OobaModel:
+def get_ooba_model(cfg: ModelProviderConfig, tokenizer) -> OobaModel:
     # load model provider gen_args into basemodel
     gen_settings = ModelGenSettings(**cfg.gensettings)
 
@@ -71,4 +71,5 @@ def get_ooba_model(cfg: ModelProviderConfig) -> OobaModel:
     return OobaModel(
         endpoint_url=cfg.endpoint,
         args=request,
+        tokenizer=tokenizer,
     )

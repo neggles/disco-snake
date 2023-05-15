@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -201,7 +202,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.chatbot = ChatBot(
             name=self.name,
             model_provider=self.model_provider,
-            preprocessors=[ContextPreprocessor(self.context_size)],
+            preprocessors=[ContextPreprocessor(self.context_size, self.tokenizer)],
             postprocessors=[NewlinePrunerPostprocessor()],
         )
 
@@ -636,6 +637,7 @@ class Ai(commands.Cog, name=COG_UID):
     async def before_idle_loop(self):
         logger.info("Idle loop waiting for bot to be ready")
         await self.bot.wait_until_ready()
+        await asyncio.sleep(10)
         logger.info("Idle loop running!")
 
     # Helper functions
