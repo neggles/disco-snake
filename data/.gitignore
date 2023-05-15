@@ -2,6 +2,9 @@
 !.gitignore
 !*.example.json
 !*.example.yml
+!*.example.conf
+!*.example.ini
+!*.example.cfg
 !/models/
 !/guilds/
 !/ai/
