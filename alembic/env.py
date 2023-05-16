@@ -27,7 +27,10 @@ target_metadata = None
 
 ## Custom: Set the database URL from the environment variable, if dotenv was loaded
 if env_loaded:
-    config.set_main_option("sqlalchemy.url", getenv("PG_URL"))
+    # get the database URL from the environment, then make sure the scheme is correct
+    pg_url = getenv("PG_URL").replace("postgres://", "postgresql://")  # "postgres" not valid anymore
+    pg_url = pg_url.replace("postgresql://", "postgresql+psycopg://")  # specify psycopg driver
+    config.set_main_option("sqlalchemy.url", pg_url)
 
 
 def run_migrations_offline() -> None:

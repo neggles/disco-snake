@@ -14,7 +14,7 @@ services:
     ports:
       - mode: ingress
         target: 5432
-        published: 2027
+        published: ${PG_HOST_PORT:-2027}
         protocol: tcp
     volumes:
       - type: bind
