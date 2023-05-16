@@ -57,10 +57,7 @@ def cb_shutdown(message: str, code: int):
         loop = asyncio.get_event_loop()
 
     logger.info(message)
-
-    pending = asyncio.all_tasks()
-    logger.info(f"Waiting for {len(pending)} remaining tasks to complete...")
-    loop.run_until_complete(asyncio.gather(*pending))
+    loop.stop()
     logger.info("All tasks completed, shutting down...")
 
     return code

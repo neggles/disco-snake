@@ -32,7 +32,6 @@ logger = logsnake.setup_logger(
 )
 
 IMAGEN_IMG_DIR = LOGDIR_PATH.joinpath("ai", "images")
-
 IMAGEN_CFG_PATH = DATADIR_PATH.joinpath("ai", "imagen.json")
 
 # IMAGE_SIZE_STEPS = [512, 544, 576, 608, 640, 672, 704, 736, 768, 800, 832, 864, 896, 928, 960]
@@ -59,17 +58,18 @@ IMAGE_SIZE_OPTS = [
 
 
 re_take_pic = re.compile(
-    r".*(how about|another|capture|create|display|draw|give|make|message|paint|post|provide|see|send|send|share|shoot|show|snap|take)"
+    r".*(another|capture|create|display|draw|give|make|message|paint|post|provide|see|send|send|share|shoot|show|snap|take)"
     + r"\b(.+)?\b(image|pic(ture)?|photo(graph)?|screen(shot|ie)|(paint|draw)ing|portrait|selfie)s?",
     flags=re.I + re.M,
 )
 re_take_pic_alt = re.compile(
-    r".*(send|mail|message|me a)\b.+?\b(image|pic(ture)?|photo|snap(shot)?|selfie)s?\b",
+    r".*(send|mail|message)\b(.+)?\b(image|pic(ture)?|photo|snap(shot)?|selfie)s?\b",
     flags=re.I + re.M,
 )
 take_pic_regexes = [re_take_pic, re_take_pic_alt]
-
 re_surrounded = re.compile(r"\*[^*]*?(\*|$)", flags=re.I + re.M)
+re_clean_filename = re.compile(r"[^a-zA-Z0-9_\- ]+")  # for removing non-alphanumeric characters
+re_single_dash = re.compile(r"-+")  # for removing multiple dashes
 
 
 class Imagen:
@@ -191,7 +191,11 @@ class Imagen:
     async def submit_request(self, request: Dict[str, Any]) -> Path:
         # make a tag for the filename
         req_string: str = request["prompt"][:50]
-        req_string = req_string.replace(" ", "-").replace(",", "")
+        req_string = req_string.replace(" ", "-").replace(",", "")  # remove spaces and commas
+        req_string = re_clean_filename.sub("", req_string)  # trim fs-unfriendly characters
+        req_string = re_single_dash.sub("-", req_string)  # collapse consecutive dashes
+        req_string = req_string.rstrip("-")  # remove trailing dashes
+
         # submit the request and save the image
         async with aiohttp.ClientSession(base_url=self.sd_api_host) as session:
             async with session.post(self.sd_api_path, json=request) as r:
@@ -205,20 +209,26 @@ class Imagen:
                         raise ValueError("No image data returned from Imagen API", args=response)
 
                     # load and decode the image
-                    image = Image.open(BytesIO(b64decode(response["images"][0])))
+                    image: Image.Image = Image.open(BytesIO(b64decode(response["images"][0])))
                     response.pop("images")  # don't need this anymore
-                    # info is a recursively encoded json string, so we need to decode it
+
+                    # glue the JSON string onto the PNG
+                    image.format = "PNG"
+                    image.info.update({"parameters": response["info"]})
+                    # then decode it for logging purposes
                     response["info"] = json.loads(response["info"])
-                    # then glue it onto the image for prompt inspector
-                    image.info = response["info"]
 
                     # work out the path to save the image to, then save it and the job info
                     imagefile_path = IMAGEN_IMG_DIR.joinpath(
-                        f'{response["info"]["job_timestamp"]}_{response["info"]["seed"]}-{req_string}.png'
+                        f'{response["info"]["job_timestamp"]}_{response["info"]["seed"]}_{req_string}.png'
                     )
                     image.save(imagefile_path, format="PNG")
+
+                    # save the job info
                     imagefile_path.with_suffix(".json").write_text(
-                        json.dumps(response, indent=2, skipkeys=True, default=str)
+                        json.dumps(
+                            {"request": request, "response": response}, indent=2, skipkeys=True, default=str
+                        )
                     )
                     # this could return the image object, but we're saving it anyway and it's easier to
                     # load a disnake File() from a path, so, uh... memory leak prevention? :sweat_smile:

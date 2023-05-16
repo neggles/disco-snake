@@ -53,7 +53,7 @@ class EditMessageModal(Modal):
             if len(content) == 0:
                 raise ValueError("No content entered")
             embed.add_field(name="Original Content", value=self.message.content[:1024], inline=False)
-            await self.message.edit(content=content)
+            self.message = await self.message.edit(content=content)
         except Exception as e:
             if isinstance(e, ValueError):
                 embed.color = Colour.red()
@@ -64,7 +64,7 @@ class EditMessageModal(Modal):
                 embed.add_field(name="Error", value="An unknown error occurred", inline=False)
                 embed.add_field(name="Exception", value=e, inline=False)
         finally:
-            await ctx.edit_original_response(embed=embed, ephemeral=True)
+            await ctx.send(embed=embed, ephemeral=True)
 
 
 class Owner(commands.Cog, name="owner"):

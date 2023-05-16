@@ -165,11 +165,15 @@ class Ai(commands.Cog, name=COG_UID):
         else:
             prompt = self.config.prompt
 
-        return (
-            prompt.replace("{bot_name}", self.name)
-            .replace("{location_context}", location_context)
-            .replace("{current_time}", get_lm_prompt_time())
-        )
+        replace_tokens = {
+            "bot_name": self.name,
+            "location_context": location_context,
+            "current_time": get_lm_prompt_time(),
+        }
+        for token, replacement in replace_tokens.items():
+            prompt = prompt.replace(f"{{{token}}}", replacement)
+
+        return prompt
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -396,6 +400,7 @@ class Ai(commands.Cog, name=COG_UID):
             insertion_order=1000,
             insertion_position=0,
             trim_direction=TRIM_DIR_NONE,
+            trim_type=TRIM_TYPE_NEWLINE,
             insertion_type=INSERTION_TYPE_NEWLINE,
             forced_activation=True,
             cascading_activation=False,
@@ -427,7 +432,7 @@ class Ai(commands.Cog, name=COG_UID):
         async with message.channel.typing():
             debug_data: Dict[str, Any] = {}
 
-            response = None
+            response = ""
             response_image = None
             author_name = message.author.display_name.strip()
 
@@ -477,15 +482,20 @@ class Ai(commands.Cog, name=COG_UID):
                         if "as a language model" in response.lower():
                             logger.info(f"Response admits to being an AI: {response}\nRetrying...")
                             continue
+                        break  # no bad words, we're good, break out of the loop to avoid executing the else:
                     else:
-                        logger.info(f"Response {attempt} contained bad words: {bad_words}\nRetrying...")
+                        logger.info(
+                            f"Response {attempt} contained bad words: {response}\nBad words: {bad_words}\nRetrying..."
+                        )
                         continue
                 else:  # ran out of retries...
                     if response_image is not None:
                         response = ""  # we have a pic to send, so send it without a comment
                     else:
-                        logger.warn(f"Final attempt {attempt} contained bad words: {bad_words}\nGiving up...")
-                        response = None
+                        logger.warn(
+                            f"Final response contained bad words: {response}\nBad words: {bad_words}\nRetrying..."
+                        )
+                        response = ""
 
                 debug_data["response_raw"] = response
 
@@ -521,7 +531,7 @@ class Ai(commands.Cog, name=COG_UID):
                     else:
                         logger.info(f"Responding with image, response: {response}")
                         await message.channel.send(response, file=response_image)
-                elif response is None:
+                elif response == "":
                     logger.info("Response was empty.")
                     if not any_in_text(["conditional", "activity"], trigger):
                         await message.channel.send("...")
@@ -610,15 +620,6 @@ class Ai(commands.Cog, name=COG_UID):
         response = re_unescape_format.sub(r"\1", response)
         return response
 
-    def is_memorable(self, text: str) -> bool:
-        """
-        Don't memorize messages with [] tags in them or code blocks etc
-        """
-        for string in self.model_provider_cfg.gensettings["sample_args"]["bad_words"]:
-            if string in text:
-                return False
-        return True if text != "" else False
-
     def find_bad_words(self, input: str) -> str:
         found_words: List[str] = []
         input_words: str = input.split()
@@ -666,7 +667,7 @@ class Ai(commands.Cog, name=COG_UID):
         # get the message content
         message_content = self.get_msg_content_clean(message).lower()
         if message_content == "":
-            logger.info("Message was empty after cleaning.")
+            logger.debug("Message was empty after cleaning.")
             return ""
 
         # get the image description and remove newlines
@@ -674,21 +675,18 @@ class Ai(commands.Cog, name=COG_UID):
 
         # build the LLM prompt for the image
         lm_prompt = self.imagen.get_lm_prompt(self.imagen.strip_take_pic(message_content))
-        logger.info(f"[take_pic] LLM Prompt: {lm_prompt}")
+        logger.info(f"LLM Prompt: {lm_prompt}")
 
         # get the LLM to create tags for the image
         lm_tags = await self.imagen.submit_lm_prompt(lm_prompt)
-        logger.info(f"[take_pic] LLM Tags: {lm_tags}")
+        logger.info(f"LLM Tags: {lm_tags}")
 
         # build the SD API request
         sdapi_request = self.imagen.build_request(lm_tags, message_content)
-        logger.info(f"[take_pic] SD API Request: {json.dumps(sdapi_request)}")
+        logger.info(f"SD API Request: {json.dumps(sdapi_request)}")
+
         # submit it
         result_path = await self.imagen.submit_request(sdapi_request)
-        # drop the meta next to it
-        result_path.with_suffix(".json").write_text(
-            json.dumps(sdapi_request, indent=4, skipkeys=True, default=str)
-        )
         # return a discord File object to upstream
         result_file = File(result_path, filename=result_path.name)
         return result_file
