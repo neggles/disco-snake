@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 from shimeji.model_provider import (
     EnmaModel,
@@ -12,9 +14,9 @@ from ai.config import ModelProviderConfig
 
 
 class ModelGenSettings(BaseModel):
-    model: str
     gen_args: ModelGenArgs
     sample_args: ModelSampleArgs
+    model: Optional[str] = None
 
     def __post_init__(self):
         self.gen_args = ModelGenArgs(**self.gen_args)

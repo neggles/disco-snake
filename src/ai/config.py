@@ -1,6 +1,6 @@
 import re
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
 from shimeji.model_provider import OobaGenRequest
@@ -36,14 +36,15 @@ class BotParameters:
     idle_messaging: bool
     idle_messaging_interval: int
     nicknames: List[str]
-    context_size: int
-    logging_channel_id: int
-    activity_channels: List[int]
-    debug: bool
-    memory_enable: bool
-    max_retries: int
-    ctxbreak_users: List[int]
-    ctxbreak_roles: List[int]
+    context_size: int = 1024
+    context_messages: int = 50
+    logging_channel_id: Optional[int] = None
+    activity_channels: List[int] = field(default_factory=list)
+    debug: bool = False
+    memory_enable: bool = False
+    max_retries: int = 3
+    ctxbreak_users: List[int] = field(default_factory=list)
+    ctxbreak_roles: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -57,10 +58,10 @@ class ChatbotConfig:
     name: str
     prompt: Union[str, List[str]]
     params: BotParameters
-    memory_store: MemoryStoreConfig
     model_provider: ModelProviderConfig
-    vision: Optional[VisionConfig]
-    bad_words: List[str] = None
+    bad_words: List[str] = field(default_factory=list)
+    memory_store: Optional[MemoryStoreConfig] = None
+    vision: Optional[VisionConfig] = None
 
 
 @dataclass
@@ -72,15 +73,15 @@ class ImagenParams:
 
 @dataclass
 class ImagenApiParams:
-    steps: int = 25
-    cfg_scale: float = 7.75
+    steps: int = 21
+    cfg_scale: float = 7.5
     seed: int = -1
     default_width: int = 576
     default_height: int = 768
-    sampler_name: str = "Euler a"
+    sampler_name: str = "DPM++ 2M Karras"
     enable_hr: bool = False
-    hr_steps: int = 0
-    hr_denoise: float = 0.55
+    hr_steps: int = 7
+    hr_denoise: float = 0.62
     hr_scale: float = 1.5
     hr_upscaler: str = "Latent"
     checkpoint: Optional[str] = None

@@ -32,9 +32,9 @@ from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
 from shimeji.util import (
     INSERTION_TYPE_NEWLINE,
+    TRIM_DIR_NONE,
     TRIM_DIR_TOP,
     TRIM_TYPE_NEWLINE,
-    TRIM_TYPE_SENTENCE,
     ContextEntry,
 )
 from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
@@ -48,6 +48,7 @@ from ai.model import get_enma_model, get_ooba_model
 from ai.types import MessageChannel
 from ai.utils import (
     anti_spam,
+    any_in_text,
     convert_mentions_emotes,
     cut_trailing_sentence,
     get_full_class_name,
@@ -106,6 +107,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.activity_channels: List[int] = self.config.params.activity_channels
         self.conditional_response: bool = self.config.params.conditional_response
         self.context_size: int = self.config.params.context_size
+        self.context_messages: int = self.config.params.context_messages
         self.idle_msg_sec: int = self.config.params.idle_messaging_interval
         self.idle_messaging: bool = self.config.params.idle_messaging
         self.logging_channel_id: int = self.config.params.logging_channel_id
@@ -147,6 +149,7 @@ class Ai(commands.Cog, name=COG_UID):
     def name(self) -> str:
         return self.config.name
 
+    # retrieve the LM prompt and inject name, time, etc.
     def get_prompt(self, ctx: Optional[MessageInteraction] = None) -> str:
         if ctx is None:
             location_context = "and her friends in a Discord server"
@@ -202,7 +205,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.chatbot = ChatBot(
             name=self.name,
             model_provider=self.model_provider,
-            preprocessors=[ContextPreprocessor(self.context_size, self.tokenizer)],
+            preprocessors=[],
             postprocessors=[NewlinePrunerPostprocessor()],
         )
 
@@ -223,9 +226,8 @@ class Ai(commands.Cog, name=COG_UID):
     @commands.Cog.listener("on_ready")
     async def on_ready(self):
         if self.logging_channel is None and self.logging_channel_id is not None:
-            logger.info("Logging channel not found, attempting to find it...")
             self.logging_channel = self.bot.get_channel(self.logging_channel_id)
-            logger.info(f"Logging channel found: {self.logging_channel}")
+            logger.info(f"Logging channel: {self.logging_channel}")
         logger.info("Cog is ready.")
 
     @commands.Cog.listener("on_message")
@@ -334,10 +336,12 @@ class Ai(commands.Cog, name=COG_UID):
 
         chain = []
         for message in reversed(messages):
-            author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
-            author_name = f"@{author_name}"
-
-            if message.author.bot is True and message.author.id != self.bot.user.id:
+            # set up author name
+            if message.author.bot is False:
+                author_name = f"### Instruction: {message.author.display_name.strip()}"
+            elif message.author.id == self.bot.user.id:
+                author_name = f"### Response: {self.name}"
+            else:
                 logger.debug("Skipping non-self bot message")
                 continue
 
@@ -387,10 +391,11 @@ class Ai(commands.Cog, name=COG_UID):
         prompt_entry = ContextEntry(
             text=self.get_prompt(message),
             prefix="",
-            suffix="\n",
+            suffix="",
             reserved_tokens=512,
             insertion_order=1000,
-            insertion_position=-1,
+            insertion_position=0,
+            trim_direction=TRIM_DIR_NONE,
             insertion_type=INSERTION_TYPE_NEWLINE,
             forced_activation=True,
             cascading_activation=False,
@@ -398,40 +403,12 @@ class Ai(commands.Cog, name=COG_UID):
         )
         contextmgr.add_entry(prompt_entry)
 
-        # memories
-        if self.memory_store is not None and self.memory_enable is True:
-            memories = await self.memory_store.get()
-            if not memories:
-                logger.info("No memories found.")
-            else:
-                memories_ctx = memory_context(
-                    memories[-1],
-                    memories,
-                    short_term=self.memory_store.short_term_amount,
-                    long_term=self.memory_store.long_term_amount,
-                )
-                memories_entry = ContextEntry(
-                    text=memories_ctx,
-                    prefix="",
-                    suffix="\n",
-                    reserved_tokens=0,
-                    insertion_order=800,
-                    insertion_position=-1,
-                    trim_direction=TRIM_DIR_TOP,
-                    trim_type=TRIM_TYPE_SENTENCE,
-                    insertion_type=INSERTION_TYPE_NEWLINE,
-                    forced_activation=True,
-                    cascading_activation=False,
-                    tokenizer=self.tokenizer,
-                )
-                contextmgr.add_entry(memories_entry)
-
         # conversation
         conversation_entry = ContextEntry(
-            text=conversation,
+            text=conversation + f"\n### Response: {self.name}:",
             prefix="",
             suffix="",
-            reserved_tokens=self.context_size - 512,
+            reserved_tokens=512,
             insertion_order=0,
             insertion_position=-1,
             trim_direction=TRIM_DIR_TOP,
@@ -448,10 +425,11 @@ class Ai(commands.Cog, name=COG_UID):
     # actual response logic
     async def respond(self, conversation: str, message: Message, trigger: str = None) -> str:
         async with message.channel.typing():
-            encoded_image_label = ""
             debug_data: Dict[str, Any] = {}
 
-            author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
+            response = None
+            response_image = None
+            author_name = message.author.display_name.strip()
 
             msg_timestamp = message.created_at.astimezone(tz=self.bot.timezone).strftime(
                 "%Y-%m-%d-%H:%M:%S%z"
@@ -461,56 +439,24 @@ class Ai(commands.Cog, name=COG_UID):
             debug_data["message"] = {
                 "id": message.id,
                 "author": f"{message.author}",
+                "author_name": f"{author_name}",
                 "guild": f"{message.guild}" if message.guild is not None else "DM",
                 "channel": message.channel.name if not isinstance(message.channel, DMChannel) else "DM",
                 "timestamp": msg_timestamp,
                 "trigger": msg_trigger,
-                "content_raw": message.content,
+                "content": message.content,
+                "conversation": conversation.splitlines(),
             }
 
             try:
                 debug_data["gensettings"] = asdict(self.model_provider_cfg)["gensettings"]
             except Exception as e:
-                logger.error(f"Failed to get gensettings: {e}\n{format_exc()}")
+                logger.exception("Failed to get gensettings")
 
-            if self.memory_store is not None and message.guild is not None:
-                private_role = get_role_by_name(name="Private", guild=message.guild)
-                anonymous_role = get_role_by_name(name="Anonymous", guild=message.guild)
-                if private_role is None or isinstance(message.author, User):
-                    pass
-
-                elif private_role not in message.author.roles:
-                    if anonymous_role is not None and anonymous_role in message.author.roles:
-                        author_name = "Deleted User"
-
-                    message_content = self.get_msg_content_clean(message)
-                    encoded_user_message = f"{author_name}: {message_content}"
-                    is_dupe = await self.memory_store.check_duplicates(
-                        text=encoded_user_message, duplicate_ratio=0.8
-                    )
-                    if self.is_memorable(message_content) and not is_dupe:
-                        logger.info(f"adding message from {message.author} to memory as '{author_name}'")
-                        await self.memory_store.add(
-                            author_id=message.author.id,
-                            author=author_name,
-                            text=message_content,
-                            encoding_model=self.memory_store.model,
-                            encoding=array_to_str(
-                                await self.model_provider.hidden_async(
-                                    self.memory_store.model,
-                                    encoded_user_message,
-                                    layer=self.memory_store.model_layer,
-                                )
-                            ),
-                        )
-
-            debug_data["conversation"] = conversation.splitlines()
-
-            # Build conversation context
-            conversation = await self.build_ctx(conversation + encoded_image_label, message)
+            # Build context
+            context = await self.build_ctx(conversation, message)
             debug_data["context"] = conversation.splitlines()
 
-            response_image = None
             if self.imagen.should_take_pic(message.content) is True:
                 logger.info("Hold up, let me take a selfie...")
                 try:
@@ -518,30 +464,28 @@ class Ai(commands.Cog, name=COG_UID):
                 except Exception as e:
                     raise Exception("Failed to generate image response") from e
 
-            # Generate response
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
                 for attempt in range(self.max_retries):
                     attempt = attempt + 1  # deal with range() starting from 0
-                    response: str = await self.chatbot.respond_async(conversation, push_chain=False)
+                    response: str = await self.chatbot.respond_async(context, push_chain=False)
                     bad_words = self.find_bad_words(response)
                     if len(bad_words) == 0:
-                        if response.startswith("I'm sorry, but") is True:
-                            logger.info("Response was a ChatGPT apology, retrying...")
+                        if response.lower().startswith("i'm sorry, but") is True:
+                            logger.info(f"Response was a ChatGPT apology: {response}\nRetrying...")
                             continue
-                        # if bool(re_start_expression.match(response)):
-                        #     response = re_start_expression.sub("", response)
-                        #     logger.info("Response started with an expression, replacing...")
-                        #     break
-                        break
-
-                    if attempt < self.max_retries:
+                        if "as a language model" in response.lower():
+                            logger.info(f"Response admits to being an AI: {response}\nRetrying...")
+                            continue
+                    else:
                         logger.info(f"Response {attempt} contained bad words: {bad_words}\nRetrying...")
                         continue
+                else:  # ran out of retries...
+                    if response_image is not None:
+                        response = ""  # we have a pic to send, so send it without a comment
                     else:
-                        logger.info(f"Final response contained bad words: {bad_words}\nGiving up... :(")
-                        response = ""
-                        break
+                        logger.warn(f"Final attempt {attempt} contained bad words: {bad_words}\nGiving up...")
+                        response = None
 
                 debug_data["response_raw"] = response
 
@@ -570,37 +514,24 @@ class Ai(commands.Cog, name=COG_UID):
                 debug_data["response"] = response
 
                 # Send response if not empty
-                if response == "":
+                if response_image is not None:
+                    if response == "":
+                        logger.info("Response was empty, sending image only.")
+                        await message.channel.send(file=response_image)
+                    else:
+                        logger.info(f"Responding with image, response: {response}")
+                        await message.channel.send(response, file=response_image)
+                elif response is None:
                     logger.info("Response was empty.")
-                elif response_image is not None:
-                    logger.info("Responding with image...")
-                    await message.channel.send(response, file=response_image)
-                    logger.info(f"Response: {response}")
+                    if not any_in_text(["conditional", "activity"], trigger):
+                        await message.channel.send("...")
+                    await message.add_reaction("")
                 else:
                     await message.channel.send(response)
                     logger.info(f"Response: {response}")
 
                     self.last_response = datetime.now(timezone.utc)
 
-                # add to memory store in background
-                if self.memory_store is not None:
-                    # encode bot response
-                    response = self.get_msg_content_clean(message, response)
-                    is_dupe = await self.memory_store.check_duplicates(text=response, duplicate_ratio=0.8)
-                    if response != "" and not is_dupe and self.is_memorable(response):
-                        await self.memory_store.add(
-                            author_id=self.bot.user.id,
-                            author=self.name,
-                            text=response,
-                            encoding_model=self.memory_store.model,
-                            encoding=array_to_str(
-                                await self.model_provider.hidden_async(
-                                    self.memory_store.model,
-                                    f"@{self.name}: {response}",
-                                    layer=self.memory_store.model_layer,
-                                )
-                            ),
-                        )
             except Exception as e:
                 logger.exception(e)
             finally:
