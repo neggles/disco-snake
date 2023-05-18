@@ -45,7 +45,7 @@ class EditMessageModal(Modal):
 
     async def callback(self, ctx: ModalInteraction):
         await ctx.response.defer(ephemeral=True)
-        embed = Embed(title="Edit Message", description="Failed!", colour=Colour.red())
+        embed = Embed(title="Edit Message", description="Success!", colour=Colour.purple())
         embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.display_avatar.url)
         embed.add_field(name="Message ID", value=self.message.id, inline=True)
         try:
@@ -53,7 +53,7 @@ class EditMessageModal(Modal):
             if len(content) == 0:
                 raise ValueError("No content entered")
             embed.add_field(name="Original Content", value=self.message.content[:1024], inline=False)
-            self.message = await self.message.edit(content=content)
+            await self.message.edit(content=content)
         except Exception as e:
             if isinstance(e, ValueError):
                 embed.color = Colour.red()

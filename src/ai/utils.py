@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from difflib import SequenceMatcher
+from email import message
 from typing import Any, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
@@ -30,6 +31,8 @@ def anti_spam(messages: Union[List[Message], Message], threshold=0.8) -> Tuple[L
     spam = set()
     for msgnum, msg in enumerate(messages):
         for idx in range(msgnum + 1, len(messages)):
+            if "<ctxbreak>" in msg.content:
+                continue
             if SequenceMatcher(None, msg.content, messages[idx].content).ratio() > threshold:
                 spam.add(messages[idx].id)
 

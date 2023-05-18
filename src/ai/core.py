@@ -44,7 +44,7 @@ import logsnake
 from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
 from ai.eyes import DiscoEyes
 from ai.imagen import Imagen
-from ai.model import get_enma_model, get_ooba_model
+from ai.model import get_ooba_model
 from ai.types import MessageChannel
 from ai.utils import (
     anti_spam,
@@ -200,8 +200,6 @@ class Ai(commands.Cog, name=COG_UID):
         logger.debug("Initializing Model Provider...")
         if self.model_provider_type == "ooba":
             self.model_provider = get_ooba_model(cfg=self.model_provider_cfg, tokenizer=self.tokenizer)
-        elif self.model_provider_type == "enma":
-            self.model_provider = get_enma_model(cfg=self.model_provider_cfg, tokenizer=self.tokenizer)
         else:
             raise ValueError(f"Unknown model provider type: {self.model_provider_type}")
 
@@ -331,10 +329,12 @@ class Ai(commands.Cog, name=COG_UID):
 
         # magic tag to break context chain to get bot out of librarian mode
         for idx, message in enumerate(messages):
-            if "<ctxbreak>" in message.content.lower() and (
-                message.author.id in self.ctxbreak_users
+            if ("<ctxbreak>" in message.content.lower()) and (
+                (message.author.id in self.ctxbreak_users)
+                or (message.author.id in self.bot.owner_ids)
                 or member_in_any_role(message.author, self.ctxbreak_roles)
             ):
+                logger.debug("Found context break tag, breaking context chain")
                 messages = messages[:idx]
                 break
 

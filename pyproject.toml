@@ -22,14 +22,16 @@ combine-as-imports = true
 force-wrap-aliases = true
 known-local-folder = ["src"]
 known-first-party = [
-  "ai",
-  "cogs",
-  "disco_snake",
-  "exceptions",
-  "helpers",
-  "logsnake",
-  "webui",
+    "ai",
+    "cogs",
+    "db",
+    "disco_snake",
+    "exceptions",
+    "helpers",
+    "logsnake",
+    "webui",
 ]
+known-third-party = ["alembic", "disnake"]
 
 [tool.pyright]
 include = ['src/**']
