@@ -123,7 +123,7 @@ class ContextEntry:
         keys: List[str] = [""],
         text: str = "",
         prefix: str = "",
-        suffix: str = "\n",
+        suffix: str = "",
         token_budget: int = 2048,
         reserved_tokens: int = 0,
         insertion_order: int = 100,
@@ -171,7 +171,7 @@ class ContextEntry:
         return tokens
 
     def get_text(self, max_length, token_budget):
-        return self.tokenizer.decode(self.trim(max_length, token_budget))
+        return self.tokenizer.decode(self.trim(max_length, token_budget), skip_special_tokens=True)
 
     def trim_newlines(self, tokens, trim_dir, limit):
         return trim_newlines(tokens, trim_dir, limit, self.tokenizer)

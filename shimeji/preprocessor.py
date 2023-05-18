@@ -7,6 +7,7 @@ from shimeji.util import (
     INSERTION_TYPE_NEWLINE,
     ContextEntry,
 )
+from shimeji.tokenizers import PreTrainedTokenizerFast
 
 
 class Preprocessor:
@@ -57,7 +58,7 @@ class MemoryPreprocessor(Preprocessor):
 class ContextPreprocessor(Preprocessor):
     """A Preprocessor that builds a context from a list of ContextEntry objects."""
 
-    def __init__(self, token_budget=1024, tokenizer=None):
+    def __init__(self, token_budget=1024, tokenizer: PreTrainedTokenizerFast = None):
         """Initialize a ContextPreprocessor.
 
         :param token_budget: The maximum number of tokens that can be used in the context, defaults to 1024.
@@ -221,7 +222,7 @@ class ContextPreprocessor(Preprocessor):
         if is_respond:
             main_entry = ContextEntry(
                 text=context,
-                suffix=f"\n@{name}:",
+                suffix=f"\n{name}:",
                 reserved_tokens=512,
                 insertion_order=0,
                 trim_direction=TRIM_DIR_TOP,

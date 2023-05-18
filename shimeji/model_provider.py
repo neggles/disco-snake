@@ -267,6 +267,7 @@ class SukimaModel(ModelProvider):
                 f"{self.endpoint_url}/api/v1/users/token",
                 data={"username": self.kwargs["username"], "password": self.kwargs["password"]},
             )
+            r.encoding = "utf-8"
             if r.status_code == 200:
                 self.token = r.json()["access_token"]
             else:
@@ -329,9 +330,10 @@ class SukimaModel(ModelProvider):
         try:
             r = requests.post(
                 f"{self.endpoint_url}/api/v1/models/generate",
-                data=json.dumps(argdict),
+                json=argdict,
                 headers={"Authorization": f"Bearer {self.token}"},
             )
+            r.encoding = "utf-8"
         except Exception as e:
             raise e
         if r.status_code == 200:
@@ -382,10 +384,12 @@ class SukimaModel(ModelProvider):
                     headers={"Authorization": f"Bearer {self.token}"},
                 ) as resp:
                     if resp.status == 200:
-                        js = await resp.json()
+                        js = await resp.json(encoding="utf-8")
                         return js["output"][len(argdict["prompt"]) :]
                     else:
-                        raise Exception(f"Could not generate response. Error: {await resp.text()}")
+                        raise Exception(
+                            f"Could not generate response. Error: {await resp.text(encoding='utf-8')}"
+                        )
             except Exception as e:
                 raise e
 
@@ -408,9 +412,11 @@ class SukimaModel(ModelProvider):
                     headers={"Authorization": f"Bearer {self.token}"},
                 ) as resp:
                     if resp.status == 200:
-                        return (await resp.json())[f"{layer}"][0]
+                        return (await resp.json(encoding="utf-8"))[f"{layer}"][0]
                     else:
-                        raise Exception(f"Could not fetch hidden states. Error: {await resp.text()}")
+                        raise Exception(
+                            f"Could not fetch hidden states. Error: {await resp.text(encoding='utf-8')}"
+                        )
             except Exception as e:
                 raise e
 
@@ -433,9 +439,11 @@ class SukimaModel(ModelProvider):
                     headers={"Authorization": f"Bearer {self.token}"},
                 ) as resp:
                     if resp.status == 200:
-                        return await resp.json()
+                        return await resp.json(encoding="utf-8")
                     else:
-                        raise Exception(f"Could not classify image. Error: {await resp.text()}")
+                        raise Exception(
+                            f"Could not classify image. Error: {await resp.text(encoding='utf-8')}"
+                        )
             except Exception as e:
                 raise e
 
@@ -594,7 +602,8 @@ class EnmaModel(ModelProvider):
             if arg is None:
                 raise ValueError("Missing required argument: " + arg)
         try:
-            r = requests.post(f"{self.endpoint_url}", data=json.dumps(argdict))
+            r = requests.post(f"{self.endpoint_url}", data=json.dumps(argdict, ensure_ascii=False))
+            r.encoding = "utf-8"
         except Exception as e:
             raise e
         if r.status_code == 200:
@@ -631,10 +640,12 @@ class EnmaModel(ModelProvider):
             try:
                 async with session.post(f"{self.endpoint_url}", json=argdict) as resp:
                     if resp.status == 200:
-                        js = await resp.json()
+                        js = await resp.json(encoding="utf-8")
                         return js[0]["generated_text"][len(argdict["prompt"]) :]
                     else:
-                        raise Exception(f"Could not generate response. Error: {await resp.text()}")
+                        raise Exception(
+                            f"Could not generate response. Error: {await resp.text(encoding='utf-8')}"
+                        )
             except Exception as e:
                 raise e
 
@@ -767,10 +778,10 @@ class TextSynthModel(ModelProvider):
                     headers={"Authorization": f"Bearer {self.token}"},
                 ) as resp:
                     if resp.status == 200:
-                        js = await resp.json()
+                        js = await resp.json(encoding="utf-8")
                         return js["text"]
                     else:
-                        raise Exception(f"Could not generate response. Error: {resp.text()}")
+                        raise Exception(f"Could not generate response. Error: {resp.text(encoding='utf-8')}")
             except Exception as e:
                 raise e
 
@@ -889,6 +900,7 @@ class OobaModel(ModelProvider):
 
         try:
             r = requests.post(f"{self.endpoint_url}/api/v1/generate", json=args.asdict())
+            r.encoding = "utf-8"
         except Exception as e:
             raise e
         if r.status_code == 200:
@@ -910,12 +922,12 @@ class OobaModel(ModelProvider):
             async with aiohttp.ClientSession(base_url=self.endpoint_url) as session:
                 async with session.post("/api/v1/generate", json=args.asdict()) as resp:
                     if resp.status == 200:
-                        ret = await resp.json()
+                        ret = await resp.json(encoding="utf-8")
                         return ret["results"][0]["text"]
                     else:
                         resp.raise_for_status()
         except Exception as e:
-            raise Exception(f"Could not generate response. Error: {await resp.text()}") from e
+            raise Exception(f"Could not generate response. Error: {await resp.text(encoding='utf-8')}") from e
 
     async def hidden_async(self, model, text, layer):
         """
@@ -963,7 +975,6 @@ class OobaModel(ModelProvider):
         args.sample_args.top_k = 40
         args.sample_args.rep_p = 1.0
         args.sample_args.do_sample = True
-        args.sample_args.stop_sequence = None
         args.gen_args.max_length = 12
         args.gen_args.min_length = 0
         response = self.generate(args)
