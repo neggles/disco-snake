@@ -14,7 +14,7 @@ class DictJsonMixin:
         return self.dict(*args, **kwargs)
 
     def asjson(self, *args, **kwargs):
-        return json.dumps(self.dict(*args, **kwargs))
+        return json.dumps(self.dict(*args, **kwargs), ensure_ascii=False)
 
 
 class ModelGenArgs(BaseModel, DictJsonMixin):
@@ -957,7 +957,7 @@ class OobaModel(ModelProvider):
 
         raise NotImplementedError("image_label_async method is not implemented for this model provider")
 
-    def should_respond(self, context, name) -> bool:
+    def should_respond(self, context, name: str, prefix: str = "") -> bool:
         """
         Determine if the Ooba endpoint predicts that the name should respond to the given context.
         :param context: The context to use.
@@ -978,12 +978,12 @@ class OobaModel(ModelProvider):
         args.gen_args.max_length = 12
         args.gen_args.min_length = 0
         response = self.generate(args)
-        if response.strip().startswith(name):
+        if response.strip().startswith((name, prefix + name, prefix + " " + name)):
             return True
         else:
             return False
 
-    async def should_respond_async(self, context, name) -> bool:
+    async def should_respond_async(self, context, name: str, prefix: str = "") -> bool:
         """Determine if the Ooba endpoint predicts that the name should respond to the given context asynchronously.
         :param context: The context to use.
         :type context: str
@@ -1003,7 +1003,7 @@ class OobaModel(ModelProvider):
         args.gen_args.max_length = 12
         args.gen_args.min_length = 0
         response = await self.generate_async(args)
-        if response.strip().startswith(name):
+        if response.strip().startswith((name, prefix + name, prefix + " " + name)):
             return True
         else:
             return False
