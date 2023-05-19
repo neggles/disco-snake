@@ -28,7 +28,7 @@ from humanize import naturaldelta as fuzzydelta
 import exceptions
 from disco_snake import COGDIR_PATH, DATADIR_PATH, USERDATA_PATH
 from disco_snake.embeds import CooldownEmbed, MissingPermissionsEmbed, MissingRequiredArgumentEmbed
-from disco_snake.settings import Settings
+from disco_snake.settings import get_settings
 from helpers.misc import filename_filter, get_package_root
 
 PACKAGE_ROOT = get_package_root()
@@ -48,7 +48,7 @@ class DiscoSnake(commands.Bot):
 
         super().__init__(*args, command_prefix=None, intents=intents, **kwargs)
 
-        self.config = Settings()
+        self.config = get_settings()
 
         self.datadir_path: Path = DATADIR_PATH
         self.userdata_path: Path = USERDATA_PATH

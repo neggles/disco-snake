@@ -1,5 +1,6 @@
 import json
 import logging
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
 from zoneinfo import ZoneInfo
@@ -71,3 +72,8 @@ class Settings(BaseSettings):
                 json_settings,
                 file_secret_settings,
             )
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
