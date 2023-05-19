@@ -1,33 +1,28 @@
 {
-  "application_id": "your_discord_application_id",
-  "token": "your_discord_api_token",
+  "app_id": "your_discord_application_id",
+  "bot_token": "your_discord_bot_token",
   "permissions": "your_bot_permission_mask",
-  "owner_ids": [123456789, 987654321],
+
   "timezone": "UTC",
   "owner": "user#1234",
   "repo_url": "https://github.com/username/repo-name",
+  "db_uri": "postgresql+psycopg://postgres:postgres@localhost:2027/discosnake?sslmode=disable",
+
+  "owner_ids": [123456787654321, 876543212345678],
+  "home_guild": 98765432345678,
+
   "log_level": "info",
-  "statuses": ["video games", "with your heart", "your song", "chess"],
-  "ai": {
-    "model_name": "gpt-neo-125M",
-    "torch_device": "cuda:0",
-    "torch_dtype": "float16",
-    "log_level": "debug",
-    "base_length": 65,
-    "max_lines": 5,
-    "temperature": 1.09,
-    "response_chance": 0.01,
-    "context_messages": 9
-  },
-  "diffusers": {
-    "torch_device": "cuda:0",
-    "torch_dtype": "float16"
-  },
-  "openai": {
-    "api_key": "your-api-key",
-    "org_id": "your-org-id"
-  },
-  "replicate_token": "your-replicate-api-token",
+  "debug": false,
   "reload": false,
-  "disable_cogs": ["canned", "dalle", "ai"]
+
+  "status_type": "playing",
+  "statuses": [
+    "video games",
+    "with your heart",
+    "your song",
+    "chess",
+    "minecraft"
+  ],
+
+  "disable_cogs": ["fake_cog"]
 }

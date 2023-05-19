@@ -12,7 +12,7 @@ from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
 import logsnake
-from disco_snake import CONFIG_PATH, DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH, PACKAGE, USERDATA_PATH
+from disco_snake import  DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH, PACKAGE
 from disco_snake.bot import DiscoSnake
 from helpers.misc import parse_log_level
 
@@ -102,17 +102,12 @@ def start_bot(ctx: click.Context = None):
         uvloop.install()
 
     logger.info("Starting disco-snake")
-    # Load config
-    if CONFIG_PATH.exists():
-        config = json.loads(CONFIG_PATH.read_bytes())
-    else:
-        raise FileNotFoundError(f"Config file '{CONFIG_PATH}' not found!")
 
-    config_log_level = parse_log_level(config["log_level"])
+    config_log_level = parse_log_level(bot.config.log_level)
     logger.setLevel(config_log_level)
     logger.info(f"Effective log level: {logging.getLevelName(logger.getEffectiveLevel())}")
 
-    logging.getLogger("disnake.gateway").setLevel(config_log_level)
+    logging.getLogger("disnake.gateway").setLevel(logging.INFO)
     logging.getLogger("disnake.http").setLevel(config_log_level)
 
     # create log and data directories if they don't exist
@@ -121,27 +116,13 @@ def start_bot(ctx: click.Context = None):
     if not LOGDIR_PATH.exists():
         LOGDIR_PATH.mkdir(parents=True)
 
-    # load userdata
-    if USERDATA_PATH.is_file():
-        userdata = json.loads(USERDATA_PATH.read_bytes())
-    else:
-        logger.info(f"User state file does not exist, creating empty one at {USERDATA_PATH}")
-        userdata = {}
-        USERDATA_PATH.write_text(json.dumps(userdata, indent=4))
-
-    logger.info(f"Loaded configuration from {CONFIG_PATH}")
-
-    for key in config.keys():
-        logger.debug(f"    {key}: {json.dumps(config[key], default=str)}")
-
-    bot.config = config
-    bot.userdata = userdata
-
-    bot.owner_ids = config.get("owner_ids", [])
-    bot.timezone = ZoneInfo(config.get("timezone", "UTC"))
-    bot.reload = config.get("reload", False)
+    cfg_dict = bot.config.dict()
+    for key in cfg_dict:
+        logger.debug(f"    {key}: {json.dumps(cfg_dict[key], default=str)}")
 
     bot.load_cogs()
-    bot.run(config["token"])
-
-    cb_shutdown("Normal shutdown", 0)
+    bot.run(
+        token=bot.config.bot_token,
+        application_id=bot.config.app_id,
+        reconnect=True,
+    )

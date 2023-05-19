@@ -1,7 +1,8 @@
+import json
 import re
 from datetime import datetime
 from difflib import SequenceMatcher
-from email import message
+from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
@@ -186,3 +187,9 @@ def member_in_any_role(member: Member, roles: List[Union[Role, int]]) -> bool:
         if member_in_role(member, role):
             return True
     return False
+
+
+def json_dump(obj: Any, file: Path, indent: int = 4, sort_keys: bool = True) -> str:
+    with file.open("w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=indent, sort_keys=sort_keys)
+    return json.dumps(obj, indent=indent, sort_keys=sort_keys)

@@ -28,6 +28,7 @@ from humanize import naturaldelta as fuzzydelta
 import exceptions
 from disco_snake import COGDIR_PATH, DATADIR_PATH, USERDATA_PATH
 from disco_snake.embeds import CooldownEmbed, MissingPermissionsEmbed, MissingRequiredArgumentEmbed
+from disco_snake.settings import Settings
 from helpers.misc import filename_filter, get_package_root
 
 PACKAGE_ROOT = get_package_root()
@@ -47,9 +48,8 @@ class DiscoSnake(commands.Bot):
 
         super().__init__(*args, command_prefix=None, intents=intents, **kwargs)
 
-        # attributes set up in cli.py. this is a dumb way to do this but it works
-        self.config: dict = None
-        self.timezone: ZoneInfo = None
+        self.config = Settings()
+
         self.datadir_path: Path = DATADIR_PATH
         self.userdata_path: Path = USERDATA_PATH
         self.userdata: dict = None
@@ -62,6 +62,10 @@ class DiscoSnake(commands.Bot):
 
         # single thread worker for blocking gpu code
         self.gpu_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bot_gpu")
+
+    @property
+    def timezone(self) -> ZoneInfo:
+        return self.config.timezone
 
     @property
     def uptime(self) -> timedelta:
@@ -120,8 +124,8 @@ class DiscoSnake(commands.Bot):
             if (p.is_dir() or p.suffix == ".py") and not p.name.startswith("_")
         ]
 
-        if isinstance(self.config["disable_cogs"], list):
-            cogs = [x for x in cogs if x not in self.config["disable_cogs"]]
+        if len(self.config.disable_cogs) > 0:
+            cogs = [x for x in cogs if x not in self.config.disable_cogs]
         return cogs
 
     def load_cogs(self):
@@ -144,8 +148,8 @@ class DiscoSnake(commands.Bot):
         """
         Set up the bot's status task
         """
-        statuses = self.config["statuses"]
-        activity = Activity(name=random.choice(statuses), type=ActivityType.playing)
+        activity_type = getattr(ActivityType, self.config.status_type, ActivityType.playing)
+        activity = Activity(name=random.choice(self.config.statuses), type=activity_type)
         await self.change_presence(activity=activity)
 
     @status_task.before_loop
@@ -171,7 +175,7 @@ class DiscoSnake(commands.Bot):
         logger.info("-------------------")
         if self.home_guild is None:
             logger.info("Saving home guild metadata to disk")
-            self.home_guild = self.get_guild(self.config["home_guild"])
+            self.home_guild = self.get_guild(self.config.home_guild)
             self.save_guild_metadata(self.home_guild.id)
         if not self.status_task.is_running():
             logger.info("Starting status update task")

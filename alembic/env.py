@@ -1,21 +1,21 @@
 import asyncio
 from logging.config import fileConfig
-from os import getenv
-from pathlib import Path
 
 from alembic import context
 from alembic.environment import EnvironmentContext
 from alembic.script import ScriptDirectory
-from dotenv import load_dotenv
-from sqlalchemy import URL, pool
+from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from db.base import Base
+from disco_snake.settings import Settings
 
-## Custom: Load environment variables from .env file
-ENV_FILE = Path(__file__).parent.parent.joinpath(".env")
-env_loaded = load_dotenv(ENV_FILE)
+## Custom: Load bot config object
+try:
+    bot_settings = Settings()
+except Exception as e:
+    bot_settings = None
 
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
@@ -28,17 +28,10 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
 
-## Custom: If dotenv loaded successfully, use the values from the .env file
-if env_loaded:
-    pg_url = URL.create(
-        drivername="postgresql+psycopg",
-        username=getenv("PG_USER", "postgres"),
-        password=getenv("PG_PASS", "postgres"),
-        host=getenv("PG_HOST", "localhost"),
-        port=getenv("PG_HOST_PORT", "5432"),
-        database=getenv("PG_DB", "discosnake"),
-    )
-    config.set_main_option("sqlalchemy.url", pg_url.render_as_string(hide_password=False))
+## Custom: If bot config object is loaded, use it to set the db_uri, otherwise use the .ini
+if bot_settings is not None:
+    pg_uri = bot_settings.db_uri
+    config.set_main_option("sqlalchemy.url", pg_uri)
 
 
 def run_migrations_offline() -> None:

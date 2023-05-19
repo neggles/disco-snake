@@ -25,9 +25,9 @@ class General(commands.Cog, name="general"):
         embed = disnake.Embed(description="a questionably intelligent discord bot", color=0x9C84EF)
         embed.set_author(name="Info", icon_url=self.bot.user.avatar.url)
         embed.add_field(name="Owner:", value=self.bot.owner.mention, inline=True)
-        embed.add_field(name="Source repo:", value=self.bot.config["repo_url"], inline=True)
+        embed.add_field(name="Source repo:", value=self.bot.config.repo_url, inline=True)
         embed.add_field(name="Running on", value=f"Python {platform.python_version()}", inline=False)
-        embed.add_field(name="Timezone:", value=str(self.bot.config["timezone"]), inline=True)
+        embed.add_field(name="Timezone:", value=str(self.bot.config.timezone), inline=True)
         embed.add_field(name="Uptime", value=self.bot.fuzzyuptime, inline=False)
         embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.avatar.url)
         await ctx.send(embed=embed)
@@ -56,7 +56,7 @@ class General(commands.Cog, name="general"):
         :param ctx: The command context.
         """
         embed = disnake.Embed(
-            description=f"Invite me by clicking [here](https://discordapp.com/oauth2/authorize?&client_id={self.bot.config['application_id']}&scope=bot+applications.commands&permissions={self.bot.config['permissions']}).",
+            description=f"Invite me by clicking [here](https://discordapp.com/oauth2/authorize?&client_id={self.bot.config.app_id}&scope=bot+applications.commands&permissions={self.bot.config.permissions}).",
             color=0xD75BF4,
         )
         try:

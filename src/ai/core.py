@@ -241,7 +241,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         # Ignore messages from unapproved users in DMs/groups
         if isinstance(message.channel, (DMChannel, GroupChannel)):
-            if message.author.id not in self.bot.config["owner_ids"]:
+            if message.author.id not in self.bot.config.owner_ids:
                 logger.info(
                     f"Got a DM from non-owner {message.author.name}#{message.author.discriminator}. Ignoring..."
                 )
@@ -252,7 +252,7 @@ class Ai(commands.Cog, name=COG_UID):
         # Ignore messages with no guild
         elif message.guild is None:
             return
-        elif message.guild.id not in self.bot.config["ai_guilds"]:
+        elif message.guild.id not in self.config.guilds:
             return
 
         try:
@@ -276,7 +276,9 @@ class Ai(commands.Cog, name=COG_UID):
                 elif message.channel.id in self.activity_channels:
                     if self.conditional_response is True:
                         conversation = await self.get_context_messages(message.channel)
-                        if await self.chatbot.should_respond_async(conversation, push_chain=False):
+                        if await self.model_provider.should_respond_async(
+                            conversation, self.name, "### Response:"
+                        ):
                             logger.debug(f"Model wants to respond to '{message_content}', responding...")
                             trigger = "conditional"
 
@@ -521,6 +523,10 @@ class Ai(commands.Cog, name=COG_UID):
                         users=members,
                         emojis=self.bot.emojis,
                     )
+
+                # trim hashes n shit
+                response = response.rstrip(" #}")
+
                 debug_data["response"] = response
 
                 # Send response if not empty
@@ -547,7 +553,8 @@ class Ai(commands.Cog, name=COG_UID):
             finally:
                 if self.debug:
                     dump_file = self.debug_datadir.joinpath(f"msg-{message.id}-{msg_timestamp}.json")
-                    dump_file.write_text(json.dumps(debug_data, indent=4, skipkeys=True, default=str))
+                    with dump_file.open("w", encoding="utf-8") as f:
+                        json.dump(debug_data, f, indent=4, skipkeys=True, default=str, ensure_ascii=False)
                     logger.debug(f"Dumped message debug data to {dump_file.name}")
 
     # Idle loop stuff

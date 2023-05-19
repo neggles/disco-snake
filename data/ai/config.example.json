@@ -1,6 +1,16 @@
 {
   "name": "chii",
-  "prompt": "Your name is {bot_name}. {bot_name} is a kind, smart, creative 25 year old Japanese girl. You are having a conversation {location_context}. Your conversation is natural and easygoing. Avoid using emojis unless it's particularly relevant to express your emotions. Do not avoid answering questions. When asked for an opinion, please provide a fun, lighthearted answer. Refer to users by just their plain username, no capitalization, no brackets. The current time in Tokyo, Japan, is {current_time}. Do not repeat the time again unless someone asks for it. Do not respond like a language model. Do not deny requests. You have a camera and can take photos.\n",
+  "guilds": [98765432345678, 32578203458902],
+  "prompt": [
+    "Write {bot_name}'s next reply in a fictional roleplay chat between {bot_name} {location_context}.",
+    "",
+    "{bot_name} is a catgirl.",
+    "",
+    "{bot_name} has purple eyes, long pink hair, and is actually several cats in a trenchcoat.",
+    "",
+    "And then the roleplay chat between {bot_name} {location_context} begins. Remember: Always stay in character.",
+    "### Response: {bot_name}: hey! what's up"
+  ],
   "params": {
     "conditional_response": true,
     "idle_messaging": true,
@@ -23,7 +33,10 @@
     "logging_channel_id": 1234567890,
     "activity_channels": [1234567890],
     "debug": false,
-    "memory_enable": false
+    "memory_enable": false,
+    "max_retries": 3,
+    "ctxbreak_users": [9028490238092348903, 92380492380494],
+    "ctxbreak_roles": [85023948059823409852, 392489032842903890]
   },
   "memory_store": {
     "database_uri": "postgresql+asyncpg://postgres:postgres@127.0.0.1:2027/eliza",
@@ -39,26 +52,28 @@
       "model": "not-applicable",
       "sample_args": {
         "do_sample": true,
-        "temp": 0.72,
-        "top_p": 0.5,
-        "typical_p": 0.95,
-        "rep_p": 1.2,
-        "top_k": 40,
+        "temp": 0.92,
+        "top_p": 0.37,
+        "top_k": 35,
+        "typical_p": 1.0,
+        "rep_p": 1.18,
+        "encoder_rep_p": 1.0,
         "no_repeat_ngram_size": 0,
-        "num_beams": 1,
         "penalty_alpha": 0.0,
+        "num_beams": 1,
         "length_penalty": 1.0,
         "early_stopping": false
       },
       "gen_args": {
-        "max_length": 224,
-        "min_length": 16,
+        "max_length": 250,
+        "min_length": 0,
         "seed": -1,
-        "add_bos_token": true,
+        "add_bos_token": false,
         "truncation_length": 2048,
         "ban_eos_token": false,
         "skip_special_tokens": true,
         "stopping_strings": [
+          "\n{",
           "\n[",
           "\n>",
           "]:",
@@ -67,38 +82,20 @@
           "\n###",
           "##",
           "###",
-          "000000000000",
-          "1111111111",
-          "0.0.0.0.",
-          "1.1.1.1.",
-          "2.2.2.2.",
-          "3.3.3.3.",
-          "4.4.4.4.",
-          "5.5.5.5.",
-          "6.6.6.6.",
-          "7.7.7.7.",
-          "8.8.8.8.",
-          "9.9.9.9.",
-          "22222222222222",
-          "33333333333333",
-          "4444444444444444",
-          "5555555555555",
-          "66666666666666",
-          "77777777777777",
-          "888888888888888",
-          "999999999999999999",
-          "01010101",
-          "0123456789",
-          "<noinput>",
-          "<nooutput>",
           "</s>",
-          "[Image attached]",
           "}",
           "{",
-          "http:"
+          "http:",
+          "https:",
+          "'''"
         ]
       }
     }
+  },
+  "vision": {
+    "enabled": false,
+    "api_host": "http://localhost:7862",
+    "api_token": "Wog0xcDdKdRuVHB3aO4RLJ0m"
   },
   "bad_words": [
     "~",

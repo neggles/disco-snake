@@ -23,7 +23,6 @@ LOGDIR_PATH = Path.cwd().joinpath("logs")
 DATADIR_PATH = Path.cwd().joinpath("data")
 
 CONFIG_PATH = DATADIR_PATH.joinpath("config.json")
-USERDATA_PATH = DATADIR_PATH.joinpath("userdata.json")
 BLACKLIST_PATH = DATADIR_PATH.joinpath("blacklist.json")
 MISCDATA_PATH = DATADIR_PATH.joinpath("misc")
 

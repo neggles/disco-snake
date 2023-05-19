@@ -49,7 +49,8 @@ class BotParameters:
 
 @dataclass
 class VisionConfig:
-    api_host: str
+    enabled: bool = False
+    api_host: str = "http://localhost:7862"
     api_token: Optional[str] = None
 
 
