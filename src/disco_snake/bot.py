@@ -26,10 +26,10 @@ from disnake.ext import commands, tasks
 from humanize import naturaldelta as fuzzydelta
 
 import exceptions
-from disco_snake import COGDIR_PATH, DATADIR_PATH, USERDATA_PATH
+from disco_snake import COGDIR_PATH, DATADIR_PATH
 from disco_snake.embeds import CooldownEmbed, MissingPermissionsEmbed, MissingRequiredArgumentEmbed
 from disco_snake.settings import get_settings
-from helpers.misc import filename_filter, get_package_root
+from helpers.misc import get_package_root
 
 PACKAGE_ROOT = get_package_root()
 
@@ -51,8 +51,6 @@ class DiscoSnake(commands.Bot):
         self.config = get_settings()
 
         self.datadir_path: Path = DATADIR_PATH
-        self.userdata_path: Path = USERDATA_PATH
-        self.userdata: dict = None
         self.cogdir_path: Path = COGDIR_PATH
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
         self.home_guild: Guild = None  # set in on_ready
@@ -89,16 +87,6 @@ class DiscoSnake(commands.Bot):
         logger.info(f"Running {funcname} on GPU...")
         res = await self.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
         return res
-
-    def save_userdata(self):
-        if self.userdata is not None and self.userdata_path.is_file():
-            with self.userdata_path.open("w") as f:
-                json.dump(self.userdata, f, skipkeys=True, indent=2)
-
-    def load_userdata(self):
-        if self.userdata_path.is_file():
-            with self.userdata_path.open("r") as f:
-                self.userdata = json.load(f)
 
     def save_guild_metadata(self, guild_id: int):
         guild = self.get_guild(guild_id)
@@ -157,13 +145,6 @@ class DiscoSnake(commands.Bot):
         print("waiting...")
         await self.wait_until_ready()
 
-    @tasks.loop(minutes=3.0)
-    async def userdata_task(self) -> None:
-        """
-        Background task to flush user state to disk
-        """
-        self.save_userdata()
-
     async def on_ready(self) -> None:
         """
         The code in this even is executed when the bot is ready
@@ -180,9 +161,6 @@ class DiscoSnake(commands.Bot):
         if not self.status_task.is_running():
             logger.info("Starting status update task")
             self.status_task.start()
-        if not self.userdata_task.is_running():
-            logger.info("Starting userdata flush task")
-            self.userdata_task.start()
 
     async def on_message(self, message: Message) -> None:
         """

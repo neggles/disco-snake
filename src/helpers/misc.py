@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 from typing import Union
 
@@ -30,8 +31,8 @@ def parse_log_level(level: Union[str, int]) -> int:
         return level
 
 
-FILENAME_CHARS = set("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+-._ ")
+re_filename = re.compile(r"[^0-9a-zA-Z+-._ ]")
 
 
 def filename_filter(s: str) -> str:
-    return "".join(filter(lambda x: x in FILENAME_CHARS, s))
+    return re_filename.sub("", s)
