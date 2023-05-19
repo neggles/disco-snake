@@ -56,6 +56,7 @@ class VisionConfig:
 @dataclass
 class ChatbotConfig:
     name: str
+    guilds: List[int]
     prompt: Union[str, List[str]]
     params: BotParameters
     model_provider: ModelProviderConfig
