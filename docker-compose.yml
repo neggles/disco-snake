@@ -60,7 +60,7 @@ services:
 
   pgadmin4:
     container_name: disco-pgadmin
-    image: dpage/pgadmin4:6
+    image: dpage/pgadmin4:7
     restart: unless-stopped
     profiles:
       - pgadmin
@@ -80,6 +80,9 @@ services:
         target: 5050
         published: 5050
         protocol: tcp
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       disable: false
       test: [ "CMD", "nc", "-vz", "127.0.0.1", "5050" ]

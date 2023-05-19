@@ -3,12 +3,15 @@ from logging.config import fileConfig
 from os import getenv
 from pathlib import Path
 
+from alembic import context
+from alembic.environment import EnvironmentContext
+from alembic.script import ScriptDirectory
 from dotenv import load_dotenv
-from sqlalchemy import pool
+from sqlalchemy import URL, pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
+from db.base import Base
 
 ## Custom: Load environment variables from .env file
 ENV_FILE = Path(__file__).parent.parent.joinpath(".env")
@@ -23,14 +26,19 @@ if config.config_file_name is not None:
 
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = None
+target_metadata = Base.metadata
 
-## Custom: Set the database URL from the environment variable, if dotenv was loaded
+## Custom: If dotenv loaded successfully, use the values from the .env file
 if env_loaded:
-    # get the database URL from the environment, then make sure the scheme is correct
-    pg_url = getenv("PG_URL").replace("postgres://", "postgresql://")  # "postgres" not valid anymore
-    pg_url = pg_url.replace("postgresql://", "postgresql+psycopg://")  # specify psycopg driver
-    config.set_main_option("sqlalchemy.url", pg_url)
+    pg_url = URL.create(
+        drivername="postgresql+psycopg",
+        username=getenv("PG_USER", "postgres"),
+        password=getenv("PG_PASS", "postgres"),
+        host=getenv("PG_HOST", "localhost"),
+        port=getenv("PG_HOST_PORT", "5432"),
+        database=getenv("PG_DB", "discosnake"),
+    )
+    config.set_main_option("sqlalchemy.url", pg_url.render_as_string(hide_password=False))
 
 
 def run_migrations_offline() -> None:
@@ -48,6 +56,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        process_revision_directives=process_revision_directives,
     )
 
     with context.begin_transaction():
@@ -83,6 +92,23 @@ def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
 
     asyncio.run(run_async_migrations())
+
+
+def process_revision_directives(context: EnvironmentContext, revision, directives):
+    # extract Migration
+    migration_script = directives[0]
+    # extract current head revision
+    head_revision = ScriptDirectory.from_config(context.config).get_current_head()
+
+    if head_revision is None:
+        # edge case with first migration
+        new_rev_id = 1
+    else:
+        # default branch with incrementation
+        last_rev_id = int(head_revision)
+        new_rev_id = last_rev_id + 1
+    # fill zeros up to 3 digits: 1 -> 001
+    migration_script.rev_id = "{0:03}".format(new_rev_id)
 
 
 if context.is_offline_mode():
