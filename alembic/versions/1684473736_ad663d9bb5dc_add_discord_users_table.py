@@ -18,7 +18,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.create_table(
-        "discord_users",
+        "users",
         sa.Column("id", sa.BigInteger(), nullable=False, primary_key=True),
         sa.Column("username", sa.String(), nullable=False),
         sa.Column("discriminator", sa.Integer(), nullable=False, server_default="0"),
