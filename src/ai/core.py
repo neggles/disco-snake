@@ -381,6 +381,9 @@ class Ai(commands.Cog, name=COG_UID):
 
             for attachment in message.attachments:
                 try:
+                    if not attachment.content_type.startswith("image/"):
+                        logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
+                        continue
                     caption = await self.eyes.perceive_attachment(attachment)
                     if caption is not None:
                         chain.append(f"{author_name}: [image: {caption}]")

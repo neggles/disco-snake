@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from functools import partial as partial_func
 from pathlib import Path
 from traceback import print_exception
+from typing import List
 from zoneinfo import ZoneInfo
 
 from disnake import (
@@ -19,13 +20,17 @@ from disnake import (
     Guild,
     Intents,
     InteractionResponseType,
+    Member,
     Message,
     __version__ as DISNAKE_VERSION,
 )
 from disnake.ext import commands, tasks
 from humanize import naturaldelta as fuzzydelta
+from regex import F
+from sqlalchemy import select
 
 import exceptions
+from db import DiscordUser, Session
 from disco_snake import COGDIR_PATH, DATADIR_PATH
 from disco_snake.embeds import CooldownEmbed, MissingPermissionsEmbed, MissingRequiredArgumentEmbed
 from disco_snake.settings import get_settings
@@ -39,7 +44,9 @@ BOT_INTENTS.presences = False
 BOT_INTENTS.members = True
 BOT_INTENTS.message_content = True
 
-logger = logging.getLogger(__package__)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.propagate = True
 
 
 class DiscoSnake(commands.Bot):
@@ -147,20 +154,6 @@ class DiscoSnake(commands.Bot):
         else:
             logger.info("No cogs found")
 
-    @tasks.loop(minutes=1.0)
-    async def status_task(self) -> None:
-        """
-        Set up the bot's status task
-        """
-        activity_type = getattr(ActivityType, self.config.status_type, ActivityType.playing)
-        activity = Activity(name=random.choice(self.config.statuses), type=activity_type)
-        await self.change_presence(activity=activity)
-
-    @status_task.before_loop
-    async def before_status_task(self):
-        print("waiting...")
-        await self.wait_until_ready()
-
     async def on_ready(self) -> None:
         """
         The code in this even is executed when the bot is ready
@@ -177,6 +170,9 @@ class DiscoSnake(commands.Bot):
         if not self.status_task.is_running():
             logger.info("Starting status update task")
             self.status_task.start()
+        if not self.user_save_task.is_running():
+            logger.info("Starting user save task")
+            self.user_save_task.start()
 
     async def on_message(self, message: Message) -> None:
         if message.author == self.user or (message.author.bot is True):
@@ -310,3 +306,55 @@ class DiscoSnake(commands.Bot):
             return
         logger.warn(f"Unhandled error in command {ctx}: {error}")
         raise error
+
+    @tasks.loop(minutes=1.0)
+    async def status_task(self) -> None:
+        """
+        Set up the bot's status task
+        """
+        activity_type = getattr(ActivityType, self.config.status_type, ActivityType.playing)
+        activity = Activity(name=random.choice(self.config.statuses), type=activity_type)
+        await self.change_presence(activity=activity)
+
+    @status_task.before_loop
+    async def before_status_task(self) -> None:
+        logger.info("waiting for ready... just to be sure")
+        await self.wait_until_ready()
+
+    @tasks.loop(minutes=1.0)
+    async def user_save_task(self) -> None:
+        async with Session() as session:
+            async with session.begin():
+                statement = select(DiscordUser.id)
+                response = await session.execute(statement)
+                user_ids = response.scalars().all()
+                logger.debug(f"Got {len(user_ids)} users from database, getting all members")
+
+                user: Member
+                new_users: List[DiscordUser] = []
+                for user in self.get_all_members():
+                    if user.id in user_ids or user.id in [x.id for x in new_users]:
+                        continue
+                    logger.info(f"Saving user {user.id} to database ({user.name})")
+                    user = DiscordUser(
+                        id=user.id,
+                        username=user.name,
+                        discriminator=user.discriminator,
+                        avatar=user.avatar.url if user.avatar else None,
+                        bot=user.bot,
+                        system=user.system,
+                        flags=user.flags.value,
+                        public_flags=user.public_flags.value,
+                    )
+                    new_users.append(user)
+                count = len(new_users)
+
+                session.add_all(new_users)
+                logger.debug(f"Committing transaction, added {count} new users")
+                await session.commit()
+                logger.debug("Committed transaction, closing session")
+
+    @user_save_task.before_loop
+    async def before_user_save_task(self) -> None:
+        logger.info("waiting for ready... just to be sure")
+        await self.wait_until_ready()

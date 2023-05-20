@@ -90,7 +90,10 @@ class DiscoEyes:
     # Returns the caption for an image attachment from the DB if it exists, otherwise
     # submits the image to the API for captioning and saves the result to the DB.
     async def perceive_attachment(self, attachment: Attachment) -> ImageCaption:
-        image_caption = await self.get_caption(attachment.id)
+        if not attachment.content_type.startswith("image/"):
+            logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
+            return None
+        image_caption = await self.db_get_caption(attachment.id)
         if image_caption is not None:
             logger.debug(f"Found cached caption for image {attachment.id}")
             return image_caption
@@ -111,7 +114,7 @@ class DiscoEyes:
             caption=await self._perceive_attachment(attachment),
             captioned_at=datetime.now(tz=self.timezone),
         )
-        return await self.save_caption(image_caption)
+        return await self.db_save_caption(image_caption)
 
     # Submits the image to the API for captioning
     async def _perceive_attachment(self, attachment: Attachment) -> Optional[str]:
@@ -158,7 +161,7 @@ class DiscoEyes:
                 image = Image.open(BytesIO(data), formats=IMAGE_FORMATS)
                 return image
 
-    async def save_caption(self, caption: ImageCaption) -> ImageCaption:
+    async def db_save_caption(self, caption: ImageCaption) -> ImageCaption:
         logger.info(f"Saving caption for image {caption.id}")
         async with Session() as session:
             async with session.begin():
@@ -167,7 +170,7 @@ class DiscoEyes:
         logger.info("Caption saved successfully")
         return caption
 
-    async def get_caption(self, image_id: int) -> Optional[ImageCaption]:
+    async def db_get_caption(self, image_id: int) -> Optional[ImageCaption]:
         logger.info(f"Fetching caption for image {image_id}")
         async with Session() as session:
             async with session.begin():

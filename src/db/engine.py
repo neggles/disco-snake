@@ -28,4 +28,4 @@ engine = get_engine()
 Session = async_sessionmaker(engine)
 
 sync_engine = get_sync_engine()
-SyncSession = sessionmaker(sync_engine)
+SyncSession = sessionmaker(sync_engine, expire_on_commit=False)

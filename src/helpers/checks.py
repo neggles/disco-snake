@@ -3,10 +3,13 @@ from typing import Callable, TypeVar
 
 from disnake.ext import commands
 
-from disco_snake.cli import CONFIG_PATH, DATADIR_PATH
+from disco_snake.cli import DATADIR_PATH
 from exceptions import UserBlacklisted, UserNotOwner
+from disco_snake.settings import get_settings
 
 T = TypeVar("T")
+
+settings = get_settings()
 
 
 def is_owner() -> Callable[[T], T]:
@@ -15,7 +18,6 @@ def is_owner() -> Callable[[T], T]:
     """
 
     async def predicate(context: commands.Context) -> bool:
-        data = json.loads(CONFIG_PATH.read_bytes())
         if context.author.id not in context.bot.owner_ids:
             raise UserNotOwner
         return True
