@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column("global_name", sa.String(), nullable=True),
         sa.Column("avatar", sa.String(), nullable=True),
         sa.Column("bot", sa.Boolean(), nullable=False),
-        sa.Column("system", sa.Boolean(), nullable=False),
+        sa.Column("system", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("email", sa.String(), nullable=True),
         sa.Column("verified", sa.Boolean(), nullable=True),
         sa.Column("flags", sa.Integer(), nullable=True),

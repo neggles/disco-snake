@@ -18,7 +18,7 @@ class DiscordUser(Base):
 
     avatar: Mapped[Optional[str]] = mapped_column(sa.String)
     bot: Mapped[bool] = mapped_column(sa.Boolean)
-    system: Mapped[bool] = mapped_column(sa.Boolean)
+    system: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
 
     email: Mapped[Optional[str]] = mapped_column(sa.String)
     verified: Mapped[Optional[bool]] = mapped_column(sa.Boolean)
