@@ -323,36 +323,29 @@ class DiscoSnake(commands.Bot):
 
     @tasks.loop(minutes=1.0)
     async def user_save_task(self) -> None:
+        logger.debug("Updating user entries in database")
         async with Session() as session:
             async with session.begin():
-                statement = select(DiscordUser.id)
-                response = await session.execute(statement)
-                user_ids = response.scalars().all()
-                logger.debug(f"Got {len(user_ids)} users from database, getting all members")
+                users: List[DiscordUser] = []
 
                 user: Member
-                new_users: List[DiscordUser] = []
                 for user in self.get_all_members():
-                    if user.id in user_ids or user.id in [x.id for x in new_users]:
+                    if user.id in [x.id for x in users]:
                         continue
-                    logger.info(f"Saving user {user.id} to database ({user.name})")
-                    user = DiscordUser(
+                    user_obj = DiscordUser(
                         id=user.id,
                         username=user.name,
                         discriminator=user.discriminator,
-                        avatar=user.avatar.url if user.avatar else None,
+                        global_name=getattr(user, "global_name", None),
+                        avatar=user.avatar.key if user.avatar else None,
                         bot=user.bot,
                         system=user.system,
                         flags=user.flags.value,
                         public_flags=user.public_flags.value,
                     )
-                    new_users.append(user)
-                count = len(new_users)
-
-                session.add_all(new_users)
-                logger.debug(f"Committing transaction, added {count} new users")
+                    await session.merge(user_obj)
+                logger.debug("User database updated.")
                 await session.commit()
-                logger.debug("Committed transaction, closing session")
 
     @user_save_task.before_loop
     async def before_user_save_task(self) -> None:
