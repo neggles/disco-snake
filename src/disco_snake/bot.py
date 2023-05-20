@@ -56,10 +56,7 @@ class DiscoSnake(commands.Bot):
         self.home_guild: Guild = None  # set in on_ready
 
         # thread pool for blocking code
-        self.executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="bot")
-
-        # single thread worker for blocking gpu code
-        self.gpu_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bot_gpu")
+        self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="bot")
 
     @property
     def timezone(self) -> ZoneInfo:
@@ -80,32 +77,48 @@ class DiscoSnake(commands.Bot):
         logger.info(f"Running {funcname} in background thread...")
         return await self.loop.run_in_executor(self.executor, partial_func(func, *args, **kwargs))
 
-    async def do_gpu(self, func, *args, **kwargs):
-        funcname = getattr(func, "__name__", None)
-        if funcname is None:
-            funcname = getattr(func.__class__, "__name__", "unknown")
-        logger.info(f"Running {funcname} on GPU...")
-        res = await self.loop.run_in_executor(self.gpu_executor, partial_func(func, *args, **kwargs))
-        return res
-
     def save_guild_metadata(self, guild_id: int):
+        # get guild metadata (members, channels, etc.)
         guild = self.get_guild(guild_id)
-        memberlist = []
-        for member in guild.members:
-            memberlist.append(
+        guild_data = {
+            "id": guild.id,
+            "name": guild.name,
+            "member_count": guild.member_count,
+            "description": guild.description,
+            "created_at": guild.created_at.isoformat(),
+            "nsfw_level": guild.nsfw_level.name,
+            "members": [
                 {
                     "id": member.id,
                     "name": member.name,
+                    "discriminator": member.discriminator,
                     "display_name": member.display_name,
                     "avatar": str(member.avatar.url) if member.avatar else None,
                     "is_bot": member.bot,
                     "is_system": member.system,
                 }
-            )
-        with (self.datadir_path / "guilds" / f"{guild_id}-members.json").open("w") as f:
-            json.dump(memberlist, f, skipkeys=True, indent=2)
+                for member in guild.members
+            ],
+            "channels": [
+                {
+                    "id": channel.id,
+                    "name": channel.name,
+                    "category": (
+                        {"id": channel.category_id, "name": channel.category.name} if channel.category else {}
+                    ),
+                    "position": channel.position,
+                }
+                for channel in guild.channels
+            ],
+        }
 
-    def available_cogs(self):
+        # save member_data
+        guild_data_path = self.datadir_path.joinpath("guilds", f"{guild_id}-meta.json")
+        guild_data_path.parent.mkdir(exist_ok=True, parents=True)
+        with guild_data_path.open("w", encoding="utf-8") as f:
+            json.dump(guild_data, f, skipkeys=True, indent=2)
+
+    def available_cogs(self) -> list[str]:
         cogs = [
             p.stem
             for p in self.cogdir_path.iterdir()
@@ -116,7 +129,7 @@ class DiscoSnake(commands.Bot):
             cogs = [x for x in cogs if x not in self.config.disable_cogs]
         return cogs
 
-    def load_cogs(self):
+    def load_cogs(self) -> None:
         cogs = self.available_cogs()
         if cogs:
             for cog in cogs:
@@ -163,20 +176,11 @@ class DiscoSnake(commands.Bot):
             self.status_task.start()
 
     async def on_message(self, message: Message) -> None:
-        """
-        The code in this event is executed every time someone sends a message, with or without the prefix
-        :param message: The message that was sent.
-        """
-        if message.author == self.user or message.author.bot:
+        if message.author == self.user or (message.author.bot is True):
             return
-
         await self.process_commands(message)
 
     async def on_slash_command(self, ctx: ApplicationCommandInteraction) -> None:
-        """
-        The code in this event is executed every time a slash command has been *successfully* executed
-        :param ctx: The slash command that has been executed.
-        """
         logger.info(
             f"Executed {ctx.data.name} command in {ctx.guild.name} (ID: {ctx.guild.id}) by {ctx.author} (ID: {ctx.author.id})"
         )

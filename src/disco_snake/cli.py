@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import sys
-from zoneinfo import ZoneInfo
 
 import click
 import daemonocle
@@ -12,7 +11,7 @@ from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
 import logsnake
-from disco_snake import  DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH, PACKAGE
+from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH, PACKAGE
 from disco_snake.bot import DiscoSnake
 from helpers.misc import parse_log_level
 
@@ -65,7 +64,7 @@ def cb_shutdown(message: str, code: int):
 
 class BotDaemon(daemonocle.Daemon):
     @daemonocle.expose_action
-    def reload(self):
+    def reload(self) -> None:
         """Reload the bot."""
         pass
 
@@ -121,8 +120,4 @@ def start_bot(ctx: click.Context = None):
         logger.debug(f"    {key}: {json.dumps(cfg_dict[key], default=str)}")
 
     bot.load_cogs()
-    bot.run(
-        token=bot.config.bot_token,
-        application_id=bot.config.app_id,
-        reconnect=True,
-    )
+    return bot.run(token=bot.config.bot_token, reconnect=True)

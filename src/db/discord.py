@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
@@ -17,6 +17,7 @@ class DiscordUser(Base):
         nullable=False,
         primary_key=True,
     )
+
     discord_id: Mapped[int] = mapped_column(
         sa.BigInteger,
         nullable=False,
@@ -28,6 +29,7 @@ class DiscordUser(Base):
         nullable=False,
         server_default="{}",
     )
+
     first_seen: Mapped[datetime] = mapped_column(
         pg.TIMESTAMP(timezone=True, precision=2),
         nullable=False,
