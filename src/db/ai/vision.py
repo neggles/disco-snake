@@ -17,7 +17,7 @@ class ImageCaption(Base):
     description: Mapped[Optional[str]] = mapped_column(sa.String(length=1024))
     size: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     url: Mapped[str] = mapped_column(sa.String, nullable=False)
-    proxy_url: Mapped[Optional[str]] = mapped_column(sa.String, nullable=False)
+    proxy_url: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
     height: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     width: Mapped[int] = mapped_column(sa.Integer, nullable=False)
 

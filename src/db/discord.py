@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Optional
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
@@ -32,7 +32,7 @@ class DiscordUser(Base):
         server_default=sa.func.current_timestamp(),
         nullable=False,
     )
-    last_seen: Mapped[datetime] = mapped_column(
+    last_updated: Mapped[datetime] = mapped_column(
         pg.TIMESTAMP(timezone=True, precision=2),
         server_default=sa.func.current_timestamp(),
         server_onupdate=sa.func.current_timestamp(),
