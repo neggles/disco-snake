@@ -50,6 +50,7 @@ class BotParameters:
 @dataclass
 class VisionConfig:
     enabled: bool = False
+    model_name: str = "clip"
     api_host: str = "http://localhost:7862"
     api_token: Optional[str] = None
 
