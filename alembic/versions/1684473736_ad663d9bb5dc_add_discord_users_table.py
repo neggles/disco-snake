@@ -19,113 +19,46 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "discord_users",
-        sa.Column(
-            "id",
-            sa.Integer(),
-            sa.Identity(always=True, start=42, cycle=True),
-            nullable=False,
-            primary_key=True,
-        ),
-        sa.Column(
-            "discord_id",
-            sa.BigInteger(),
-            nullable=False,
-            index=True,
-            unique=True,
-        ),
-        sa.Column(
-            "data",
-            pg.JSONB(astext_type=sa.Text()),
-            server_default="{}",
-            nullable=False,
-        ),
+        sa.Column("id", sa.BigInteger(), nullable=False, primary_key=True),
+        sa.Column("username", sa.String(), nullable=False),
+        sa.Column("discriminator", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("global_name", sa.String(), nullable=True),
+        sa.Column("avatar", sa.String(), nullable=True),
+        sa.Column("bot", sa.Boolean(), nullable=False),
+        sa.Column("system", sa.Boolean(), nullable=False),
+        sa.Column("email", sa.String(), nullable=True),
+        sa.Column("verified", sa.Boolean(), nullable=True),
+        sa.Column("flags", sa.Integer(), nullable=True),
+        sa.Column("premium_type", sa.Integer(), nullable=True),
+        sa.Column("public_flags", sa.Integer(), nullable=True),
         sa.Column(
             "first_seen",
             pg.TIMESTAMP(timezone=True, precision=2),
-            server_default=sa.text("CURRENT_TIMESTAMP"),
+            server_default=sa.func.current_timestamp(),
             nullable=False,
         ),
         sa.Column(
-            "last_seen",
+            "last_updated",
             pg.TIMESTAMP(timezone=True, precision=2),
-            server_default=sa.text("CURRENT_TIMESTAMP"),
+            server_default=sa.func.current_timestamp(),
             nullable=False,
         ),
+    )
+    op.create_table(
+        "username_history",
+        sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column(
-            "username",
-            sa.String(),
-            sa.Computed("data->>'username'"),
+            "timestamp",
+            pg.TIMESTAMP(timezone=True, precision=2),
+            server_default=sa.func.current_timestamp(),
             nullable=False,
         ),
-        sa.Column(
-            "avatar",
-            sa.String(),
-            sa.Computed("data->>'avatar'"),
-            nullable=True,
-        ),
-        sa.Column(
-            "banner",
-            sa.String(),
-            sa.Computed("data->>'banner'"),
-            nullable=True,
-        ),
-        sa.Column(
-            "discriminator",
-            sa.Integer(),
-            sa.Computed("COALESCE((data->>'discriminator')::integer, 0)"),
-            nullable=False,
-        ),
-        sa.Column(
-            "bot",
-            sa.Boolean(),
-            sa.Computed("(data->>'bot')::boolean"),
-            nullable=True,
-        ),
-        sa.Column(
-            "system",
-            sa.Boolean(),
-            sa.Computed("(data->>'system')::boolean"),
-            nullable=True,
-        ),
-        sa.Column(
-            "mfa_enabled",
-            sa.Boolean(),
-            sa.Computed("(data->>'mfa_enabled')::boolean"),
-            nullable=True,
-        ),
-        sa.Column(
-            "email",
-            sa.String(),
-            sa.Computed("data->>'email'"),
-            nullable=True,
-        ),
-        sa.Column(
-            "verified",
-            sa.Boolean(),
-            sa.Computed("(data->>'verified')::boolean"),
-            nullable=True,
-        ),
-        sa.Column(
-            "flags",
-            sa.Integer(),
-            sa.Computed("(data->>'flags')::integer"),
-            nullable=True,
-        ),
-        sa.Column(
-            "premium_type",
-            sa.Integer(),
-            sa.Computed("(data->>'premium_type')::integer"),
-            nullable=True,
-        ),
-        sa.Column(
-            "public_flags",
-            sa.Integer(),
-            sa.Computed("(data->>'public_flags')::integer"),
-            nullable=True,
-        ),
+        sa.Column("username", sa.String(), nullable=False),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("user_id", "timestamp"),
     )
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_discord_user_discord_id"), table_name="discord_user")
-    op.drop_table("discord_user")
+    op.drop_table("username_history")
+    op.drop_table("users")

@@ -94,8 +94,9 @@ class DiscoSnake(commands.Bot):
                     "discriminator": member.discriminator,
                     "display_name": member.display_name,
                     "avatar": str(member.avatar.url) if member.avatar else None,
-                    "is_bot": member.bot,
-                    "is_system": member.system,
+                    "bot": member.bot,
+                    "system": member.system,
+                    "slots": {slot: getattr(member, slot, None) for slot in member.__slots__},
                 }
                 for member in guild.members
             ],
@@ -107,16 +108,18 @@ class DiscoSnake(commands.Bot):
                         {"id": channel.category_id, "name": channel.category.name} if channel.category else {}
                     ),
                     "position": channel.position,
+                    "slots": {slot: getattr(channel, slot, None) for slot in channel.__slots__},
                 }
                 for channel in guild.channels
             ],
+            "slots": {slot: getattr(guild, slot, None) for slot in guild.__slots__},
         }
 
         # save member_data
         guild_data_path = self.datadir_path.joinpath("guilds", f"{guild_id}-meta.json")
         guild_data_path.parent.mkdir(exist_ok=True, parents=True)
         with guild_data_path.open("w", encoding="utf-8") as f:
-            json.dump(guild_data, f, skipkeys=True, indent=2)
+            json.dump(guild_data, f, skipkeys=True, indent=2, default=str)
 
     def available_cogs(self) -> list[str]:
         cogs = [

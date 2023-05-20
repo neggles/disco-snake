@@ -7,7 +7,7 @@ write_to = "src/disco_snake/_version.py"
 
 [tool.black]
 line-length = 110
-target-version = ['py38', 'py39', 'py310']
+target-version = ['py310']
 
 [tool.mypy]
 plugins = "disnake.ext.mypy_plugin"

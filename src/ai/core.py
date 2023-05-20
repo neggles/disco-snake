@@ -291,6 +291,7 @@ class Ai(commands.Cog, name=COG_UID):
 
                 if trigger is not None:
                     if conversation is None:
+                        await message.channel.trigger_typing()
                         conversation = await self.get_context_messages(message.channel)
                     await self.respond(conversation, message, trigger)
 

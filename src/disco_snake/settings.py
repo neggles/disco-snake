@@ -54,7 +54,6 @@ class Settings(BaseSettings):
         return ZoneInfo(v)
 
     class Config:
-        env_file = ".env"
         env_file_encoding = "utf-8"
         json_encoders = {
             ZoneInfo: lambda v: str(v),
