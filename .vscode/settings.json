@@ -65,6 +65,8 @@
         "--config=${workspaceFolder}/setup.cfg",
         "--max-line-length=110"
     ],
+    "autoDocstring.docstringFormat": "sphinx",
+    "autoDocstring.startOnNewLine": false,
 
     "[json]": {
         "editor.codeActionsOnSave": {

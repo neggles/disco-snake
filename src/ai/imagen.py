@@ -11,28 +11,34 @@ from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import aiohttp
-from dacite import from_dict
 from PIL import Image
 
 import logsnake
-from ai.config import ImagenApiParams, ImagenConfig, ImagenLMPrompt, ImagenParams, ImagenSDPrompt
+from ai.settings import (
+    AI_LOG_DIR,
+    AI_LOG_FORMAT,
+    IMAGES_DIR,
+    ImagenApiParams,
+    ImagenLMPrompt,
+    ImagenParams,
+    ImagenSDPrompt,
+    ImagenSettings,
+    get_imagen_settings,
+)
 from ai.utils import any_in_text
-from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 
 # setup cog logger
 logger = logsnake.setup_logger(
     name=__name__,
     level=logging.DEBUG,
     isRootLogger=False,
-    formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
-    logfile=LOGDIR_PATH.joinpath(f"{__name__}.log"),
+    formatter=logsnake.LogFormatter(fmt=AI_LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
+    logfile=AI_LOG_DIR.joinpath(f"{__name__}.log"),
     fileLoglevel=logging.DEBUG,
     maxBytes=1 * (2**20),
     backupCount=2,
 )
 
-IMAGEN_IMG_DIR = LOGDIR_PATH.joinpath("ai", "images")
-IMAGEN_CFG_PATH = DATADIR_PATH.joinpath("ai", "imagen.json")
 
 # IMAGE_SIZE_STEPS = [512, 544, 576, 608, 640, 672, 704, 736, 768, 800, 832, 864, 896, 928, 960]
 # IMAGE_TARGET_PIXELS = 524288  # no more than this many pixels in pre-upscale image
@@ -73,24 +79,21 @@ re_single_dash = re.compile(r"-+")  # for removing multiple dashes
 
 
 class Imagen:
-    sd_api_path = "/sdapi/v1/txt2img"
+    SD_API_PATH = "/sdapi/v1/txt2img"
 
-    def __init__(self, lm_api_host: str, config: Optional[ImagenConfig] = None):
-        if config is None:
-            config = from_dict(ImagenConfig, json.loads(IMAGEN_CFG_PATH.read_text()))
+    def __init__(self, lm_api_host: str) -> None:
+        self.config: ImagenSettings = get_imagen_settings()
+        self.params: ImagenParams = self.config.params
+        self.timezone: str = self.params.timezone
 
-        self.config: ImagenConfig = config
-        self.params: ImagenParams = config.params
-        self.timezone: str = config.params.timezone
+        self.sd_prompt: ImagenSDPrompt = self.config.sd_prompt
+        self.sd_api_host: str = self.params.api_host.rstrip("/")
+        self.sd_api_params: ImagenApiParams = self.config.api_params
 
-        self.sd_prompt: ImagenSDPrompt = config.sd_prompt
-        self.sd_api_host: str = config.params.api_host.rstrip("/")
-        self.sd_api_params: ImagenApiParams = config.api_params
-
-        self.lm_prompt: ImagenLMPrompt = config.lm_prompt
+        self.lm_prompt: ImagenLMPrompt = self.config.lm_prompt
         self.lm_api_host: str = lm_api_host.rstrip("/")
 
-        IMAGEN_IMG_DIR.mkdir(exist_ok=True, parents=True)
+        IMAGES_DIR.mkdir(exist_ok=True, parents=True)
 
         logger.info("Initialized Imagen.")
 
@@ -198,7 +201,7 @@ class Imagen:
 
         # submit the request and save the image
         async with aiohttp.ClientSession(base_url=self.sd_api_host) as session:
-            async with session.post(self.sd_api_path, json=request) as r:
+            async with session.post(self.SD_API_PATH, json=request) as r:
                 if r.status == 200:
                     response: dict = await r.json()
                 else:
@@ -219,7 +222,7 @@ class Imagen:
                     response["info"] = json.loads(response["info"])
 
                     # work out the path to save the image to, then save it and the job info
-                    imagefile_path = IMAGEN_IMG_DIR.joinpath(
+                    imagefile_path = IMAGES_DIR.joinpath(
                         f'{response["info"]["job_timestamp"]}_{response["info"]["seed"]}_{req_string}.png'
                     )
                     image.save(imagefile_path, format="PNG")

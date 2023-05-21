@@ -1,28 +1,38 @@
+import logging
 import re
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from functools import lru_cache
+from typing import List, Optional, Union
 
+from pydantic import BaseModel, BaseSettings, Field
 from shimeji.model_provider import OobaGenRequest
 
+from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
+from disco_snake.settings import JsonConfig
 
-class AsDictMixin:
-    def asdict(self) -> Dict[str, str]:
-        return asdict(self)
+AI_DATA_DIR = DATADIR_PATH.joinpath("ai")
+AI_LOG_DIR = LOGDIR_PATH
+AI_LOG_FORMAT = LOG_FORMAT
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+AI_CFG_PATH = AI_DATA_DIR.joinpath("config.json")
+
+IMAGEN_CFG_PATH = AI_DATA_DIR.joinpath("imagen.json")
+IMAGES_DIR = AI_DATA_DIR.joinpath("images")
 
 
-@dataclass
-class ModelProviderConfig:
-    endpoint: str
-    gensettings: dict
-    type: str = "sukima"
-    username: Optional[str] = None
-    password: Optional[str] = None
+class ModelProviderConfig(BaseModel):
+    endpoint: str = Field(...)
+    type: str = Field("ooba")
+    gensettings: OobaGenRequest = Field(...)
+    username: Optional[str] = Field(None)
+    password: Optional[str] = Field(None)
 
 
 # configuration dataclasses
-@dataclass
-class MemoryStoreConfig:
+class MemoryStoreConfig(BaseModel):
     database_uri: str
     model: str
     model_layer: int
@@ -30,8 +40,7 @@ class MemoryStoreConfig:
     long_term_amount: int
 
 
-@dataclass
-class BotParameters:
+class BotParameters(BaseModel):
     conditional_response: bool
     idle_messaging: bool
     idle_messaging_interval: int
@@ -39,43 +48,49 @@ class BotParameters:
     context_size: int = 1024
     context_messages: int = 50
     logging_channel_id: Optional[int] = None
-    activity_channels: List[int] = field(default_factory=list)
+    activity_channels: List[int] = Field([])
     debug: bool = False
     memory_enable: bool = False
     max_retries: int = 3
-    ctxbreak_users: List[int] = field(default_factory=list)
-    ctxbreak_roles: List[int] = field(default_factory=list)
+    ctxbreak_users: List[int] = Field([])
+    ctxbreak_roles: List[int] = Field([])
 
 
-@dataclass
-class VisionConfig:
+class VisionConfig(BaseModel):
     enabled: bool = False
     model_name: str = "clip"
     api_host: str = "http://localhost:7862"
     api_token: Optional[str] = None
 
 
-@dataclass
-class ChatbotConfig:
+class AiSettings(BaseSettings):
     name: str
     guilds: List[int]
     prompt: Union[str, List[str]]
     params: BotParameters
     model_provider: ModelProviderConfig
-    bad_words: List[str] = field(default_factory=list)
+    bad_words: List[str] = Field([])
     memory_store: Optional[MemoryStoreConfig] = None
     vision: Optional[VisionConfig] = None
 
+    class Config(JsonConfig):
+        json_config_path = AI_CFG_PATH
 
-@dataclass
-class ImagenParams:
+
+@lru_cache(maxsize=1)
+def get_ai_settings() -> AiSettings:
+    settings = AiSettings()
+    return settings
+
+
+## Imagen settings
+class ImagenParams(BaseModel):
     enabled: bool
     api_host: str
     timezone: str
 
 
-@dataclass
-class ImagenApiParams:
+class ImagenApiParams(BaseModel):
     steps: int = 21
     cfg_scale: float = 7.5
     seed: int = -1
@@ -132,12 +147,11 @@ class ImagenApiParams:
         return request_obj
 
 
-@dataclass
-class ImagenLMPrompt:
-    tags: List[str]
-    header: List[str]
-    trailer: str
-    gensettings: Dict[str, Any]
+class ImagenLMPrompt(BaseModel):
+    tags: List[str] = Field(...)
+    header: List[str] = Field(...)
+    trailer: str = Field(...)
+    gensettings: OobaGenRequest = Field(...)
 
     def __post_init__(self):
         self.re_subject = re.compile(r".* of")
@@ -171,8 +185,7 @@ class ImagenLMPrompt:
         return OobaGenRequest.parse_obj(gensettings)
 
 
-@dataclass
-class ImagenSDPrompt:
+class ImagenSDPrompt(BaseModel):
     leading: List[str]
     trailing: List[str]
     negative: List[str]
@@ -193,9 +206,17 @@ class ImagenSDPrompt:
         return ", ".join(self.trailing)
 
 
-@dataclass
-class ImagenConfig(AsDictMixin):
-    params: ImagenParams
-    api_params: ImagenApiParams
-    lm_prompt: ImagenLMPrompt
-    sd_prompt: ImagenSDPrompt
+class ImagenSettings(BaseSettings):
+    params: ImagenParams = Field(...)
+    api_params: ImagenApiParams = Field(...)
+    lm_prompt: ImagenLMPrompt = Field(...)
+    sd_prompt: ImagenSDPrompt = Field(...)
+
+    class Config(JsonConfig):
+        json_config_path = IMAGEN_CFG_PATH
+
+
+@lru_cache(maxsize=1)
+def get_imagen_settings() -> ImagenSettings:
+    settings = ImagenSettings()
+    return settings

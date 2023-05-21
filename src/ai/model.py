@@ -11,7 +11,7 @@ from shimeji.model_provider import (
 )
 from transformers import PreTrainedTokenizerFast
 
-from ai.config import ModelProviderConfig
+from ai.settings import ModelProviderConfig
 
 
 class ModelGenSettings(BaseModel):
@@ -64,17 +64,9 @@ def get_enma_model(cfg: ModelProviderConfig, tokenizer: PreTrainedTokenizerFast)
 
 def get_ooba_model(cfg: ModelProviderConfig, tokenizer: PreTrainedTokenizerFast) -> OobaModel:
     # load model provider gen_args into basemodel
-    gen_settings = ModelGenSettings(**cfg.gensettings)
-
-    request = ModelGenRequest(
-        model=None,
-        prompt="",
-        sample_args=gen_settings.sample_args,
-        gen_args=gen_settings.gen_args,
-    )
 
     return OobaModel(
         endpoint_url=cfg.endpoint,
-        args=request,
+        args=cfg.gensettings,
         tokenizer=tokenizer,
     )

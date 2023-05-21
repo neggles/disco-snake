@@ -3,31 +3,18 @@ import json
 import logging
 import re
 from asyncio import Lock
-from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from dacite import from_dict
-from disnake import (
-    DMChannel,
-    Embed,
-    File,
-    GroupChannel,
-    Message,
-    MessageInteraction,
-    TextChannel,
-    Thread,
-    User,
-)
+from disnake import DMChannel, Embed, File, GroupChannel, Message, MessageInteraction, TextChannel, Thread
 from disnake.ext import commands, tasks
 from Levenshtein import distance as lev_distance
 from shimeji import ChatBot
-from shimeji.memory import array_to_str, memory_context
 from shimeji.memory.providers import PostgresMemoryStore
-from shimeji.model_provider import EnmaModel, OobaModel
+from shimeji.model_provider import OobaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
 from shimeji.util import (
@@ -37,15 +24,24 @@ from shimeji.util import (
     TRIM_TYPE_NEWLINE,
     ContextEntry,
 )
+from sqlalchemy import desc
 from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
 from transformers.utils import logging as transformers_logging
 
 import logsnake
-from ai.config import ChatbotConfig, MemoryStoreConfig, ModelProviderConfig
 from ai.eyes import DiscoEyes
 from ai.imagen import Imagen
 from ai.model import get_ooba_model
+from ai.settings import (
+    AI_DATA_DIR,
+    AI_LOG_DIR,
+    AI_LOG_FORMAT,
+    MemoryStoreConfig,
+    ModelProviderConfig,
+    get_ai_settings,
+)
 from ai.types import MessageChannel
+from ai.ui import AiStatusEmbed
 from ai.utils import (
     anti_spam,
     any_in_text,
@@ -53,11 +49,10 @@ from ai.utils import (
     cut_trailing_sentence,
     get_full_class_name,
     get_lm_prompt_time,
-    get_role_by_name,
     member_in_any_role,
     restore_mentions_emotes,
 )
-from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
+from disco_snake import checks
 from disco_snake.bot import DiscoSnake
 
 COG_UID = "ai"
@@ -66,12 +61,12 @@ logger = logsnake.setup_logger(
     name=__name__,
     level=logging.DEBUG,
     isRootLogger=False,
-    formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
-    logfile=LOGDIR_PATH.joinpath(f"{__name__}.log"),
+    formatter=logsnake.LogFormatter(fmt=AI_LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
+    logfile=AI_LOG_DIR.joinpath(f"{__name__}.log"),
     fileLoglevel=logging.DEBUG,
     maxBytes=1 * (2**20),
     backupCount=3,
-    propagate=True,
+    propagate=False,
 )
 
 
@@ -91,11 +86,8 @@ class Ai(commands.Cog, name=COG_UID):
         self.last_response = datetime.now(timezone.utc) - timedelta(minutes=10)
 
         # Load config file
-        self.cfg_path: Path = DATADIR_PATH.joinpath("ai", "config.json")
-        try:
-            self.config = from_dict(data_class=ChatbotConfig, data=json.loads(self.cfg_path.read_text()))
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Config file not found: {self.cfg_path}")
+        self.cfg_path: Path = AI_DATA_DIR.joinpath("config.json")
+        self.config = get_ai_settings()
 
         # Parse config file
         self.memory_store_cfg: MemoryStoreConfig = self.config.memory_store
@@ -104,26 +96,26 @@ class Ai(commands.Cog, name=COG_UID):
         # Load config params up into top level properties
         self.params = self.config.params
 
-        self.activity_channels: List[int] = self.config.params.activity_channels
-        self.conditional_response: bool = self.config.params.conditional_response
-        self.context_size: int = self.config.params.context_size
-        self.context_messages: int = self.config.params.context_messages
-        self.idle_msg_sec: int = self.config.params.idle_messaging_interval
-        self.idle_messaging: bool = self.config.params.idle_messaging
-        self.logging_channel_id: int = self.config.params.logging_channel_id
-        self.nicknames: List[str] = self.config.params.nicknames
-        self.debug: bool = self.config.params.debug
-        self.memory_enable = self.config.params.memory_enable
-        self.max_retries = self.config.params.max_retries
-        self.ctxbreak_users = self.config.params.ctxbreak_users
-        self.ctxbreak_roles = self.config.params.ctxbreak_roles
+        self.activity_channels: List[int] = self.params.activity_channels
+        self.conditional_response: bool = self.params.conditional_response
+        self.context_size: int = self.params.context_size
+        self.context_messages: int = self.params.context_messages
+        self.idle_msg_sec: int = self.params.idle_messaging_interval
+        self.idle_messaging: bool = self.params.idle_messaging
+        self.logging_channel_id: int = self.params.logging_channel_id
+        self.nicknames: List[str] = self.params.nicknames
+        self.debug: bool = self.params.debug
+        self.memory_enable = self.params.memory_enable
+        self.max_retries = self.params.max_retries
+        self.ctxbreak_users = self.params.ctxbreak_users
+        self.ctxbreak_roles = self.params.ctxbreak_roles
 
         self.ctx_lock = Lock()  # used to stop multiple context builds from happening at once
         self.lm_lock = Lock()  # used to stop multiple conditional responses from happening at once
 
         # we will populate these later during async init
         self.memory_store: PostgresMemoryStore = None
-        self.model_provider: Union[OobaModel, EnmaModel] = None
+        self.model_provider: OobaModel = None
         self.model_provider_type: str = self.model_provider_cfg.type
         self.chatbot: ChatBot = None
         self.logging_channel: Optional[TextChannel] = None
@@ -133,10 +125,10 @@ class Ai(commands.Cog, name=COG_UID):
 
         # selfietron
         self.imagen = Imagen(lm_api_host=self.model_provider_cfg.endpoint)
-        self.eyes = DiscoEyes(config=self.config.vision)
+        self.eyes = DiscoEyes(cog=self)
 
         # somewhere to put the last context we generated for debugging
-        self.debug_datadir: Path = LOGDIR_PATH.joinpath("ai")
+        self.debug_datadir: Path = AI_LOG_DIR.joinpath("ai")
         self.debug_datadir.mkdir(parents=True, exist_ok=True)
 
         if self.debug is True:
@@ -250,16 +242,13 @@ class Ai(commands.Cog, name=COG_UID):
         elif isinstance(message.channel, Thread):
             return
         # Ignore messages with no guild
-        elif message.guild is None:
-            return
-        elif message.guild.id not in self.config.guilds:
+        elif message.guild is None or (message.guild.id not in self.config.guilds):
             return
 
         try:
-            # logger.debug(f"Raw message: {message.content}")
             message_content = self.get_msg_content_clean(message)
             if message_content == "":
-                logger.debug("Message was empty after cleaning.")
+                # logger.debug("Message was empty after cleaning.")
                 return
 
             async with self.lm_lock:
@@ -384,9 +373,9 @@ class Ai(commands.Cog, name=COG_UID):
                     if not attachment.content_type.startswith("image/"):
                         logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
                         continue
-                    caption = await self.eyes.perceive_attachment(attachment)
-                    if caption is not None:
-                        chain.append(f"{author_name}: [image: {caption}]")
+                    caption_obj = await self.eyes.perceive_attachment(attachment)
+                    if caption_obj is not None:
+                        chain.append(f"{author_name}: [image: {caption_obj.caption}]")
                 except Exception as e:
                     logger.exception(e)
                     chain.append(f"{author_name}: [image: loading error]")
@@ -460,7 +449,7 @@ class Ai(commands.Cog, name=COG_UID):
             }
 
             try:
-                debug_data["gensettings"] = asdict(self.model_provider_cfg)["gensettings"]
+                debug_data["gensettings"] = self.model_provider_cfg.gensettings
             except Exception as e:
                 logger.exception("Failed to get gensettings")
 
@@ -701,6 +690,17 @@ class Ai(commands.Cog, name=COG_UID):
         # return a discord File object to upstream
         result_file = File(result_path, filename=result_path.name)
         return result_file
+
+    # UI stuff
+    @commands.slash_command(name="ai", description="AI commands", cls=commands.Group)
+    @checks.not_blacklisted()
+    async def ai_group(self, ctx: commands.Context):
+        await ctx.send_help(ctx.command)
+
+    @ai_group.sub_command(name="status", description="Get AI status")
+    async def ai_status(self, ctx: commands.Context):
+        embed = AiStatusEmbed(self, ctx.author)
+        await ctx.send(embed=embed)
 
 
 def setup(bot):

@@ -91,6 +91,7 @@ class DiscordUser(Base):
         """
         if isinstance(user, disnake.Member):
             return cls(
+                id=user.id,
                 username=user.name,
                 discriminator=user.discriminator,
                 avatar=user.avatar.key if user.avatar else None,

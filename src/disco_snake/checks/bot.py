@@ -6,8 +6,6 @@ from disco_snake.settings import get_settings
 
 T = TypeVar("T")
 
-settings = get_settings()
-
 
 def is_admin() -> Callable[[T], T]:
     """
@@ -19,6 +17,7 @@ def is_admin() -> Callable[[T], T]:
     """
 
     def predicate(ctx: commands.Context) -> bool:
+        settings = get_settings()
         return any(
             [
                 ctx.author.id == settings.owner_id,
@@ -39,6 +38,7 @@ def is_owner() -> Callable[[T], T]:
     """
 
     def predicate(ctx: commands.Context) -> bool:
+        settings = get_settings()
         return ctx.author.id == settings.owner_id
 
     return commands.check(predicate)

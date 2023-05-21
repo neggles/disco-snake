@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseSettings, Field, PostgresDsn, validator
+from pydantic import BaseConfig, BaseSettings, Field, PostgresDsn, validator
 from pydantic.env_settings import SettingsSourceCallable
 
 from disco_snake import CONFIG_PATH
@@ -16,16 +16,35 @@ logger = logging.getLogger(__name__)
 
 def json_settings(settings: BaseSettings) -> Dict[str, Any]:
     encoding = settings.__config__.env_file_encoding
-    config_paths = [
-        CONFIG_PATH,
-        Path.cwd().joinpath("config.json"),
-    ]
-    for path in config_paths:
-        if path.exists() and path.is_file():
-            logger.info(f"Loading JSON config from {path}")
-            return json.loads(path.read_text(encoding=encoding))
-    logger.warning("No JSON config found")
+    config_path: Path = settings.__config__.json_config_path
+    classname = settings.__class__.__name__
+
+    if config_path.exists() and config_path.is_file():
+        logger.info(f"Loading {classname} from JSON: {config_path}")
+        return json.loads(config_path.read_text(encoding=encoding))
+    logger.warning(f"No {classname} JSON found at {config_path}")
     return {}
+
+
+class JsonConfig(BaseConfig):
+    json_config_path = Path.cwd().joinpath("config.json")
+    env_file_encoding = "utf-8"
+    json_encoders = {
+        ZoneInfo: lambda v: str(v),
+    }
+
+    @classmethod
+    def customise_sources(
+        cls,
+        init_settings: SettingsSourceCallable,
+        env_settings: SettingsSourceCallable,
+        file_secret_settings: SettingsSourceCallable,
+    ) -> tuple[SettingsSourceCallable, ...]:
+        return (
+            env_settings,
+            json_settings,
+            file_secret_settings,
+        )
 
 
 class Settings(BaseSettings):
@@ -54,26 +73,11 @@ class Settings(BaseSettings):
     def validate_timezone(cls, v) -> ZoneInfo:
         return ZoneInfo(v)
 
-    class Config:
-        env_file_encoding = "utf-8"
-        json_encoders = {
-            ZoneInfo: lambda v: str(v),
-        }
-
-        @classmethod
-        def customise_sources(
-            cls,
-            init_settings: SettingsSourceCallable,
-            env_settings: SettingsSourceCallable,
-            file_secret_settings: SettingsSourceCallable,
-        ) -> tuple[SettingsSourceCallable, ...]:
-            return (
-                env_settings,
-                json_settings,
-                file_secret_settings,
-            )
+    class Config(JsonConfig):
+        json_config_path = CONFIG_PATH
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    return settings

@@ -2,56 +2,53 @@ import logging
 from base64 import b64encode
 from datetime import datetime
 from io import BytesIO
-from typing import Optional
-from zoneinfo import ZoneInfo
+from typing import TYPE_CHECKING, Optional
 
 from aiohttp import ClientSession
 from async_lru import alru_cache
 from disnake import Attachment, Embed
-from matplotlib.image import thumbnail
 from PIL import Image
 from requests import get as requests_get
 
 import logsnake
-from ai.config import VisionConfig
+from ai.settings import AI_LOG_DIR, AI_LOG_FORMAT, VisionConfig
 from ai.types import ImageOrBytes
 from db import ImageCaption, Session
-from disco_snake import LOG_FORMAT, LOGDIR_PATH
-from disco_snake.settings import get_settings
+
+if TYPE_CHECKING:
+    from ai import Ai
 
 # setup cog logger
 logger = logsnake.setup_logger(
     level=logging.DEBUG,
     isRootLogger=False,
     name="disco-eyes",
-    formatter=logsnake.LogFormatter(fmt=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
-    logfile=LOGDIR_PATH.joinpath("disco-eyes.log"),
+    formatter=logsnake.LogFormatter(fmt=AI_LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
+    logfile=AI_LOG_DIR.joinpath("disco-eyes.log"),
     fileLoglevel=logging.DEBUG,
     maxBytes=1 * (2**20),
     backupCount=2,
 )
 
 
-API_PATH = "/api/v1/caption"
-
 IMAGE_MAX_BYTES = 20 * (2**20)
 IMAGE_MAX_PX = 768
 IMAGE_FORMATS = ["PNG", "WEBP", "JPEG", "GIF"]
 
-settings = get_settings()
-
 
 class DiscoEyes:
-    def __init__(self, config: VisionConfig):
-        self.config = config
-        self.timezone = settings.timezone
+    API_PATH = "/api/v1/caption"
+
+    def __init__(self, cog: "Ai") -> None:
+        self.config: VisionConfig = cog.config.vision
+        self.timezone = cog.bot.timezone
 
     @property
-    def api_host(self):
+    def api_host(self) -> str:
         return self.config.api_host
 
     @property
-    def api_token(self):
+    def api_token(self) -> Optional[str]:
         return self.config.api_token
 
     async def _perceive(self, image: ImageOrBytes) -> str:
@@ -69,7 +66,7 @@ class DiscoEyes:
             base_url=self.api_host,
             headers={"Authorization": f"Bearer {self.api_token}"},
         ) as session:
-            async with session.post(API_PATH, json=payload) as resp:
+            async with session.post(self.API_PATH, json=payload) as resp:
                 data = await resp.json()
                 resp.raise_for_status()
                 caption = data["caption"]
@@ -126,12 +123,12 @@ class DiscoEyes:
             return None
 
         if max(attachment.width, attachment.height) > IMAGE_MAX_PX:
-            data = await self.get_thumbnail(attachment)
+            data = await self._attachment_thumbnail(attachment)
         else:
             data = await attachment.read()
         return await self._perceive(data)
 
-    async def get_thumbnail(self, attachment: Attachment) -> Optional[Image.Image]:
+    async def _attachment_thumbnail(self, attachment: Attachment) -> Optional[Image.Image]:
         if not attachment.content_type.startswith("image/"):
             logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
             return None
@@ -162,6 +159,16 @@ class DiscoEyes:
                 return image
 
     async def db_save_caption(self, caption: ImageCaption) -> ImageCaption:
+        """Save a caption to the database.
+
+        Returns the same object that was passed in, allowing for
+        chaining of calls e.g. `return await db.save_caption(caption)`
+
+        :param caption: The caption to save.
+        :type caption: ImageCaption
+        :return: The saved caption.
+        :rtype: ImageCaption
+        """
         logger.info(f"Saving caption for image {caption.id}")
         async with Session() as session:
             async with session.begin():
