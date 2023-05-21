@@ -1,23 +1,17 @@
 import copy
 import json
 from os import PathLike
+from random import sample
 from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
 import requests
-from pydantic import BaseModel
-from shimeji.tokenizers import Llama, GPT2, AutoTokenizer
+from pydantic import BaseModel, Field
+
+from shimeji.tokenizers import GPT2, AutoTokenizer, Llama
 
 
-class DictJsonMixin:
-    def asdict(self, *args, **kwargs) -> Dict[str, Any]:
-        return self.dict(*args, **kwargs)
-
-    def asjson(self, *args, **kwargs):
-        return json.dumps(self.dict(*args, **kwargs), ensure_ascii=False)
-
-
-class ModelGenArgs(BaseModel, DictJsonMixin):
+class ModelGenArgs(BaseModel):
     max_length: int
     max_time: Optional[float] = None
     min_length: Optional[int] = None
@@ -34,19 +28,19 @@ class ModelGenArgs(BaseModel, DictJsonMixin):
     stopping_strings: Optional[List[str]] = None
 
 
-class ModelLogitBiasArgs(BaseModel, DictJsonMixin):
+class ModelLogitBiasArgs(BaseModel):
     id: int
     bias: float
 
 
-class ModelPhraseBiasArgs(BaseModel, DictJsonMixin):
+class ModelPhraseBiasArgs(BaseModel):
     sequences: List[str]
     bias: float
     ensure_sequence_finish: bool
     generate_once: bool
 
 
-class ModelSampleArgs(BaseModel, DictJsonMixin):
+class ModelSampleArgs(BaseModel):
     temp: Optional[float] = None
     top_p: Optional[float] = None
     top_a: Optional[float] = None
@@ -75,9 +69,9 @@ class ModelSampleArgs(BaseModel, DictJsonMixin):
     encoder_rep_p: Optional[float] = None
 
 
-class ModelGenRequest(BaseModel, DictJsonMixin):
+class ModelGenRequest(BaseModel):
     model: Optional[str]
-    prompt: str
+    prompt: str = Field("")
     softprompt: Optional[str] = None
     sample_args: ModelSampleArgs
     gen_args: ModelGenArgs
@@ -90,7 +84,7 @@ class ModelGenRequest(BaseModel, DictJsonMixin):
             __pydantic_self__.gen_args = ModelGenArgs()
 
 
-class OobaGenRequest(BaseModel, DictJsonMixin):
+class OobaGenRequest(BaseModel):
     prompt: str
     max_new_tokens: int = 250
     do_sample: bool = True
@@ -113,6 +107,74 @@ class OobaGenRequest(BaseModel, DictJsonMixin):
     skip_special_tokens: bool = True
     stopping_strings: List[str] = []
 
+    @classmethod
+    def from_generic(cls, req: ModelGenRequest) -> "OobaGenRequest":
+        """
+        Converts a ModelGenRequest to an OobaGenRequest since the format is quite a bit different.
+        """
+        if req.sample_args.stop_sequence is not None:
+            if req.gen_args.stopping_strings is None:
+                req.gen_args.stopping_strings = [req.sample_args.stop_sequence]
+            else:
+                if req.sample_args.stop_sequence not in req.gen_args.stopping_strings:
+                    req.gen_args.stopping_strings.append(req.sample_args.stop_sequence)
+
+        ret = {
+            "prompt": req.prompt,
+            "max_new_tokens": req.gen_args.max_length,
+            "do_sample": req.sample_args.do_sample,
+            "temperature": req.sample_args.temp,
+            "top_p": req.sample_args.top_p,
+            "typical_p": req.sample_args.typical_p,
+            "repetition_penalty": req.sample_args.rep_p,
+            "encoder_repetition_penalty": req.sample_args.encoder_rep_p,
+            "top_k": req.sample_args.top_k,
+            "no_repeat_ngram_size": req.sample_args.no_repeat_ngram_size,
+            "num_beams": req.sample_args.num_beams,
+            "penalty_alpha": req.sample_args.penalty_alpha,
+            "length_penalty": req.sample_args.length_penalty,
+            "early_stopping": req.sample_args.early_stopping,
+            "min_length": req.gen_args.min_length,
+            "seed": req.gen_args.seed,
+            "add_bos_token": req.gen_args.add_bos_token,
+            "truncation_length": req.gen_args.truncation_length,
+            "ban_eos_token": req.gen_args.ban_eos_token,
+            "skip_special_tokens": req.gen_args.skip_special_tokens,
+            "stopping_strings": req.gen_args.stopping_strings,
+        }
+        ret = OobaGenRequest.parse_obj(ret)
+        return ret
+
+    def to_generic(self) -> ModelGenRequest:
+        return ModelGenRequest(
+            model="ooba",
+            prompt=self.prompt,
+            sample_args=ModelSampleArgs(
+                temp=self.temperature,
+                top_p=self.top_p,
+                top_k=self.top_k,
+                typical_p=self.typical_p,
+                rep_p=self.repetition_penalty,
+                do_sample=self.do_sample,
+                penalty_alpha=self.penalty_alpha,
+                num_beams=self.num_beams,
+                no_repeat_ngram_size=self.no_repeat_ngram_size,
+                length_penalty=self.length_penalty,
+                early_stopping=self.early_stopping,
+                encoder_rep_p=self.encoder_repetition_penalty,
+            ),
+            gen_args=ModelGenArgs(
+                min_length=self.min_length,
+                max_length=self.max_new_tokens,
+                seed=self.seed,
+                add_bos_token=self.add_bos_token,
+                truncation_length=self.truncation_length,
+                ban_eos_token=self.ban_eos_token,
+                skip_special_tokens=self.skip_special_tokens,
+                stopping_strings=self.stopping_strings,
+            ),
+        )
+
 
 class ModelSerializer(json.JSONEncoder):
     """Class to serialize ModelGenRequest to JSON."""
@@ -134,8 +196,6 @@ class ModelProvider:
         """
         self.endpoint_url = endpoint_url
         self.kwargs = kwargs
-        if "args" not in kwargs.keys():
-            raise ValueError("default args is required")
         self.default_args = self.kwargs.get("args", None)
         if self.default_args is None:
             raise ValueError("default args is required")
@@ -687,13 +747,14 @@ class EnmaModel(ModelProvider):
 
         args: ModelGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
-        args.sample_args.temp = 0.25
-        args.sample_args.top_p = 0.9
+        args.gen_args.max_length = 30
+        args.sample_args.temp = 0.4
+        args.sample_args.top_p = 0.75
         args.sample_args.top_k = 40
         args.sample_args.rep_p = None
         args.sample_args.do_sample = True
         args.sample_args.penalty_alpha = None
-        args.sample_args.num_return_sequences = 1  # i have no idea what these should be
+        args.sample_args.num_return_sequences = 1
         args.sample_args.stop_sequence = None
         response = await self.generate_async(args)
         if response.startswith(name):
@@ -837,9 +898,9 @@ class OobaModel(ModelProvider):
             tokenizer = AutoTokenizer.from_pretrained(tokenizer)
 
         self.tokenizer = tokenizer
+        self.default_args: OobaGenRequest
         super().__init__(endpoint_url, **kwargs)
 
-        self.default_ooba_args = self.convert_gen_request(self.default_args)
         self.auth()
 
     def auth(self) -> bool:
@@ -848,44 +909,6 @@ class OobaModel(ModelProvider):
         text-generation-webui doesn't have authentication so this just returns true
         """
         return True
-
-    def convert_gen_request(self, req: ModelGenRequest) -> OobaGenRequest:
-        """
-        Converts a ModelGenRequest to an OobaGenRequest since the format is quite a bit different.
-        """
-        if req.sample_args.stop_sequence is not None:
-            if req.gen_args.stopping_strings is None:
-                req.gen_args.stopping_strings = [req.sample_args.stop_sequence]
-            else:
-                req.gen_args.stopping_strings = req.gen_args.stopping_strings.append(
-                    req.sample_args.stop_sequence
-                )
-
-        ret = {
-            "prompt": req.prompt,
-            "max_new_tokens": req.gen_args.max_length,
-            "do_sample": req.sample_args.do_sample,
-            "temperature": req.sample_args.temp,
-            "top_p": req.sample_args.top_p,
-            "typical_p": req.sample_args.typical_p,
-            "repetition_penalty": req.sample_args.rep_p,
-            "encoder_repetition_penalty": req.sample_args.encoder_rep_p,
-            "top_k": req.sample_args.top_k,
-            "no_repeat_ngram_size": req.sample_args.no_repeat_ngram_size,
-            "num_beams": req.sample_args.num_beams,
-            "penalty_alpha": req.sample_args.penalty_alpha,
-            "length_penalty": req.sample_args.length_penalty,
-            "early_stopping": req.sample_args.early_stopping,
-            "min_length": req.gen_args.min_length,
-            "seed": req.gen_args.seed,
-            "add_bos_token": req.gen_args.add_bos_token,
-            "truncation_length": req.gen_args.truncation_length,
-            "ban_eos_token": req.gen_args.ban_eos_token,
-            "skip_special_tokens": req.gen_args.skip_special_tokens,
-            "stopping_strings": req.gen_args.stopping_strings,
-        }
-        ret = OobaGenRequest.parse_obj(ret)
-        return ret
 
     def generate(self, args: Union[ModelGenRequest, OobaGenRequest]) -> str:
         """
@@ -896,10 +919,10 @@ class OobaModel(ModelProvider):
         :raises NotImplementedError: If the generate method is not implemented.
         """
         if not isinstance(args, OobaGenRequest):
-            args: OobaGenRequest = self.convert_gen_request(args)
+            args: OobaGenRequest = OobaGenRequest.from_generic(args)
 
         try:
-            r = requests.post(f"{self.endpoint_url}/api/v1/generate", json=args.asdict())
+            r = requests.post(f"{self.endpoint_url}/api/v1/generate", json=args.dict())
             r.encoding = "utf-8"
         except Exception as e:
             raise e
@@ -917,10 +940,10 @@ class OobaModel(ModelProvider):
         :raises NotImplementedError: If the generate method is not implemented.
         """
         if not isinstance(args, OobaGenRequest):
-            args: OobaGenRequest = self.convert_gen_request(args)
+            args: OobaGenRequest = OobaGenRequest.from_generic(args)
         try:
             async with aiohttp.ClientSession(base_url=self.endpoint_url) as session:
-                async with session.post("/api/v1/generate", json=args.asdict()) as resp:
+                async with session.post("/api/v1/generate", json=args.dict()) as resp:
                     if resp.status == 200:
                         ret = await resp.json(encoding="utf-8")
                         return ret["results"][0]["text"]
@@ -928,34 +951,6 @@ class OobaModel(ModelProvider):
                         resp.raise_for_status()
         except Exception as e:
             raise Exception(f"Could not generate response. Error: {await resp.text(encoding='utf-8')}") from e
-
-    async def hidden_async(self, model, text, layer):
-        """
-        Fetch a layer's hidden states from text.
-
-        :param model: The model to extract hidden states from.
-        :type model: str
-        :param text: The text to use.
-        :type text: str
-        :param layer: The layer to fetch the hidden states from.
-        :type layer: int
-        """
-
-        raise NotImplementedError("hidden_async method is not implemented for this model provider")
-
-    async def image_label_async(self, model, url, labels):
-        """
-        Classify an image with labels (CLIP).
-
-        :param model: The model to use for classification.
-        :type model: str
-        :param url: The image URL to use.
-        :type url: str
-        :param labels: The labels to use.
-        :type labels: list
-        """
-
-        raise NotImplementedError("image_label_async method is not implemented for this model provider")
 
     def should_respond(self, context, name: str, prefix: str = "") -> bool:
         """
@@ -968,15 +963,15 @@ class OobaModel(ModelProvider):
         :rtype: bool
         """
 
-        args: ModelGenRequest = copy.deepcopy(self.default_args)
+        args: OobaGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
-        args.sample_args.temp = 0.25
-        args.sample_args.top_p = 0.9
-        args.sample_args.top_k = 40
-        args.sample_args.rep_p = 1.0
-        args.sample_args.do_sample = True
-        args.gen_args.max_length = 12
-        args.gen_args.min_length = 0
+        args.temperature = 0.25
+        args.top_p = 0.9
+        args.top_k = 40
+        args.repetition_penalty = 1.0
+        args.do_sample = True
+        args.max_new_tokens = 24
+        args.min_length = 0
         response = self.generate(args)
         if response.strip().startswith((name, prefix + name, prefix + " " + name)):
             return True
@@ -993,45 +988,65 @@ class OobaModel(ModelProvider):
         :rtype: bool
         """
 
-        args: ModelGenRequest = copy.deepcopy(self.default_args)
+        args: OobaGenRequest = copy.deepcopy(self.default_args)
         args.prompt = context
-        args.sample_args.temp = 0.25
-        args.sample_args.top_p = 0.9
-        args.sample_args.top_k = 40
-        args.sample_args.rep_p = 1.0
-        args.sample_args.do_sample = True
-        args.gen_args.max_length = 12
-        args.gen_args.min_length = 0
+        args.temperature = 0.25
+        args.top_p = 0.9
+        args.top_k = 40
+        args.repetition_penalty = 1.0
+        args.do_sample = True
+        args.max_new_tokens = 24
+        args.min_length = 0
         response = await self.generate_async(args)
         if response.strip().startswith((name, prefix + name, prefix + " " + name)):
             return True
         else:
             return False
 
-    def response(self, context) -> str:
+    def response(self, context: str = None, gensettings: Optional[OobaGenRequest] = None) -> str:
         """Generate a response from the Ooba endpoint.
         :param context: The context to use.
         :type context: str
         :return: The response from the endpoint.
         :rtype: str
         """
-        args: ModelGenRequest = copy.deepcopy(self.default_args)
-        args.prompt = context
-        args.gen_args.min_length = 1 if args.gen_args.min_length is None else args.gen_args.min_length
-        response = self.generate(args)
+        # error if neither argument is provided
+        if gensettings is None and context is None:
+            raise ValueError("I can't generate a response without a prompt!")
+        # otherwise copy default gensettings if no gensettings are provided
+        elif gensettings is None:
+            gensettings = copy.deepcopy(self.default_args)
+
+        # if context is provided, set the prompt to it
+        if context is not None:
+            gensettings.prompt = context
+        # if we still have no prompt, error
+        if gensettings.prompt is None or gensettings.prompt == "":
+            raise ValueError("I can't generate a response without a prompt!")
+
+        response = self.generate(gensettings)
         return response
 
-    async def response_async(self, context) -> str:
+    async def response_async(self, context: str = None, gensettings: Optional[OobaGenRequest] = None) -> str:
         """Generate a response from the Ooba endpoint asynchronously.
         :param context: The context to use.
         :type context: str
         :return: The response from the endpoint.
         :rtype: str
         """
-        args: ModelGenRequest = copy.deepcopy(self.default_args)
-        if context is None:
-            raise ValueError("where the shit is my context?")
-        args.prompt = context
-        args.gen_args.min_length = 1 if args.gen_args.min_length is None else args.gen_args.min_length
-        response = await self.generate_async(args)
+        # error if neither argument is provided
+        if gensettings is None and context is None:
+            raise ValueError("I can't generate a response without a prompt!")
+        # otherwise copy default gensettings if no gensettings are provided
+        elif gensettings is None:
+            gensettings = copy.deepcopy(self.default_args)
+
+        # if context is provided, set the prompt to it
+        if context is not None:
+            gensettings.prompt = context
+        # if we still have no prompt, error
+        if gensettings.prompt is None or gensettings.prompt == "":
+            raise ValueError("I can't generate a response without a prompt!")
+
+        response = await self.generate_async(gensettings)
         return response
