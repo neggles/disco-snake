@@ -241,7 +241,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         # Ignore messages from unapproved users in DMs/groups
         if isinstance(message.channel, (DMChannel, GroupChannel)):
-            if message.author.id not in self.bot.config.owner_ids:
+            if message.author.id not in self.bot.config.admin_ids:
                 logger.info(
                     f"Got a DM from non-owner {message.author.name}#{message.author.discriminator}. Ignoring..."
                 )
@@ -334,7 +334,7 @@ class Ai(commands.Cog, name=COG_UID):
         for idx, message in enumerate(messages):
             if ("<ctxbreak>" in message.content.lower()) and (
                 (message.author.id in self.ctxbreak_users)
-                or (message.author.id in self.bot.owner_ids)
+                or (message.author.id in self.bot.admin_ids)
                 or member_in_any_role(message.author, self.ctxbreak_roles)
             ):
                 logger.debug("Found context break tag, breaking context chain")

@@ -4,8 +4,8 @@ import disnake
 from disnake import ApplicationCommandInteraction
 from disnake.ext import commands
 
+from disco_snake import checks
 from disco_snake.bot import DiscoSnake
-from helpers import checks
 
 
 class General(commands.Cog, name="general"):

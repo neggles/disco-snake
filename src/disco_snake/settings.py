@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     owner: str = Field("N/A")
     repo_url: str = Field("N/A")
 
-    owner_ids: List[int] = Field(..., unique_items=True)
+    owner_id: int = Field(...)
+    admin_ids: List[int] = Field(..., unique_items=True)
     home_guild: int
 
     status_type: str = Field("playing")
