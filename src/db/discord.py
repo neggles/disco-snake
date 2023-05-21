@@ -62,14 +62,17 @@ class DiscordUser(Base):
     @name.setter
     def name(self, name: str, discriminator: int = 0) -> None:
         """Set the user's name, optionally with discriminator.
-            Discriminator can be passed as a separate argument, or
-            as part of the name string.
-            Pass 0 as the discriminator to set the global name.
 
+        Discriminator can be passed as a separate argument, or as part of the name string.
+        Pass 0 as the discriminator to set the global name.
 
-        Args:
-            name (str): Discord user name with optional discriminator (e.g. "username#1234")
-            discriminator (int, optional, default=0): Discord user discriminator
+        :param name: Discord user name with optional discriminator (e.g. "username#1234")
+        :type name: str
+        :param discriminator: Discord user discriminator
+        :type discriminator: int
+        :param name: str:
+        :param discriminator: int:  (Default value = 0)
+
         """
         if "#" in name:
             username, discriminator = name.split("#")
@@ -79,6 +82,13 @@ class DiscordUser(Base):
 
     @classmethod
     def from_discord(cls, user: disnake.User | disnake.Member) -> "DiscordUser":
+        """Convert a disnake User or Member object to a DiscordUser object.
+
+        :param user: :class:`disnake.User` | :class:`disnake.Member`
+        :return: the DiscordUser object
+        :rtype: :class:`DiscordUser`
+
+        """
         if isinstance(user, disnake.Member):
             return cls(
                 username=user.name,
@@ -100,6 +110,19 @@ class DiscordUser(Base):
         )
 
     async def to_discord(self, bot: commands.Bot) -> disnake.User:
+        """Convert the user to a disnake.User object.
+
+        This will fetch the user from Discord, and raise a :class:`ValueError`
+        if the user is not found.
+
+        **This does *not* use the values from the database, or update them!**
+
+        :param bot: The bot instance to use for fetching the user
+        :type bot: commands.Bot
+        :raises ValueError: If the user is not found on Discord
+        :return: The user object
+        :rtype: disnake.User
+        """
         user = await bot.fetch_user(self.id)
         if user is None:
             raise ValueError(f"User {self.id} not found on Discord")
