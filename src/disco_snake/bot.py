@@ -323,7 +323,6 @@ class DiscoSnake(commands.Bot):
 
     @tasks.loop(minutes=1.0)
     async def user_save_task(self) -> None:
-        logger.debug("Updating user entries in database")
         async with Session() as session:
             async with session.begin():
                 users: List[DiscordUser] = []
@@ -334,8 +333,8 @@ class DiscoSnake(commands.Bot):
                         continue
                     user_obj = DiscordUser.from_discord(user)
                     await session.merge(user_obj)
-                logger.debug("User database updated.")
                 await session.commit()
+        logger.debug("User database updated")
 
     @user_save_task.before_loop
     async def before_user_save_task(self) -> None:

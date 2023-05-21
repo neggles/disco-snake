@@ -10,8 +10,7 @@ from disnake import Attachment, Embed
 from PIL import Image
 from requests import get as requests_get
 
-import logsnake
-from ai.settings import AI_LOG_DIR, AI_LOG_FORMAT, VisionConfig
+from ai.settings import VisionConfig
 from ai.types import ImageOrBytes
 from db import ImageCaption, Session
 
@@ -19,16 +18,7 @@ if TYPE_CHECKING:
     from ai import Ai
 
 # setup cog logger
-logger = logsnake.setup_logger(
-    level=logging.DEBUG,
-    isRootLogger=False,
-    name="disco-eyes",
-    formatter=logsnake.LogFormatter(fmt=AI_LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
-    logfile=AI_LOG_DIR.joinpath("disco-eyes.log"),
-    fileLoglevel=logging.DEBUG,
-    maxBytes=1 * (2**20),
-    backupCount=2,
-)
+logger = logging.getLogger(__name__)
 
 
 IMAGE_MAX_BYTES = 20 * (2**20)
@@ -92,7 +82,6 @@ class DiscoEyes:
             return None
         image_caption = await self.db_get_caption(attachment.id)
         if image_caption is not None:
-            logger.debug(f"Found cached caption for image {attachment.id}")
             return image_caption
 
         logger.info(f"Captioning image {attachment.id}")
@@ -178,7 +167,6 @@ class DiscoEyes:
         return caption
 
     async def db_get_caption(self, image_id: int) -> Optional[ImageCaption]:
-        logger.info(f"Fetching caption for image {image_id}")
         async with Session() as session:
             async with session.begin():
                 return await session.get(ImageCaption, image_id)

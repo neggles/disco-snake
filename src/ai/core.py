@@ -9,7 +9,17 @@ from random import choice as random_choice
 from traceback import format_exc
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from disnake import DMChannel, Embed, File, GroupChannel, Message, MessageInteraction, TextChannel, Thread
+from disnake import (
+    ApplicationCommandInteraction,
+    DMChannel,
+    Embed,
+    File,
+    GroupChannel,
+    Message,
+    MessageInteraction,
+    TextChannel,
+    Thread,
+)
 from disnake.ext import commands, tasks
 from Levenshtein import distance as lev_distance
 from shimeji import ChatBot
@@ -58,15 +68,15 @@ from disco_snake.bot import DiscoSnake
 COG_UID = "ai"
 
 logger = logsnake.setup_logger(
-    name=__name__,
+    name=COG_UID,
     level=logging.DEBUG,
     isRootLogger=False,
     formatter=logsnake.LogFormatter(fmt=AI_LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"),
-    logfile=AI_LOG_DIR.joinpath(f"{__name__}.log"),
+    logfile=AI_LOG_DIR.joinpath(f"{COG_UID}.log"),
     fileLoglevel=logging.DEBUG,
     maxBytes=1 * (2**20),
     backupCount=3,
-    propagate=False,
+    propagate=True,
 )
 
 
@@ -185,7 +195,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         logger.debug("Initializing Tokenizer...")
         self.tokenizer = LlamaTokenizerFast.from_pretrained(
-            pretrained_model_name_or_path=self.cfg_path.parent.joinpath("tokenizers/llama").as_posix(),
+            pretrained_model_name_or_path=AI_DATA_DIR.joinpath("tokenizers/llama").as_posix(),
             local_files_only=True,
         )
 
@@ -692,13 +702,13 @@ class Ai(commands.Cog, name=COG_UID):
         return result_file
 
     # UI stuff
-    @commands.slash_command(name="ai", description="AI commands", cls=commands.Group)
+    @commands.slash_command(name="ai", description="AI Management")
     @checks.not_blacklisted()
-    async def ai_group(self, ctx: commands.Context):
+    async def ai_group(self, ctx: ApplicationCommandInteraction):
         await ctx.send_help(ctx.command)
 
     @ai_group.sub_command(name="status", description="Get AI status")
-    async def ai_status(self, ctx: commands.Context):
+    async def ai_status(self, ctx: ApplicationCommandInteraction):
         embed = AiStatusEmbed(self, ctx.author)
         await ctx.send(embed=embed)
 
