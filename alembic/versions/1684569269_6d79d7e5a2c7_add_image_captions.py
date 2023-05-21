@@ -1,6 +1,6 @@
 """add image captions
 
-Revision ID: 0328534b19ac
+Revision ID: 6d79d7e5a2c7
 Revises: ad663d9bb5dc
 Create Date: 2023-05-20 17:54:29.523081
 
@@ -10,7 +10,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = "0328534b19ac"
+revision = "6d79d7e5a2c7"
 down_revision = "ad663d9bb5dc"
 branch_labels = None
 depends_on = None

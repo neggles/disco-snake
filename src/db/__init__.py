@@ -1,6 +1,6 @@
 from db.ai import ImageCaption
 from db.base import Base
-from db.discord import DiscordUser
+from db.discord import DiscordUser, UsernameHistory
 from db.engine import Session, get_engine
 
 __all__ = [
@@ -8,5 +8,6 @@ __all__ = [
     "DiscordUser",
     "ImageCaption",
     "Session",
+    "UsernameHistory",
     "get_engine",
 ]

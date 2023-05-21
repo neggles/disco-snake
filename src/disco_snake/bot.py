@@ -332,17 +332,7 @@ class DiscoSnake(commands.Bot):
                 for user in self.get_all_members():
                     if user.id in [x.id for x in users]:
                         continue
-                    user_obj = DiscordUser(
-                        id=user.id,
-                        username=user.name,
-                        discriminator=user.discriminator,
-                        global_name=getattr(user, "global_name", None),
-                        avatar=user.avatar.key if user.avatar else None,
-                        bot=user.bot,
-                        system=user.system,
-                        flags=user.flags.value,
-                        public_flags=user.public_flags.value,
-                    )
+                    user_obj = DiscordUser.from_discord(user)
                     await session.merge(user_obj)
                 logger.debug("User database updated.")
                 await session.commit()

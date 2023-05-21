@@ -19,10 +19,10 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "users",
-        sa.Column("id", sa.BigInteger(), nullable=False, primary_key=True),
+        sa.Column("id", sa.BigInteger(), nullable=False, primary_key=True, unique=True),
         sa.Column("username", sa.String(), nullable=False),
         sa.Column("discriminator", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("global_name", sa.String(), nullable=True),
+        sa.Column("global_name", sa.String(), nullable=True, unique=True),
         sa.Column("avatar", sa.String(), nullable=True),
         sa.Column("bot", sa.Boolean(), nullable=False),
         sa.Column("system", sa.Boolean(), nullable=False, server_default=sa.false()),
@@ -34,31 +34,22 @@ def upgrade() -> None:
         sa.Column(
             "first_seen",
             pg.TIMESTAMP(timezone=True, precision=2),
-            server_default=sa.func.current_timestamp(),
+            index=True,
             nullable=False,
+            server_default=sa.func.current_timestamp(),
         ),
         sa.Column(
             "last_updated",
             pg.TIMESTAMP(timezone=True, precision=2),
-            server_default=sa.func.current_timestamp(),
+            index=True,
             nullable=False,
-        ),
-    )
-    op.create_table(
-        "username_history",
-        sa.Column("user_id", sa.BigInteger(), nullable=False),
-        sa.Column(
-            "timestamp",
-            pg.TIMESTAMP(timezone=True, precision=2),
             server_default=sa.func.current_timestamp(),
-            nullable=False,
         ),
-        sa.Column("username", sa.String(), nullable=False),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("user_id", "timestamp"),
+        sa.Column("tos_accepted", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("tos_accepted_at", pg.TIMESTAMP(timezone=True, precision=2), nullable=True),
     )
+    op.create_unique_constraint(None, "users", ["username", "discriminator"])
 
 
 def downgrade() -> None:
-    op.drop_table("username_history")
     op.drop_table("users")
