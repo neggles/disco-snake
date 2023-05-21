@@ -76,13 +76,13 @@ class DiscoEyes:
 
     # Returns the caption for an image attachment from the DB if it exists, otherwise
     # submits the image to the API for captioning and saves the result to the DB.
-    async def perceive_attachment(self, attachment: Attachment) -> ImageCaption:
+    async def perceive_attachment(self, attachment: Attachment) -> str:
         if not attachment.content_type.startswith("image/"):
             logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
             return None
         image_caption = await self.db_get_caption(attachment.id)
         if image_caption is not None:
-            return image_caption
+            return image_caption.caption
 
         logger.info(f"Captioning image {attachment.id}")
         attachment_dict = attachment.to_dict()
@@ -100,7 +100,8 @@ class DiscoEyes:
             caption=await self._perceive_attachment(attachment),
             captioned_at=datetime.now(tz=self.timezone),
         )
-        return await self.db_save_caption(image_caption)
+        await self.db_save_caption(image_caption)
+        return image_caption.caption
 
     # Submits the image to the API for captioning
     async def _perceive_attachment(self, attachment: Attachment) -> Optional[str]:
@@ -147,7 +148,7 @@ class DiscoEyes:
                 image = Image.open(BytesIO(data), formats=IMAGE_FORMATS)
                 return image
 
-    async def db_save_caption(self, caption: ImageCaption) -> ImageCaption:
+    async def db_save_caption(self, caption: ImageCaption) -> str:
         """Save a caption to the database.
 
         Returns the same object that was passed in, allowing for
@@ -156,15 +157,16 @@ class DiscoEyes:
         :param caption: The caption to save.
         :type caption: ImageCaption
         :return: The saved caption.
-        :rtype: ImageCaption
+        :rtype: str
         """
         logger.info(f"Saving caption for image {caption.id}")
+        caption_str = caption.caption
         async with Session() as session:
             async with session.begin():
                 session.add(caption)
                 await session.commit()
         logger.info("Caption saved successfully")
-        return caption
+        return caption_str
 
     async def db_get_caption(self, image_id: int) -> Optional[ImageCaption]:
         async with Session() as session:

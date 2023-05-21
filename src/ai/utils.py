@@ -46,7 +46,7 @@ def restore_mentions_emotes(text: str, users: ListOfUsers, emojis: List[Emoji]) 
     users.sort(key=lambda user: len(user.name), reverse=True)
 
     for user in users:
-        text = text.replace(f"@{user.name}", f"<@{user.id}>")
+        text = text.replace(f"@{user.display_name}", f"<@{user.id}>")
 
     for emoji in emojis:
         text = text.replace(f":{emoji.name}:", f"<:{emoji.name}:{emoji.id}>")
@@ -56,7 +56,7 @@ def restore_mentions_emotes(text: str, users: ListOfUsers, emojis: List[Emoji]) 
 
 def convert_mentions_emotes(text: str, users: ListOfUsers, emojis: List[Emoji]) -> str:
     for user in users:
-        text = text.replace(f"<@{user.id}>", f"@{user.name}")
+        text = text.replace(f"<@{user.id}>", f"@{user.display_name}")
 
     for emoji in emojis:
         text = text.replace(f"<:{emoji.name}:{emoji.id}>", f":{emoji.name}:")

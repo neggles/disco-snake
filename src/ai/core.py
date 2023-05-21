@@ -333,7 +333,7 @@ class Ai(commands.Cog, name=COG_UID):
         for idx, message in enumerate(messages):
             if ("<ctxbreak>" in message.content.lower()) and (
                 (message.author.id in self.ctxbreak_users)
-                or (message.author.id in self.bot.admin_ids)
+                or (message.author.id in self.bot.config.admin_ids)
                 or member_in_any_role(message.author, self.ctxbreak_roles)
             ):
                 logger.debug("Found context break tag, breaking context chain")
@@ -383,9 +383,9 @@ class Ai(commands.Cog, name=COG_UID):
                     if not attachment.content_type.startswith("image/"):
                         logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
                         continue
-                    caption_obj = await self.eyes.perceive_attachment(attachment)
-                    if caption_obj is not None:
-                        chain.append(f"{author_name}: [image: {caption_obj.caption}]")
+                    caption = await self.eyes.perceive_attachment(attachment)
+                    if caption is not None:
+                        chain.append(f"{author_name}: [image: {caption}]")
                 except Exception as e:
                     logger.exception(e)
                     chain.append(f"{author_name}: [image: loading error]")
@@ -459,20 +459,28 @@ class Ai(commands.Cog, name=COG_UID):
             }
 
             try:
-                debug_data["gensettings"] = self.model_provider_cfg.gensettings
+                debug_data["gensettings"] = self.model_provider_cfg.gensettings.dict()
             except Exception as e:
                 logger.exception("Failed to get gensettings")
 
             # Build context
             context = await self.build_ctx(conversation, message)
-            debug_data["context"] = conversation.splitlines()
+            debug_data["context"] = context.splitlines()
 
-            if self.imagen.should_take_pic(message.content) is True:
-                logger.info("Hold up, let me take a selfie...")
-                try:
-                    response_image = await self.take_pic(message=message)
-                except Exception as e:
-                    raise Exception("Failed to generate image response") from e
+            # war crime for alpaca, needs more newlines
+            context_lines = context.splitlines()
+            new_lines = []
+            for line in context_lines:
+                if line.startswith("### "):
+                    _, content = line.split(":", 1)
+                    if line.startswith("### Response:"):
+                        new_lines.append(f"### Response:\n{content.lstrip()}\n")
+                    else:
+                        new_lines.append(f"### Instruction:\n{content.lstrip()}\n")
+                else:
+                    new_lines.append(line)
+            context = "\n".join(new_lines)
+            context = context.rstrip()
 
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
@@ -480,8 +488,11 @@ class Ai(commands.Cog, name=COG_UID):
                     attempt = attempt + 1  # deal with range() starting from 0
                     response: str = await self.chatbot.respond_async(context, push_chain=False)
                     bad_words = self.find_bad_words(response)
+                    if any([response.lower() == x for x in self.bad_words]):
+                        logger.info(f"Response {attempt} contained bad words: {response}\nRetrying...")
+                        continue
                     if len(bad_words) == 0:
-                        if response.lower().startswith("i'm sorry, but") is True:
+                        if response.lower().startswith("i'm sorry, but"):
                             logger.info(f"Response was a ChatGPT apology: {response}\nRetrying...")
                             continue
                         if "as a language model" in response.lower():
@@ -502,6 +513,13 @@ class Ai(commands.Cog, name=COG_UID):
                         )
                         response = ""
 
+                if self.imagen.should_take_pic(message.content):
+                    logger.info("Hold up, let me take a selfie...")
+                    try:
+                        response_image = await self.take_pic(message=message)
+                    except Exception as e:
+                        raise Exception("Failed to generate image response") from e
+
                 debug_data["response_raw"] = response
 
                 # if bot did a "\n<someusername:" cut it off
@@ -512,7 +530,7 @@ class Ai(commands.Cog, name=COG_UID):
                 response = self.fixup_bot_user_tokens(response, message)
 
                 # Clean response - trim left whitespace and fix emojis and pings
-                response = cut_trailing_sentence(response)
+                # response = cut_trailing_sentence(response)
                 response = response.lstrip()
 
                 if isinstance(message.channel, (TextChannel, Thread)):
@@ -705,7 +723,7 @@ class Ai(commands.Cog, name=COG_UID):
     @commands.slash_command(name="ai", description="AI Management")
     @checks.not_blacklisted()
     async def ai_group(self, ctx: ApplicationCommandInteraction):
-        await ctx.send_help(ctx.command)
+        pass
 
     @ai_group.sub_command(name="status", description="Get AI status")
     async def ai_status(self, ctx: ApplicationCommandInteraction):

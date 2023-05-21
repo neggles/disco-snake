@@ -25,7 +25,7 @@ def get_engine() -> AsyncEngine:
 
 
 engine = get_engine()
-Session = async_sessionmaker(engine)
+Session = async_sessionmaker(engine, expire_on_commit=False)
 
 sync_engine = get_sync_engine()
 SyncSession = sessionmaker(sync_engine, expire_on_commit=False)

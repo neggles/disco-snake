@@ -109,7 +109,7 @@ class Imagen:
         request = self.lm_prompt.get_request(prompt)
         try:
             async with aiohttp.ClientSession(self.lm_api_host) as session:
-                async with session.post("/api/v1/generate", json=request.asdict()) as resp:
+                async with session.post("/api/v1/generate", json=request.dict()) as resp:
                     if resp.status == 200:
                         ret = await resp.json()
                         result: str = ret["results"][0]["text"]
@@ -125,7 +125,7 @@ class Imagen:
             raise Exception(f"Could not generate response. Error: {await resp.text()}") from e
 
     def get_lm_stopping_strings(self) -> List[str]:
-        return self.lm_prompt.gensettings["stopping_strings"]
+        return self.lm_prompt.gensettings.stopping_strings
 
     def build_request(self, lm_tags: str, user_prompt: str) -> Dict[str, Any]:
         time_tag = get_time_tag()
