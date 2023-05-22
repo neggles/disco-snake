@@ -1,8 +1,7 @@
 import copy
 import json
 from os import PathLike
-from random import sample
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import aiohttp
 import requests

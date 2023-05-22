@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from shimeji.model_provider import ModelProvider
 from shimeji.postprocessor import Postprocessor
@@ -74,7 +74,7 @@ class ChatBot:
 
         return await self.model_provider.should_respond_async(text, self.name)
 
-    def respond(self, text: str, push_chain: bool = False):
+    def respond(self, text: str, push_chain: bool = False) -> str:
         """Respond to the given text or conversation chain.
 
         :param text: The response text.
@@ -103,7 +103,7 @@ class ChatBot:
 
         return response
 
-    async def respond_async(self, text: str, push_chain: bool = False, is_respond: bool = True):
+    async def respond_async(self, text: str, push_chain: bool = False, is_respond: bool = True) -> str:
         """Respond to the given text or conversation chain asynchronously.
 
         :param text: The response text.
@@ -132,7 +132,7 @@ class ChatBot:
 
         return response
 
-    def conditional_response(self, text: str, push_chain: bool = True):
+    def conditional_response(self, text: str, push_chain: bool = True) -> Optional[str]:
         """Respond to the given text or conversation chain if the chatbot should respond.
 
         :param text: The response text.
