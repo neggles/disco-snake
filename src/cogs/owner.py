@@ -29,19 +29,19 @@ logger = logging.getLogger(__package__)
 
 
 class EditMessageModal(Modal):
-    def __init__(self, message: Message):
-        self.message: Message = message
+    def __init__(self, ctx: MessageCommandInteraction):
+        self.message: Message = ctx.target
         components = [
             TextInput(
                 label="Content",
                 custom_id="content",
                 style=TextInputStyle.paragraph,
-                value=message.content,
+                value=self.message.content,
                 required=True,
                 max_length=2048,
             )
         ]
-        super().__init__(title="Edit Message", components=components)
+        super().__init__(title="Edit Message", components=components, custom_id=f"edit_message_{ctx.id}")
 
     async def callback(self, ctx: ModalInteraction):
         await ctx.response.defer(ephemeral=True)
@@ -55,8 +55,9 @@ class EditMessageModal(Modal):
             embed.add_field(name="Original Content", value=self.message.content[:1024], inline=False)
             await self.message.edit(content=content)
         except Exception as e:
+            embed.color = Colour.red()
+            embed.description = "Failed!"
             if isinstance(e, ValueError):
-                embed.color = Colour.red()
                 if e.args[0] == "No content entered":
                     embed.add_field(name="Error", value="You didn't enter any content...", inline=False)
             else:
@@ -82,7 +83,7 @@ class Owner(commands.Cog, name="owner"):
             await ctx.send("I can only edit my own messages!", ephemeral=True)
             return
         try:
-            modal = EditMessageModal(ctx.target)
+            modal = EditMessageModal(ctx)
             await ctx.response.send_modal(modal)
         except Exception as e:
             logger.exception(e)

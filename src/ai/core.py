@@ -7,10 +7,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 from disnake import (
     ApplicationCommandInteraction,
+    Colour,
     DMChannel,
     Embed,
     File,
@@ -34,7 +35,6 @@ from shimeji.util import (
     TRIM_TYPE_NEWLINE,
     ContextEntry,
 )
-from sqlalchemy import desc
 from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
 from transformers.utils import logging as transformers_logging
 
@@ -56,7 +56,6 @@ from ai.utils import (
     anti_spam,
     any_in_text,
     convert_mentions_emotes,
-    cut_trailing_sentence,
     get_full_class_name,
     get_lm_prompt_time,
     member_in_any_role,
@@ -87,6 +86,21 @@ re_unescape_format = re.compile(r"\\([*_~`])")
 re_strip_special = re.compile(r"[^a-zA-Z0-9]+", re.M)
 re_linebreak_name = re.compile(r"(\n|\r|\r\n)(\S+): ", re.M)
 re_start_expression = re.compile(r"^\s*\(\w+\)\s*", re.I + re.M)
+
+
+AVAILABLE_PARAMS = [
+    "Temperature",
+    "Top P",
+    "Top K",
+    "Typical P",
+    "Rep P",
+    "Min Length",
+    "Max Length",
+]
+
+
+async def autocomplete_params(ctx, string: str) -> list[str]:
+    return [param for param in AVAILABLE_PARAMS if string.lower() in param.lower()]
 
 
 class Ai(commands.Cog, name=COG_UID):
@@ -726,9 +740,74 @@ class Ai(commands.Cog, name=COG_UID):
         pass
 
     @ai_group.sub_command(name="status", description="Get AI status")
-    async def ai_status(self, ctx: ApplicationCommandInteraction):
-        embed = AiStatusEmbed(self, ctx.author)
+    async def ai_status(
+        self,
+        ctx: ApplicationCommandInteraction,
+        verbose: bool = commands.Param(default=False, name="verbose", description="Verbose output"),
+    ):
+        embed = AiStatusEmbed(self, ctx.author, verbose=verbose)
         await ctx.send(embed=embed)
+
+    @ai_group.sub_command(name="set", description="Set AI parameters")
+    @checks.is_admin()
+    async def set_parameter(
+        self,
+        ctx: ApplicationCommandInteraction,
+        param: str = commands.Param(..., autocomplete=autocomplete_params),
+        value: str = commands.Param(...),
+    ) -> None:
+        await ctx.response.defer(ephemeral=True)
+        embed = Embed(title="Set Parameter", description="Success!", color=Colour.green())
+        embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.display_avatar.url)
+        embed.add_field(name="Parameter", value=f"{param}", inline=False)
+
+        try:
+            match param:
+                case "Temperature":
+                    new_value = float(value)
+                    old_value = self.model_provider_cfg.gensettings.temperature
+                    self.model_provider_cfg.gensettings.temperature = new_value
+                case "Top P":
+                    new_value = float(value)
+                    old_value = self.model_provider_cfg.gensettings.top_p
+                    self.model_provider_cfg.gensettings.top_p = new_value
+                case "Top K":
+                    new_value = int(value)
+                    old_value = self.model_provider_cfg.gensettings.top_k
+                    self.model_provider_cfg.gensettings.top_k = new_value
+                case "Typical P":
+                    new_value = float(value)
+                    old_value = self.model_provider_cfg.gensettings.typical_p
+                    self.model_provider_cfg.gensettings.typical_p = new_value
+                case "Rep P":
+                    new_value = float(value)
+                    old_value = self.model_provider_cfg.gensettings.repetition_penalty
+                    self.model_provider_cfg.gensettings.repetition_penalty = new_value
+                case "Min Length":
+                    new_value = int(value)
+                    old_value = self.model_provider_cfg.gensettings.min_length
+                    self.model_provider_cfg.gensettings.min_length = new_value
+                case "Max Length":
+                    new_value = int(value)
+                    old_value = self.model_provider_cfg.gensettings.max_new_tokens
+                    self.model_provider_cfg.gensettings.max_new_tokens = new_value
+                case _:
+                    raise ValueError(f"Unknown parameter: {param}")
+
+            embed.add_field(name="Old Value", value=f"{old_value}")
+            embed.add_field(name="New Value", value=f"{new_value}")
+
+        except Exception as e:
+            logger.exception(e)
+            embed.description = "Failed!"
+            embed.color = Colour.red()
+            if isinstance(e, ValueError):
+                embed.add_field(name="Error", value=f"Invalid value: {value}", inline=False)
+            else:
+                embed.add_field(name="Error", value="An unknown error occurred", inline=False)
+            embed.add_field(name="Exception", value=e, inline=False)
+        finally:
+            await ctx.send(embed=embed, ephemeral=True)
 
 
 def setup(bot):
