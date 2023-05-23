@@ -24,7 +24,7 @@ logging.root = logsnake.setup_logger(
     isRootLogger=True,
     formatter=logfmt,
     logfile=LOGDIR_PATH.joinpath(f"{PACKAGE}-debug.log"),
-    fileLoglevel=logging.INFO,
+    fileLoglevel=logging.DEBUG,
     maxBytes=1 * MBYTE,
     backupCount=3,
 )
@@ -106,7 +106,7 @@ def start_bot(ctx: click.Context = None):
     logger.setLevel(config_log_level)
     logger.info(f"Effective log level: {logging.getLevelName(logger.getEffectiveLevel())}")
 
-    logging.getLogger("disnake.gateway").setLevel(logging.INFO)
+    logging.getLogger("disnake.gateway").setLevel(config_log_level)
     logging.getLogger("disnake.http").setLevel(config_log_level)
 
     # create log and data directories if they don't exist

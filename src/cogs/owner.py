@@ -1,24 +1,12 @@
-import json
 import logging
-from asyncio import sleep
-from typing import Union
 
-import disnake
 from disnake import (
-    ApplicationCommandInteraction,
     Colour,
-    DMChannel,
     Embed,
-    GroupChannel,
     Message,
     MessageCommandInteraction,
     ModalInteraction,
-    Option,
-    OptionType,
-    StageChannel,
-    TextChannel,
     TextInputStyle,
-    Thread,
 )
 from disnake.ext import commands
 from disnake.ui import Modal, TextInput

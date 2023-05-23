@@ -1,3 +1,4 @@
+import logging
 from typing import Callable, TypeVar
 
 from disnake.ext import commands
@@ -5,6 +6,8 @@ from disnake.ext import commands
 from disco_snake.settings import get_settings
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 def is_admin() -> Callable[[T], T]:
@@ -18,6 +21,7 @@ def is_admin() -> Callable[[T], T]:
 
     def predicate(ctx: commands.Context) -> bool:
         settings = get_settings()
+        logger.debug(f"Checking if {ctx.author.id} is an admin in context {ctx}")
         return any(
             [
                 ctx.author.id == settings.owner_id,
@@ -39,6 +43,7 @@ def is_owner() -> Callable[[T], T]:
 
     def predicate(ctx: commands.Context) -> bool:
         settings = get_settings()
+        logger.debug(f"Checking if {ctx.author.id} is the owner ({settings.owner_id}) in context {ctx}")
         return ctx.author.id == settings.owner_id
 
     return commands.check(predicate)
