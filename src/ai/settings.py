@@ -63,10 +63,20 @@ class VisionConfig(BaseModel):
     api_token: Optional[str] = None
 
 
+class GradioConfig(BaseModel):
+    enabled: bool = False
+    bind_host: str = "127.0.0.1"
+    bind_port: int = 7863
+    enable_queue: bool = True
+    width: str = "100%"
+    theme: str = "freddyaboulton/dracula_revamped"
+
+
 class AiSettings(BaseSettings):
     name: str
     guilds: List[int]
     prompt: Union[str, List[str]]
+    gradio: GradioConfig
     params: BotParameters
     model_provider: ModelProviderConfig
     bad_words: List[str] = Field([])

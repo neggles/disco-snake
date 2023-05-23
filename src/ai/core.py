@@ -61,6 +61,7 @@ from ai.utils import (
     member_in_any_role,
     restore_mentions_emotes,
 )
+from ai.web import GradioUi
 from disco_snake import checks
 from disco_snake.bot import DiscoSnake
 
@@ -151,6 +152,9 @@ class Ai(commands.Cog, name=COG_UID):
         self.imagen = Imagen(lm_api_host=self.model_provider_cfg.endpoint)
         self.eyes = DiscoEyes(cog=self)
 
+        # gradio ui
+        self.webui = GradioUi(cog=self, config=self.config.gradio)
+
         # somewhere to put the last context we generated for debugging
         self.debug_datadir: Path = AI_LOG_DIR.joinpath("ai")
         self.debug_datadir.mkdir(parents=True, exist_ok=True)
@@ -230,6 +234,9 @@ class Ai(commands.Cog, name=COG_UID):
         logger.debug("Setting logging channel...")
         _logchannel = self.bot.get_channel(self.logging_channel_id)
         self.logging_channel = _logchannel if isinstance(_logchannel, (TextChannel, DMChannel)) else None
+
+        logger.info("Starting WebUI (if enabled)...")
+        await self.webui.launch()
 
         logger.info("AI engine initialized... probably?")
         if self.idle_messaging is True:
@@ -369,15 +376,15 @@ class Ai(commands.Cog, name=COG_UID):
                 for embed in message.embeds:
                     if embed.type == "image":
                         try:
-                            caption = await self.eyes.perceive_image_embed(embed.thumbnail.url)
+                            caption = await self.eyes.perceive_url(embed.thumbnail.url)
                             if caption is not None:
                                 chain.append(f"{author_name}: [image: {caption}]")
                         except Exception as e:
                             logger.exception(e)
                             chain.append(f"{author_name}: [image: loading error]")
-                    elif embed.description is not None:
+                    elif embed.description is not None and message.author.id != self.bot.user.id:
                         chain.append(f"{author_name}: [embed: {embed.description}]")
-                    elif embed.title is not None:
+                    elif embed.title is not None and message.author.id != self.bot.user.id:
                         chain.append(f"{author_name}: [embed: {embed.title}]")
 
             if message.content and len(message.embeds) == 0:
@@ -484,13 +491,27 @@ class Ai(commands.Cog, name=COG_UID):
             # war crime for alpaca, needs more newlines
             context_lines = context.splitlines()
             new_lines = []
+            first_instruct = True
+            first_response = True
             for line in context_lines:
                 if line.startswith("### "):
                     _, content = line.split(":", 1)
                     if line.startswith("### Response:"):
-                        new_lines.append(f"### Response:\n{content.lstrip()}\n")
+                        if first_response is True:
+                            # strip empty newline at end of prompt
+                            new_lines = new_lines[:-1]
+                            # add response without extra newline
+                            new_lines.append(f"### Response:\n{content.strip()}")
+                            first_response = False
+                        else:
+                            # newline then response
+                            new_lines.append(f"\n### Response:\n{content.strip()}")
                     else:
-                        new_lines.append(f"### Instruction:\n{content.lstrip()}\n")
+                        if first_instruct is True:
+                            new_lines.append(f"### Instruction:\n{content.strip()}")
+                            first_instruct = False
+                        else:
+                            new_lines.append(f"\n### Instruction:\n{content.strip()}")
                 else:
                     new_lines.append(line)
             context = "\n".join(new_lines)
@@ -716,7 +737,8 @@ class Ai(commands.Cog, name=COG_UID):
         message_content = message_content.replace("\n", " ").replace(self.name + " ", "")
 
         # build the LLM prompt for the image
-        lm_prompt = self.imagen.get_lm_prompt(self.imagen.strip_take_pic(message_content))
+        lm_trigger = self.imagen.strip_take_pic(message_content)
+        lm_prompt = self.imagen.get_lm_prompt(lm_trigger)
         logger.info(f"LLM Prompt: {lm_prompt}")
 
         # get the LLM to create tags for the image
@@ -731,6 +753,11 @@ class Ai(commands.Cog, name=COG_UID):
         result_path = await self.imagen.submit_request(sdapi_request)
         # return a discord File object to upstream
         result_file = File(result_path, filename=result_path.name)
+        if self.webui.config.enabled:
+            try:
+                self.webui.imagen_update(lm_trigger, lm_tags, result_path)
+            except Exception as e:
+                logger.exception(e)
         return result_file
 
     # UI stuff

@@ -69,10 +69,13 @@ class DiscoEyes:
                 return caption
 
     @alru_cache(maxsize=128)
-    async def perceive_image_embed(self, embed: Embed) -> Optional[str]:
-        if embed.type != "image":
-            raise ValueError("Embed is not an image embed")
-        return await self._perceive(requests_get(embed.image.url).raw)
+    async def perceive_url(self, url: str) -> Optional[str]:
+        async with ClientSession() as session:
+            async with session.get(url) as resp:
+                resp.raise_for_status()
+                data = await resp.read()
+                caption = await self._perceive(data)
+                return caption
 
     # Returns the caption for an image attachment from the DB if it exists, otherwise
     # submits the image to the API for captioning and saves the result to the DB.
