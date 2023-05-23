@@ -743,6 +743,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         # get the LLM to create tags for the image
         lm_tags = await self.imagen.submit_lm_prompt(lm_prompt)
+        lm_tags = lm_tags.strip('",')
         logger.info(f"LLM Tags: {lm_tags}")
 
         # build the SD API request
