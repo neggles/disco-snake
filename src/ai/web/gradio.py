@@ -144,6 +144,25 @@ class GradioUi:
                                 info="Sequences of this length or shorter will not be repeated in the output *at all*.",
                             )
 
+                            epsilon_cutoff = gr.Slider(
+                                value=self.gensettings.epsilon_cutoff,
+                                minimum=0,
+                                maximum=9,
+                                step=0.01,
+                                label="epsilon_cutoff",
+                                elem_id="epsilon_cutoff",
+                                info="In units of 1e-4",
+                            )
+                            eta_cutoff = gr.Slider(
+                                value=self.gensettings.eta_cutoff,
+                                minimum=0,
+                                maximum=20,
+                                step=0.01,
+                                label="eta_cutoff",
+                                elem_id="eta_cutoff",
+                                info="In units of 1e-4",
+                            )
+
                             seed.change(fn=set_parameter, inputs=seed, outputs=None)
                             temperature.change(fn=set_parameter, inputs=temperature, outputs=None)
                             top_p.change(fn=set_parameter, inputs=top_p, outputs=None)
@@ -158,6 +177,8 @@ class GradioUi:
                             no_repeat_ngram_size.change(
                                 fn=set_parameter, inputs=no_repeat_ngram_size, outputs=None
                             )
+                            epsilon_cutoff.change(fn=set_parameter, inputs=epsilon_cutoff, outputs=None)
+                            eta_cutoff.change(fn=set_parameter, inputs=eta_cutoff, outputs=None)
 
                 # Column 2
                 with gr.Column():
@@ -181,29 +202,8 @@ class GradioUi:
                                 info="Disable do_sample and set a low top_k to use contrastive search mode.",
                             )
 
-                            epsilon_cutoff = gr.Slider(
-                                value=self.gensettings.epsilon_cutoff,
-                                minimum=0,
-                                maximum=9,
-                                step=0.01,
-                                label="epsilon_cutoff",
-                                elem_id="epsilon_cutoff",
-                                info="In units of 1e-4",
-                            )
-                            eta_cutoff = gr.Slider(
-                                value=self.gensettings.eta_cutoff,
-                                minimum=0,
-                                maximum=20,
-                                step=0.01,
-                                label="eta_cutoff",
-                                elem_id="eta_cutoff",
-                                info="In units of 1e-4",
-                            )
-
                             do_sample.change(fn=set_parameter, inputs=do_sample, outputs=None)
                             penalty_alpha.change(fn=set_parameter, inputs=penalty_alpha, outputs=None)
-                            epsilon_cutoff.change(fn=set_parameter, inputs=epsilon_cutoff, outputs=None)
-                            eta_cutoff.change(fn=set_parameter, inputs=eta_cutoff, outputs=None)
 
                             gr.Markdown("### Beam search (high memory usage)")
                             num_beams = gr.Slider(
@@ -289,7 +289,7 @@ class GradioUi:
                             )
                             truncation_length.change(set_parameter, inputs=truncation_length, outputs=None)
 
-                # Column 3
+            with gr.Row(variant="panel").style(equal_height=True):
                 with gr.Column():
                     with gr.Box():
                         with gr.Column():
@@ -308,6 +308,8 @@ class GradioUi:
                                 label="Last response",
                                 every=2.0,
                             )
+
+                with gr.Column():
 
                     def get_last_trigger():
                         return self.imagen_last_trigger
