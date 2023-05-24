@@ -84,7 +84,7 @@ class ModelGenRequest(BaseModel):
 
 
 class OobaGenRequest(BaseModel):
-    prompt: str
+    prompt: str = ""
     max_new_tokens: int = 250
     do_sample: bool = True
     temperature: float = 0.7
@@ -105,6 +105,8 @@ class OobaGenRequest(BaseModel):
     ban_eos_token: bool = False
     skip_special_tokens: bool = True
     stopping_strings: List[str] = []
+    epsilon_cutoff: float = 0.0
+    eta_cutoff: float = 0.0
 
     @classmethod
     def from_generic(cls, req: ModelGenRequest) -> "OobaGenRequest":
