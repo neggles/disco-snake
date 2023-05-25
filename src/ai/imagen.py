@@ -68,6 +68,8 @@ re_surrounded = re.compile(r"\*[^*]*?(\*|$)", flags=re.I + re.M)
 re_clean_filename = re.compile(r"[^a-zA-Z0-9_\- ]+")  # for removing non-alphanumeric characters
 re_single_dash = re.compile(r"-+")  # for removing multiple dashes
 
+re_image_description = re.compile(r"\[image: ([^\]]+)\]", re.I + re.M)
+
 
 class Imagen:
     SD_API_PATH = "/sdapi/v1/txt2img"
@@ -86,6 +88,11 @@ class Imagen:
 
         IMAGES_DIR.mkdir(exist_ok=True, parents=True)
 
+        self._lock = Lock()
+
+        self.lm_last_request: str = ""
+        self.lm_last_response: str = ""
+
         logger.info("Initialized Imagen.")
 
     def get_lm_prompt(self, user_request: str) -> str:
@@ -100,6 +107,7 @@ class Imagen:
             user_request = user_request.replace("your ", "her ")
 
         user_request = user_request.strip("?.!")
+        self.lm_last_request = user_request
         prompt = self.lm_prompt.prompt(user_request)
         if len(prompt.strip()) == 0:
             prompt = self.lm_prompt.default_prompt
@@ -113,12 +121,16 @@ class Imagen:
                     if resp.status == 200:
                         ret = await resp.json()
                         result: str = ret["results"][0]["text"]
-                        return (
-                            result.replace(self.lm_prompt.get_tags() + ", ", "")
+                        for tag in self.lm_prompt.tags:
+                            result = result.replace(f"{tag}", "")
+                        result = (
+                            result.replace("closeup", "")
                             .replace(", ,", "")
                             .replace(",,", ",")
+                            .replace(" , ", "")
                             .strip()
                         )
+                        return result
                     else:
                         resp.raise_for_status()
         except Exception as e:
@@ -158,7 +170,9 @@ class Imagen:
         if len(lm_tags) > 0:
             lm_tags = f", ({lm_tags}:{self.sd_prompt.lm_weight})"
 
-        image_prompt = self.sd_prompt.prompt(f"{time_tag}{format_tags}{lm_tags}")
+        combined_tags = f"{time_tag}{format_tags}{lm_tags}"
+        self.lm_last_response = combined_tags
+        image_prompt = self.sd_prompt.prompt(combined_tags)
 
         # Generate at random aspect ratios, but same total pixels
         width, height = get_image_dimensions()
@@ -191,45 +205,49 @@ class Imagen:
         req_string = req_string.rstrip("-")  # remove trailing dashes
 
         # submit the request and save the image
-        async with aiohttp.ClientSession(base_url=self.sd_api_host) as session:
-            async with session.post(self.SD_API_PATH, json=request) as r:
-                if r.status == 200:
-                    response: dict = await r.json()
-                else:
-                    r.raise_for_status()
-                try:
-                    # throw an exception if we got no image
-                    if response["images"] is None or len(response["images"]) == 0:
-                        raise ValueError("No image data returned from Imagen API", args=response)
+        async with self._lock:  # one at a time, people
+            async with aiohttp.ClientSession(base_url=self.sd_api_host) as session:
+                async with session.post(self.SD_API_PATH, json=request) as r:
+                    if r.status == 200:
+                        response: dict = await r.json()
+                    else:
+                        r.raise_for_status()
+                    try:
+                        # throw an exception if we got no image
+                        if response["images"] is None or len(response["images"]) == 0:
+                            raise ValueError("No image data returned from Imagen API", args=response)
 
-                    # load and decode the image
-                    image: Image.Image = Image.open(BytesIO(b64decode(response["images"][0])))
-                    response.pop("images")  # don't need this anymore
+                        # load and decode the image
+                        image: Image.Image = Image.open(BytesIO(b64decode(response["images"][0])))
+                        response.pop("images")  # don't need this anymore
 
-                    # glue the JSON string onto the PNG
-                    image.format = "PNG"
-                    image.info.update({"parameters": response["info"]})
-                    # then decode it for logging purposes
-                    response["info"] = json.loads(response["info"])
+                        # glue the JSON string onto the PNG
+                        image.format = "PNG"
+                        image.info.update({"parameters": response["info"]})
+                        # then decode it for logging purposes
+                        response["info"] = json.loads(response["info"])
 
-                    # work out the path to save the image to, then save it and the job info
-                    imagefile_path = IMAGES_DIR.joinpath(
-                        f'{response["info"]["job_timestamp"]}_{response["info"]["seed"]}_{req_string}.png'
-                    )
-                    image.save(imagefile_path, format="PNG")
-
-                    # save the job info
-                    imagefile_path.with_suffix(".json").write_text(
-                        json.dumps(
-                            {"request": request, "response": response}, indent=2, skipkeys=True, default=str
+                        # work out the path to save the image to, then save it and the job info
+                        imagefile_path = IMAGES_DIR.joinpath(
+                            f'{response["info"]["job_timestamp"]}_{response["info"]["seed"]}_{req_string}.png'
                         )
-                    )
-                    # this could return the image object, but we're saving it anyway and it's easier to
-                    # load a disnake File() from a path, so, uh... memory leak prevention? :sweat_smile:
-                    return imagefile_path
-                except Exception as e:
-                    logger.exception("Error saving image")
-                    raise e
+                        image.save(imagefile_path, format="PNG")
+
+                        # save the job info
+                        imagefile_path.with_suffix(".json").write_text(
+                            json.dumps(
+                                {"request": request, "response": response},
+                                indent=2,
+                                skipkeys=True,
+                                default=str,
+                            )
+                        )
+                        # this could return the image object, but we're saving it anyway and it's easier to
+                        # load a disnake File() from a path, so, uh... memory leak prevention? :sweat_smile:
+                        return imagefile_path
+                    except Exception as e:
+                        logger.exception("Error saving image")
+                        raise e
 
     def should_take_pic(self, message: str) -> bool:
         """
@@ -242,6 +260,13 @@ class Imagen:
                 logger.debug("Message matched take pic regex")
                 return True
         return False
+
+    def find_image_desc(self, message: str) -> tuple[str | Any, str] | None:
+        matches = re_image_description.search(message)
+        if matches is not None:
+            logger.debug("Message matched image description regex")
+            return matches.group(1), re_image_description.sub("", message).strip()
+        return None, message
 
     def strip_take_pic(self, message: str) -> str:
         """

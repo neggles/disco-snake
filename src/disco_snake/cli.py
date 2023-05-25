@@ -44,7 +44,9 @@ logger = logsnake.setup_logger(
 install_pretty()
 install_traceback(show_locals=True)
 
-bot: DiscoSnake = None  # type: ignore
+noisy_loggers = ["httpx", "disnake.gateway", "disnake.http"]
+
+bot: DiscoSnake  # type: ignore
 
 
 def cb_shutdown(message: str, code: int):
@@ -106,8 +108,8 @@ def start_bot(ctx: click.Context = None):
     logger.setLevel(config_log_level)
     logger.info(f"Effective log level: {logging.getLevelName(logger.getEffectiveLevel())}")
 
-    logging.getLogger("disnake.gateway").setLevel(logging.INFO)
-    logging.getLogger("disnake.http").setLevel(config_log_level)
+    for logger_name in noisy_loggers:
+        logging.getLogger(logger_name).setLevel(logging.INFO)
 
     # create log and data directories if they don't exist
     if not DATADIR_PATH.exists():

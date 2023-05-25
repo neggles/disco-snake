@@ -2,7 +2,7 @@ import json
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseConfig, BaseSettings, Field, PostgresDsn, validator
@@ -39,7 +39,7 @@ class JsonConfig(BaseConfig):
         init_settings: SettingsSourceCallable,
         env_settings: SettingsSourceCallable,
         file_secret_settings: SettingsSourceCallable,
-    ) -> tuple[SettingsSourceCallable, ...]:
+    ) -> Tuple[SettingsSourceCallable, ...]:
         return (
             env_settings,
             json_settings,

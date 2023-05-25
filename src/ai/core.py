@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -87,6 +87,7 @@ re_unescape_format = re.compile(r"\\([*_~`])")
 re_strip_special = re.compile(r"[^a-zA-Z0-9]+", re.M)
 re_linebreak_name = re.compile(r"(\n|\r|\r\n)(\S+): ", re.M)
 re_start_expression = re.compile(r"^\s*\(\w+\)\s*", re.I + re.M)
+re_image_description = re.compile(r"^\s*\[image: ([^\]]+)\]", re.I + re.M)
 
 
 AVAILABLE_PARAMS = [
@@ -460,6 +461,7 @@ class Ai(commands.Cog, name=COG_UID):
 
             response = ""
             response_image = None
+            should_reply = False
             author_name = message.author.display_name.strip()
 
             msg_timestamp = message.created_at.astimezone(tz=self.bot.timezone).strftime(
@@ -548,10 +550,23 @@ class Ai(commands.Cog, name=COG_UID):
                         )
                         response = ""
 
-                if self.imagen.should_take_pic(message.content):
-                    logger.info("Hold up, let me take a selfie...")
+                # see if there's an image description in the response
+                description, response = self.imagen.find_image_desc(response)
+                if description is not None:
+                    # there is, so we should reply with the image
+                    logger.info("i'm feeling creative, let's make an image...")
+                    try:
+                        response_image = await self.take_pic(message=description)
+                        should_reply = True
+                    except Exception as e:
+                        raise Exception("Failed to generate image response") from e
+
+                # if we haven't described an image, but the user asked for one, send one anyway
+                elif self.imagen.should_take_pic(message.content):
+                    logger.info("the people have spoken and they want catgirl selfies")
                     try:
                         response_image = await self.take_pic(message=message)
+                        should_reply = True
                     except Exception as e:
                         raise Exception("Failed to generate image response") from e
 
@@ -589,20 +604,34 @@ class Ai(commands.Cog, name=COG_UID):
                 if response_image is not None:
                     if response == "":
                         logger.info("Response was empty, sending image only.")
-                        await message.channel.send(file=response_image)
+                        if should_reply:
+                            await message.reply(file=response_image)
+                        else:
+                            await message.channel.send(file=response_image)
                     else:
                         logger.info(f"Responding with image, response: {response}")
-                        await message.channel.send(response, file=response_image)
+                        if should_reply:
+                            await message.reply(response, file=response_image)
+                        else:
+                            await message.channel.send(response, file=response_image)
                 elif response == "":
                     logger.info("Response was empty.")
-                    if not any_in_text(["conditional", "activity"], trigger):
-                        await message.channel.send("...")
-                    await message.add_reaction("")
+                    # if not any_in_text(["conditional", "activity"], trigger):
+                    #     await message.channel.send("...")
+                    await message.add_reaction("🤷‍♀️")
                 else:
                     await message.channel.send(response)
                     logger.info(f"Response: {response}")
 
                     self.last_response = datetime.now(timezone.utc)
+
+                if self.webui is not None:
+                    logger.debug("Updating webui")
+                    self.webui.lm_update(
+                        prompt=self.get_prompt(message),
+                        message=f"{author_name}: {debug_data['message']['content']}",
+                        response=debug_data["response_raw"],
+                    )
 
             except Exception as e:
                 logger.exception(e)
@@ -723,12 +752,16 @@ class Ai(commands.Cog, name=COG_UID):
                 file = file.rename(file.parent / "archive" / file.name)
 
     # Image generation stuff
-    async def take_pic(self, message: Message) -> Tuple[File, dict]:
+    async def take_pic(self, message: Union[Message, str]) -> Tuple[File, dict]:
         """
         hold up, let me take a selfie
         """
         # get the message content
-        message_content = self.get_msg_content_clean(message).lower()
+        if isinstance(message, Message):
+            message_content = self.get_msg_content_clean(message).lower()
+        else:
+            message_content = message.lower()
+
         if message_content == "":
             logger.debug("Message was empty after cleaning.")
             return ""

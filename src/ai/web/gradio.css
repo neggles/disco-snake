@@ -1,0 +1,13 @@
+div.generating {
+    border-width:0 !important;
+    border-style:solid !important;
+}
+
+div.tab_nav {
+    border-width: 0 !important;
+    border-style: solid !important;
+}
+
+div.tab_nav > button {
+    border-bottom-color: transparent !important;
+}
