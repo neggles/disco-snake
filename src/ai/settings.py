@@ -64,10 +64,23 @@ class GradioConfig(BaseModel):
     theme: Optional[str] = None
 
 
+class Prefixes(BaseModel):
+    system: str
+    user: str
+    model: str
+
+
+class Prompt(BaseModel):
+    character: Union[str, List[str]]
+    context: Union[str, List[str]]
+    greeting: str
+    prefix: Prefixes
+
+
 class AiSettings(BaseSettings):
     name: str
     guilds: List[int]
-    prompt: Union[str, List[str]]
+    prompt: Prompt
     gradio: GradioConfig
     params: BotParameters
     model_provider: ModelProviderConfig

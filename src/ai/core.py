@@ -40,7 +40,6 @@ from transformers.utils import logging as transformers_logging
 import logsnake
 from ai.eyes import DiscoEyes
 from ai.imagen import Imagen
-from ai.model import get_ooba_model
 from ai.settings import (
     AI_DATA_DIR,
     AI_LOG_DIR,
@@ -118,6 +117,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         # Load config params up into top level properties
         self.params = self.config.params
+        self.prompt = self.config.prompt
 
         self.activity_channels: List[int] = self.params.activity_channels
         self.conditional_response: bool = self.params.conditional_response
@@ -131,9 +131,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.max_retries = self.params.max_retries
         self.ctxbreak_users = self.params.ctxbreak_users
         self.ctxbreak_roles = self.params.ctxbreak_roles
-
-        self.ctx_lock = Lock()  # used to stop multiple context builds from happening at once
-        self.lm_lock = Lock()  # used to stop multiple conditional responses from happening at once
+        self.lm_lock = Lock()  # used to stop multiple responses from happening at once
 
         # we will populate these later during async init
         self.model_provider: OobaModel = None
@@ -176,15 +174,18 @@ class Ai(commands.Cog, name=COG_UID):
         else:
             location_context = "and a friend in a Discord DM"
 
-        if isinstance(self.config.prompt, List):
-            prompt = "\n".join(self.config.prompt)
+        if isinstance(self.prompt.character, List):
+            prompt = "\n".join(self.prompt.character)
         else:
-            prompt = self.config.prompt
+            prompt = self.prompt.character
 
         replace_tokens = {
             "bot_name": self.name,
             "location_context": location_context,
             "current_time": get_lm_prompt_time(),
+            "prefix.system": self.prompt.prefix.system,
+            "prefix.user": self.prompt.prefix.user,
+            "prefix.model": self.prompt.prefix.model,
         }
         for token, replacement in replace_tokens.items():
             prompt = prompt.replace(f"{{{token}}}", replacement)
@@ -202,7 +203,11 @@ class Ai(commands.Cog, name=COG_UID):
 
         logger.debug("Initializing Model Provider...")
         if self.model_provider_type == "ooba":
-            self.model_provider = get_ooba_model(cfg=self.model_provider_cfg, tokenizer=self.tokenizer)
+            self.model_provider = OobaModel(
+                endpoint_url=self.model_provider_cfg.endpoint,
+                args=self.model_provider_cfg.gensettings,
+                tokenizer=self.tokenizer,
+            )
         else:
             raise ValueError(f"Unknown model provider type: {self.model_provider_type}")
 
@@ -280,7 +285,7 @@ class Ai(commands.Cog, name=COG_UID):
                     if self.conditional_response is True:
                         conversation = await self.get_context_messages(message.channel)
                         if await self.model_provider.should_respond_async(
-                            conversation, self.name, "### Response:"
+                            conversation, self.name, self.prompt.prefix.model
                         ):
                             logger.debug(f"Model wants to respond to '{message_content}', responding...")
                             trigger = "conditional"
@@ -348,9 +353,9 @@ class Ai(commands.Cog, name=COG_UID):
         for message in reversed(messages):
             # set up author name
             if message.author.bot is False:
-                author_name = f"### Instruction: {message.author.display_name.strip()}"
+                author_name = f"{self.prompt.prefix.user}{message.author.display_name.strip()}:"
             elif message.author.id == self.bot.user.id:
-                author_name = f"### Response: {self.name}"
+                author_name = f"{self.prompt.prefix.model}{self.name}:"
             else:
                 logger.debug("Skipping non-self bot message")
                 continue
@@ -361,26 +366,26 @@ class Ai(commands.Cog, name=COG_UID):
                         try:
                             caption = await self.eyes.perceive_url(embed.thumbnail.url)
                             if caption is not None:
-                                chain.append(f"{author_name}: [image: {caption}]")
+                                chain.append(f"{author_name} [image: {caption}]")
                         except Exception as e:
                             logger.exception(e)
-                            chain.append(f"{author_name}: [image: loading error]")
+                            chain.append(f"{author_name} [image: loading error]")
                     elif embed.description is not None and message.author.id != self.bot.user.id:
-                        chain.append(f"{author_name}: [embed: {embed.description}]")
+                        chain.append(f"{author_name} [embed: {embed.description}]")
                     elif embed.title is not None and message.author.id != self.bot.user.id:
-                        chain.append(f"{author_name}: [embed: {embed.title}]")
+                        chain.append(f"{author_name} [embed: {embed.title}]")
 
             if message.content and len(message.embeds) == 0:
                 content = self.get_msg_content_clean(message)
                 if content.startswith("http"):
-                    chain.append(f"{author_name}: [a link to a webpage]")
+                    chain.append(f"{author_name} [a link to a webpage]")
                 elif content != "" and "```" not in content and not content.startswith("-"):
                     if message.author.id == self.bot.user.id:
                         # strip (laughs) from start of own context
                         content = re_start_expression.sub("", content)
-                        chain.append(f"{author_name}: {content}")
+                        chain.append(f"{author_name} {content}")
                     else:
-                        chain.append(f"{author_name}: {content}")
+                        chain.append(f"{author_name} {content}")
 
             for attachment in message.attachments:
                 try:
@@ -389,10 +394,10 @@ class Ai(commands.Cog, name=COG_UID):
                         continue
                     caption = await self.eyes.perceive_attachment(attachment)
                     if caption is not None:
-                        chain.append(f"{author_name}: [image: {caption}]")
+                        chain.append(f"{author_name} [image: {caption}]")
                 except Exception as e:
                     logger.exception(e)
-                    chain.append(f"{author_name}: [image: loading error]")
+                    chain.append(f"{author_name} [image: loading error]")
 
         chain = [x.strip() for x in chain if x.strip() != ""]
         return "\n".join(chain)
@@ -444,7 +449,7 @@ class Ai(commands.Cog, name=COG_UID):
             response = ""
             response_image = None
             should_reply = False
-            author_name = message.author.display_name.strip()
+            author_name = f"{message.author.display_name.strip()}:"
 
             msg_timestamp = message.created_at.astimezone(tz=self.bot.timezone).strftime(
                 "%Y-%m-%d-%H:%M:%S%z"
@@ -473,33 +478,33 @@ class Ai(commands.Cog, name=COG_UID):
             debug_data["context"] = context.splitlines()
 
             # war crime for alpaca, needs more newlines
-            context_lines = context.splitlines()
-            new_lines = []
-            first_instruct = True
-            first_response = True
-            for line in context_lines:
-                if line.startswith("### "):
-                    _, content = line.split(":", 1)
-                    if line.startswith("### Response:"):
-                        if first_response is True:
-                            # strip empty newline at end of prompt
-                            new_lines = new_lines[:-1]
-                            # add response without extra newline
-                            new_lines.append(f"### Response:\n{content.strip()}")
-                            first_response = False
-                        else:
-                            # newline then response
-                            new_lines.append(f"\n### Response:\n{content.strip()}")
-                    else:
-                        if first_instruct is True:
-                            new_lines.append(f"### Instruction:\n{content.strip()}")
-                            first_instruct = False
-                        else:
-                            new_lines.append(f"\n### Instruction:\n{content.strip()}")
-                else:
-                    new_lines.append(line)
-            context = "\n".join(new_lines)
-            context = context.rstrip()
+            # context_lines = context.splitlines()
+            # new_lines = []
+            # first_instruct = True
+            # first_response = True
+            # for line in context_lines:
+            #     if line.startswith("### "):
+            #         _, content = line.split(":", 1)
+            #         if line.startswith("### Response:"):
+            #             if first_response is True:
+            #                 # strip empty newline at end of prompt
+            #                 new_lines = new_lines[:-1]
+            #                 # add response without extra newline
+            #                 new_lines.append(f"### Response:\n{content.strip()}")
+            #                 first_response = False
+            #             else:
+            #                 # newline then response
+            #                 new_lines.append(f"\n### Response:\n{content.strip()}")
+            #         else:
+            #             if first_instruct is True:
+            #                 new_lines.append(f"### Instruction:\n{content.strip()}")
+            #                 first_instruct = False
+            #             else:
+            #                 new_lines.append(f"\n### Instruction:\n{content.strip()}")
+            #     else:
+            #         new_lines.append(line)
+            # context = "\n".join(new_lines)
+            # context = context.rstrip()
 
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
@@ -579,7 +584,6 @@ class Ai(commands.Cog, name=COG_UID):
 
                 # trim hashes n shit
                 response = response.rstrip(" #}")
-
                 debug_data["response"] = response
 
                 # Send response if not empty
@@ -598,8 +602,6 @@ class Ai(commands.Cog, name=COG_UID):
                             await message.channel.send(response, file=response_image)
                 elif response == "":
                     logger.info("Response was empty.")
-                    # if not any_in_text(["conditional", "activity"], trigger):
-                    #     await message.channel.send("...")
                     await message.add_reaction("🤷‍♀️")
                 else:
                     await message.channel.send(response)
@@ -611,8 +613,8 @@ class Ai(commands.Cog, name=COG_UID):
                     logger.debug("Updating webui")
                     self.webui.lm_update(
                         prompt=self.get_prompt(message),
-                        message=f"{author_name}: {debug_data['message']['content']}",
-                        response=debug_data["response_raw"],
+                        message=f"{author_name} {debug_data['message']['content']}",
+                        response=debug_data["response_raw"].lstrip(),
                     )
 
             except Exception as e:
