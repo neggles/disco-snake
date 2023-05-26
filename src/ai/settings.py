@@ -32,14 +32,6 @@ class ModelProviderConfig(BaseModel):
 
 
 # configuration dataclasses
-class MemoryStoreConfig(BaseModel):
-    database_uri: str
-    model: str
-    model_layer: int
-    short_term_amount: int
-    long_term_amount: int
-
-
 class BotParameters(BaseModel):
     conditional_response: bool
     idle_messaging: bool
@@ -69,7 +61,7 @@ class GradioConfig(BaseModel):
     bind_port: int = 7863
     enable_queue: bool = True
     width: str = "100%"
-    theme: str = "freddyaboulton/dracula_revamped"
+    theme: Optional[str] = None
 
 
 class AiSettings(BaseSettings):
@@ -80,7 +72,6 @@ class AiSettings(BaseSettings):
     params: BotParameters
     model_provider: ModelProviderConfig
     bad_words: List[str] = Field([])
-    memory_store: Optional[MemoryStoreConfig] = None
     vision: Optional[VisionConfig] = None
 
     class Config(JsonConfig):

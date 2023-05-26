@@ -24,7 +24,6 @@ from disnake import (
 from disnake.ext import commands, tasks
 from Levenshtein import distance as lev_distance
 from shimeji import ChatBot
-from shimeji.memory.providers import PostgresMemoryStore
 from shimeji.model_provider import OobaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
@@ -46,7 +45,6 @@ from ai.settings import (
     AI_DATA_DIR,
     AI_LOG_DIR,
     AI_LOG_FORMAT,
-    MemoryStoreConfig,
     ModelProviderConfig,
     get_ai_settings,
 )
@@ -116,7 +114,6 @@ class Ai(commands.Cog, name=COG_UID):
         self.config = get_ai_settings()
 
         # Parse config file
-        self.memory_store_cfg: MemoryStoreConfig = self.config.memory_store
         self.model_provider_cfg: ModelProviderConfig = self.config.model_provider
 
         # Load config params up into top level properties
@@ -131,7 +128,6 @@ class Ai(commands.Cog, name=COG_UID):
         self.logging_channel_id: int = self.params.logging_channel_id
         self.nicknames: List[str] = self.params.nicknames
         self.debug: bool = self.params.debug
-        self.memory_enable = self.params.memory_enable
         self.max_retries = self.params.max_retries
         self.ctxbreak_users = self.params.ctxbreak_users
         self.ctxbreak_roles = self.params.ctxbreak_roles
@@ -140,7 +136,6 @@ class Ai(commands.Cog, name=COG_UID):
         self.lm_lock = Lock()  # used to stop multiple conditional responses from happening at once
 
         # we will populate these later during async init
-        self.memory_store: PostgresMemoryStore = None
         self.model_provider: OobaModel = None
         self.model_provider_type: str = self.model_provider_cfg.type
         self.chatbot: ChatBot = None
@@ -198,19 +193,6 @@ class Ai(commands.Cog, name=COG_UID):
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
-        if self.memory_enable:
-            # Set up MemoryStoreProvider
-            logger.debug("Memory Store is enabled, initializing...")
-            self.memory_store = PostgresMemoryStore(
-                database_uri=self.memory_store_cfg.database_uri,
-                model=self.memory_store_cfg.model,
-                model_layer=self.memory_store_cfg.model_layer,
-                short_term_amount=self.memory_store_cfg.short_term_amount,
-                long_term_amount=self.memory_store_cfg.long_term_amount,
-            )
-        else:
-            logger.debug("Memory Store is disabled, skipping...")
-            self.memory_store = None
 
         logger.debug("Initializing Tokenizer...")
         self.tokenizer = LlamaTokenizerFast.from_pretrained(
