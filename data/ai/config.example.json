@@ -11,9 +11,16 @@
     "And then the roleplay chat between {bot_name} {location_context} begins. Remember: Always stay in character.",
     "### Response: {bot_name}: hey! what's up"
   ],
+  "gradio": {
+    "enabled": true,
+    "bind_host": "0.0.0.0",
+    "bind_port": 7863,
+    "enable_queue": true,
+    "theme": null
+  },
   "params": {
-    "conditional_response": true,
-    "idle_messaging": true,
+    "conditional_response": false,
+    "idle_messaging": false,
     "idle_messaging_interval": 300,
     "nicknames": [
       "chi-chan",
@@ -33,17 +40,9 @@
     "logging_channel_id": 1234567890,
     "activity_channels": [1234567890],
     "debug": false,
-    "memory_enable": false,
     "max_retries": 3,
     "ctxbreak_users": [9028490238092348903, 92380492380494],
     "ctxbreak_roles": [85023948059823409852, 392489032842903890]
-  },
-  "memory_store": {
-    "database_uri": "postgresql+asyncpg://postgres:postgres@127.0.0.1:2027/eliza",
-    "model": "distilroberta-base",
-    "model_layer": -1,
-    "short_term_amount": 10,
-    "long_term_amount": 10
   },
   "model_provider": {
     "type": "ooba",
@@ -128,6 +127,7 @@
     "\"",
     " \"",
     " —",
-    "—"
+    "—",
+    "```"
   ]
 }
