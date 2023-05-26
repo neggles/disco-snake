@@ -21,15 +21,19 @@ class GradioUi:
         logger.info("Initializing Gradio UI")
         self.cog = cog
         self.config = config
-        self.theme = gr.themes.Base(
-            primary_hue=colors.violet,
-            secondary_hue=colors.indigo,
-            neutral_hue=colors.slate,
-            font=[gr.themes.GoogleFont("Fira Sans"), "ui-sans-serif", "system-ui", "sans-serif"],
-            font_mono=[gr.themes.GoogleFont("Fira Code"), "ui-monospace", "Consolas", "monospace"],
-        ).set(
-            slider_color_dark="*primary_500",
-        )
+
+        if self.config.theme is None or self.config.theme == "default":
+            self.theme = gr.themes.Base(
+                primary_hue=colors.violet,
+                secondary_hue=colors.indigo,
+                neutral_hue=colors.slate,
+                font=[gr.themes.GoogleFont("Fira Sans"), "ui-sans-serif", "system-ui", "sans-serif"],
+                font_mono=[gr.themes.GoogleFont("Fira Code"), "ui-monospace", "Consolas", "monospace"],
+            ).set(
+                slider_color_dark="*primary_500",
+            )
+        else:
+            self.theme = self.config.theme
 
         self.lm_gensettings = cog.model_provider_cfg.gensettings
         self.components = {}
@@ -378,21 +382,24 @@ class GradioUi:
                                     value=lm_last_prompt,
                                     every=2.0,
                                     lines=15,
-                                    interactive=False,
+                                    max_lines=30,
+                                    interactive=True,
                                     label="Current Prompt",
                                 ).style(show_copy_button=True)
                                 self.gr_last_message = gr.Textbox(
                                     value=lm_last_message,
                                     every=2.0,
-                                    lines=2,
-                                    interactive=False,
+                                    lines=1,
+                                    max_lines=5,
+                                    interactive=True,
                                     label="Last Message",
                                 ).style(show_copy_button=True)
                                 self.gr_last_response = gr.Textbox(
                                     value=lm_last_response,
                                     every=2.0,
-                                    lines=5,
-                                    interactive=False,
+                                    lines=1,
+                                    max_lines=5,
+                                    interactive=True,
                                     label="Last Response",
                                 ).style(show_copy_button=True)
 
@@ -413,22 +420,25 @@ class GradioUi:
                                 self.imagen_last_request = gr.Textbox(
                                     value=im_last_request,
                                     every=2.0,
-                                    lines=1,
-                                    interactive=False,
+                                    lines=2,
+                                    max_lines=5,
+                                    interactive=True,
                                     label="Last input request",
                                     elem_id="imagen_last_request",
                                 ).style(show_copy_button=True)
                                 self.imagen_last_image = gr.Image(
                                     value=im_last_image,
                                     every=2.0,
-                                    interactive=False,
+                                    interactive=True,
                                     label="Last image",
                                     elem_id="imagen_last_image",
                                 ).style(height=600)
                                 self.imagen_last_tags = gr.Textbox(
                                     value=im_last_tags,
                                     every=2.0,
-                                    interactive=False,
+                                    lines=2,
+                                    max_lines=5,
+                                    interactive=True,
                                     label="Last output prompt",
                                     elem_id="imagen_last_tags",
                                 ).style(show_copy_button=True)
