@@ -52,7 +52,6 @@ from ai.types import MessageChannel
 from ai.ui import AiStatusEmbed
 from ai.utils import (
     anti_spam,
-    any_in_text,
     convert_mentions_emotes,
     get_full_class_name,
     get_lm_prompt_time,
@@ -165,7 +164,7 @@ class Ai(commands.Cog, name=COG_UID):
         return self.config.name
 
     # retrieve the LM prompt and inject name, time, etc.
-    def get_prompt(self, ctx: Optional[MessageInteraction] = None) -> str:
+    def get_prompt(self, ctx: Optional[MessageInteraction] = None, include_model: bool = False) -> str:
         if ctx is None:
             location_context = "and her friends in a Discord server"
         elif hasattr(ctx, "guild") and ctx.guild is not None:
@@ -178,6 +177,8 @@ class Ai(commands.Cog, name=COG_UID):
         prompt = []
         prompt.append(self.prompt.system.full)
         prompt.append(self.prompt.character.full)
+        if include_model:
+            prompt.append(self.prompt.model.full)
         prompt = "\n\n".join(prompt)
 
         replace_tokens = {
@@ -247,6 +248,8 @@ class Ai(commands.Cog, name=COG_UID):
             return
         if "```" in message.content:
             return
+        if message.content.strip() == ".":
+            return
 
         # Ignore messages from unapproved users in DMs/groups
         if isinstance(message.channel, (DMChannel, GroupChannel)):
@@ -281,8 +284,8 @@ class Ai(commands.Cog, name=COG_UID):
 
                 elif message.channel.id in self.activity_channels:
                     if self.conditional_response is True:
-                        conversation = await self.get_context_messages(message.channel)
-                        if await self.model_provider.should_respond_async(conversation, self.name, ""):
+                        conversation = await self.get_context_messages(message.channel, as_list=False)
+                        if await self.model_provider.should_respond_async(conversation, self.name, "\n"):
                             logger.debug(f"Model wants to respond to '{message_content}', responding...")
                             trigger = "conditional"
 
@@ -328,7 +331,9 @@ class Ai(commands.Cog, name=COG_UID):
                     await message.channel.send(embed=embed, file=File(error_file), delete_after=300.0)
 
     # get the last 40 messages in the channel (or however many there are if less than 40)
-    async def get_context_messages(self, channel: MessageChannel) -> str:
+    async def get_context_messages(
+        self, channel: MessageChannel, as_list: bool = True
+    ) -> Union[str, List[str]]:
         messages = await channel.history(limit=50).flatten()
         messages, to_remove = anti_spam(messages)
         if to_remove:
@@ -396,14 +401,27 @@ class Ai(commands.Cog, name=COG_UID):
                     chain.append(f"{author_name} [image: loading error]")
 
         chain = [x.strip() for x in chain if x.strip() != ""]
-        return "\n".join(chain)
+        return chain if as_list else "\n".join(chain)
 
     # assemble a prompt/context for the model
-    async def build_ctx(self, conversation: str, message: Optional[Message] = None):
+    async def build_ctx(self, conversation: List[str], message: Message):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
+        logger.info(f"building context from {len(conversation)} messages")
+
+        if self.prompt.instruct is True:
+            post_instruct = conversation[-1:]
+            conversation = "\n".join(
+                [
+                    "\n".join(conversation),
+                    "\n" + self.prompt.model.full,
+                    "\n".join(post_instruct),
+                ]
+            )
+        else:
+            conversation = "\n".join(conversation)
 
         prompt_entry = ContextEntry(
-            text=self.get_prompt(message) + "\n" + self.prompt.model.full,
+            text=self.get_prompt(message, include_model=(not self.prompt.instruct)),
             prefix="",
             suffix="",
             reserved_tokens=512,
@@ -434,27 +452,11 @@ class Ai(commands.Cog, name=COG_UID):
         )
         contextmgr.add_entry(conversation_entry)
 
-        instruct_entry = ContextEntry(
-            text=f"\n{self.name}:",
-            prefix="",
-            suffix="",
-            reserved_tokens=256,
-            insertion_order=0,
-            insertion_position=-1,
-            trim_direction=TRIM_DIR_NONE,
-            trim_type=TRIM_TYPE_NEWLINE,
-            insertion_type=INSERTION_TYPE_NEWLINE,
-            forced_activation=True,
-            cascading_activation=False,
-            tokenizer=self.tokenizer,
-        )
-        # contextmgr.add_entry(instruct_entry)
-
         context = contextmgr.context(self.context_size)
         return context.replace("\n\n", "\n")
 
     # actual response logic
-    async def respond(self, conversation: str, message: Message, trigger: str = None) -> str:
+    async def respond(self, conversation: List[str], message: Message, trigger: str = None) -> str:
         async with message.channel.typing():
             debug_data: Dict[str, Any] = {}
 
@@ -477,7 +479,7 @@ class Ai(commands.Cog, name=COG_UID):
                 "timestamp": msg_timestamp,
                 "trigger": msg_trigger,
                 "content": message.content,
-                "conversation": conversation.splitlines(),
+                "conversation": conversation,
             }
 
             try:
@@ -623,7 +625,7 @@ class Ai(commands.Cog, name=COG_UID):
                 if self.webui is not None:
                     logger.debug("Updating webui")
                     self.webui.lm_update(
-                        prompt=self.get_prompt(message),
+                        prompt=context,
                         message=f"{author_name} {debug_data['message']['content']}",
                         response=debug_data["response_raw"].lstrip(),
                     )
@@ -656,7 +658,7 @@ class Ai(commands.Cog, name=COG_UID):
                     logger.debug(f"Running idle response to message {message.id}")
                     # if it's been more than <idle_messaging_interval> sec, send a response
                     async with self.lm_lock:
-                        conversation = await self.get_context_messages(message.channel)
+                        conversation = await self.get_context_messages(message.channel, as_list=True)
                         await self.respond(conversation, message)
         else:
             return

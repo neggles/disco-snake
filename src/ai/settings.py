@@ -79,6 +79,7 @@ class PromptElement(BaseModel):
 
 
 class Prompt(BaseModel):
+    instruct: Optional[bool] = Field(True)
     character: PromptElement = Field(...)
     system: PromptElement = Field(...)
     user: Optional[PromptElement] = Field(None)

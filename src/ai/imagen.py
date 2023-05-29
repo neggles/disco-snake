@@ -62,6 +62,8 @@ re_clean_filename = re.compile(r"[^a-zA-Z0-9_\- ]+")  # for removing non-alphanu
 re_single_dash = re.compile(r"-+")  # for removing multiple dashes
 
 re_image_description = re.compile(r"\[image: ([^\]]+)\]", re.I + re.M)
+re_send_image = re.compile(r"[\[(].?(?:sends|sending) a? ?([^)\]]+)[)\]]", re.I + re.M)
+send_pic_regexes = [re_image_description, re_send_image]
 
 
 class Imagen:
@@ -255,10 +257,11 @@ class Imagen:
         return False
 
     def find_image_desc(self, message: str) -> tuple[str | Any, str] | None:
-        matches = re_image_description.search(message)
-        if matches is not None:
-            logger.debug("Message matched image description regex")
-            return matches.group(1), re_image_description.sub("", message).strip()
+        for regex in send_pic_regexes:
+            matches = regex.search(message)
+            if matches is not None:
+                logger.debug("Message matched image description regex")
+                return matches.group(1), re_image_description.sub("", message).strip()
         return None, message
 
     def strip_take_pic(self, message: str) -> str:
