@@ -406,13 +406,13 @@ class Ai(commands.Cog, name=COG_UID):
     # assemble a prompt/context for the model
     async def build_ctx(self, conversation: List[str], message: Message):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
-        logger.info(f"building context from {len(conversation)} messages")
+        logger.debug(f"building context from {len(conversation)} messages")
 
         if self.prompt.instruct is True:
             post_instruct = conversation[-1:]
             conversation = "\n".join(
                 [
-                    "\n".join(conversation),
+                    "\n".join(conversation[:-1]),
                     "\n" + self.prompt.model.full,
                     "\n".join(post_instruct),
                 ]
@@ -453,7 +453,7 @@ class Ai(commands.Cog, name=COG_UID):
         contextmgr.add_entry(conversation_entry)
 
         context = contextmgr.context(self.context_size)
-        return context.replace("\n\n", "\n")
+        return context.replace("\n\n", "\n").replace("\n\n", "\n")
 
     # actual response logic
     async def respond(self, conversation: List[str], message: Message, trigger: str = None) -> str:
