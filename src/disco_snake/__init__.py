@@ -16,11 +16,11 @@ LOG_FORMAT = "%(color)s[%(levelname)1.1s %(asctime)s][%(name)s][%(module)s:%(fun
 PACKAGE_ROOT = get_package_root()
 
 COGDIR_PATH = PACKAGE_ROOT.joinpath("cogs")
-# LOGDIR_PATH = PACKAGE_ROOT.parent.joinpath("logs")
-# DATADIR_PATH = PACKAGE_ROOT.parent.joinpath("data")
+LOGDIR_PATH = PACKAGE_ROOT.parent.joinpath("logs")
+DATADIR_PATH = PACKAGE_ROOT.parent.joinpath("data")
 
-LOGDIR_PATH = Path.cwd().joinpath("logs")
-DATADIR_PATH = Path.cwd().joinpath("data")
+# LOGDIR_PATH = Path.cwd().joinpath("logs")
+# DATADIR_PATH = Path.cwd().joinpath("data")
 
 CONFIG_PATH = DATADIR_PATH.joinpath("config.json")
 BLACKLIST_PATH = DATADIR_PATH.joinpath("blacklist.json")
