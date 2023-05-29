@@ -1,7 +1,7 @@
 import logging
 import re
 from copy import deepcopy
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from typing import List, Optional, Union
 
 from pydantic import BaseModel, BaseSettings, Field
@@ -64,17 +64,25 @@ class GradioConfig(BaseModel):
     theme: Optional[str] = None
 
 
-class Prefixes(BaseModel):
-    system: str
-    user: str
-    model: str
+class PromptElement(BaseModel):
+    prefix: str = Field(...)
+    prompt: Union[str, List[str]] = Field(...)
+    suffix: str = Field(...)
+
+    @property
+    def full(self) -> str:
+        if isinstance(self.prompt, list):
+            prompt = "\n".join(self.prompt)
+        else:
+            prompt = self.prompt
+        return "\n".join([self.prefix, prompt, self.suffix]).strip()
 
 
 class Prompt(BaseModel):
-    character: Union[str, List[str]]
-    context: Union[str, List[str]]
-    greeting: str
-    prefix: Prefixes
+    character: PromptElement = Field(...)
+    system: PromptElement = Field(...)
+    user: Optional[PromptElement] = Field(None)
+    model: PromptElement = Field(...)
 
 
 class AiSettings(BaseSettings):

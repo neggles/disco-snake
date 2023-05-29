@@ -45,6 +45,7 @@ from ai.settings import (
     AI_LOG_DIR,
     AI_LOG_FORMAT,
     ModelProviderConfig,
+    Prompt,
     get_ai_settings,
 )
 from ai.types import MessageChannel
@@ -83,7 +84,7 @@ re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
 re_unescape_format = re.compile(r"\\([*_~`])")
 re_strip_special = re.compile(r"[^a-zA-Z0-9]+", re.M)
 re_linebreak_name = re.compile(r"(\n|\r|\r\n)(\S+): ", re.M)
-re_start_expression = re.compile(r"^\s*\(\w+\)\s*", re.I + re.M)
+re_start_expression = re.compile(r"^\s*[(\*]\w+[)\*]\s*", re.I + re.M)
 re_image_description = re.compile(r"^\s*\[image: ([^\]]+)\]", re.I + re.M)
 
 
@@ -117,7 +118,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         # Load config params up into top level properties
         self.params = self.config.params
-        self.prompt = self.config.prompt
+        self.prompt: Prompt = self.config.prompt
 
         self.activity_channels: List[int] = self.params.activity_channels
         self.conditional_response: bool = self.params.conditional_response
@@ -174,18 +175,15 @@ class Ai(commands.Cog, name=COG_UID):
         else:
             location_context = "and a friend in a Discord DM"
 
-        if isinstance(self.prompt.character, List):
-            prompt = "\n".join(self.prompt.character)
-        else:
-            prompt = self.prompt.character
+        prompt = []
+        prompt.append(self.prompt.system.full)
+        prompt.append(self.prompt.character.full)
+        prompt = "\n\n".join(prompt)
 
         replace_tokens = {
             "bot_name": self.name,
             "location_context": location_context,
             "current_time": get_lm_prompt_time(),
-            "prefix.system": self.prompt.prefix.system,
-            "prefix.user": self.prompt.prefix.user,
-            "prefix.model": self.prompt.prefix.model,
         }
         for token, replacement in replace_tokens.items():
             prompt = prompt.replace(f"{{{token}}}", replacement)
@@ -284,9 +282,7 @@ class Ai(commands.Cog, name=COG_UID):
                 elif message.channel.id in self.activity_channels:
                     if self.conditional_response is True:
                         conversation = await self.get_context_messages(message.channel)
-                        if await self.model_provider.should_respond_async(
-                            conversation, self.name, self.prompt.prefix.model
-                        ):
+                        if await self.model_provider.should_respond_async(conversation, self.name, ""):
                             logger.debug(f"Model wants to respond to '{message_content}', responding...")
                             trigger = "conditional"
 
@@ -346,16 +342,16 @@ class Ai(commands.Cog, name=COG_UID):
                 or member_in_any_role(message.author, self.ctxbreak_roles)
             ):
                 logger.debug("Found context break tag, breaking context chain")
-                messages = messages[:idx]
+                messages = messages[0 : idx + 1]
                 break
 
         chain = []
         for message in reversed(messages):
             # set up author name
             if message.author.bot is False:
-                author_name = f"{self.prompt.prefix.user}{message.author.display_name.strip()}:"
+                author_name = f"{message.author.display_name.strip()}:"
             elif message.author.id == self.bot.user.id:
-                author_name = f"{self.prompt.prefix.model}{self.name}:"
+                author_name = f"{self.name}:"
             else:
                 logger.debug("Skipping non-self bot message")
                 continue
@@ -407,7 +403,7 @@ class Ai(commands.Cog, name=COG_UID):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
 
         prompt_entry = ContextEntry(
-            text=self.get_prompt(message),
+            text=self.get_prompt(message) + "\n" + self.prompt.model.full,
             prefix="",
             suffix="",
             reserved_tokens=512,
@@ -422,13 +418,12 @@ class Ai(commands.Cog, name=COG_UID):
         )
         contextmgr.add_entry(prompt_entry)
 
-        # conversation
         conversation_entry = ContextEntry(
-            text=conversation + f"\n### Response: {self.name}:",
+            text=conversation + f"\n{self.name}:",
             prefix="",
             suffix="",
-            reserved_tokens=512,
-            insertion_order=0,
+            reserved_tokens=1024,
+            insertion_order=500,
             insertion_position=-1,
             trim_direction=TRIM_DIR_TOP,
             trim_type=TRIM_TYPE_NEWLINE,
@@ -439,7 +434,24 @@ class Ai(commands.Cog, name=COG_UID):
         )
         contextmgr.add_entry(conversation_entry)
 
-        return contextmgr.context(self.context_size)
+        instruct_entry = ContextEntry(
+            text=f"\n{self.name}:",
+            prefix="",
+            suffix="",
+            reserved_tokens=256,
+            insertion_order=0,
+            insertion_position=-1,
+            trim_direction=TRIM_DIR_NONE,
+            trim_type=TRIM_TYPE_NEWLINE,
+            insertion_type=INSERTION_TYPE_NEWLINE,
+            forced_activation=True,
+            cascading_activation=False,
+            tokenizer=self.tokenizer,
+        )
+        # contextmgr.add_entry(instruct_entry)
+
+        context = contextmgr.context(self.context_size)
+        return context.replace("\n\n", "\n")
 
     # actual response logic
     async def respond(self, conversation: str, message: Message, trigger: str = None) -> str:
@@ -475,36 +487,35 @@ class Ai(commands.Cog, name=COG_UID):
 
             # Build context
             context = await self.build_ctx(conversation, message)
-            debug_data["context"] = context.splitlines()
 
             # war crime for alpaca, needs more newlines
             # context_lines = context.splitlines()
             # new_lines = []
-            # first_instruct = True
-            # first_response = True
+            # first = True
             # for line in context_lines:
             #     if line.startswith("### "):
             #         _, content = line.split(":", 1)
             #         if line.startswith("### Response:"):
-            #             if first_response is True:
+            #             if first is True:
             #                 # strip empty newline at end of prompt
             #                 new_lines = new_lines[:-1]
             #                 # add response without extra newline
             #                 new_lines.append(f"### Response:\n{content.strip()}")
-            #                 first_response = False
+            #                 first = False
             #             else:
             #                 # newline then response
             #                 new_lines.append(f"\n### Response:\n{content.strip()}")
             #         else:
-            #             if first_instruct is True:
+            #             if first is True:
             #                 new_lines.append(f"### Instruction:\n{content.strip()}")
-            #                 first_instruct = False
+            #                 first = False
             #             else:
             #                 new_lines.append(f"\n### Instruction:\n{content.strip()}")
             #     else:
             #         new_lines.append(line)
-            # context = "\n".join(new_lines)
+            # context = "\n".join(new_lines).replace("\n\n\n", "\n\n")
             # context = context.rstrip()
+            debug_data["context"] = context.splitlines()
 
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)

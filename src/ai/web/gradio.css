@@ -11,3 +11,22 @@ div.tab_nav {
 div.tab_nav > button {
     border-bottom-color: transparent !important;
 }
+
+#header_title {
+    height: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: flex-end;
+}
+
+#refresh_col {
+    align-items: flex-end;
+}
+
+#refresh_btn {
+    max-width: 40px;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px;
+}

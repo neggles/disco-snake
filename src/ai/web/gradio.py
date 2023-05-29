@@ -1,6 +1,7 @@
 import logging
+from functools import partial, partialmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 import gradio as gr
 from gradio.themes.utils import colors
@@ -36,7 +37,7 @@ class GradioUi:
             self.theme = self.config.theme
 
         self.lm_gensettings = cog.model_provider_cfg.gensettings
-        self.components = {}
+        self.dynamic_elements = {}
 
         try:
             self.css = Path(__file__).with_suffix(".css").read_text()
@@ -50,6 +51,8 @@ class GradioUi:
             theme=self.theme,
             css=self.css,
         )
+
+        self.dynamic_elements: List[gr.components.Component] = []
 
         # Last text prompts
         self.lm_last_prompt = ""
@@ -77,37 +80,61 @@ class GradioUi:
         self.im_last_image = image
         pass
 
-    def _get_param(self, name: str) -> Any:
-        return getattr(self.cog.model_provider_cfg.gensettings, name, None)
-
-    def set_lm_setting(self, name: str, value: Any) -> None:
-        if hasattr(self.lm_gensettings, name):
-            setattr(self.lm_gensettings, name, value)
-            logger.info(f"Set parameter {name} to {value}")
-
     def _create_components(self):
         with self.blocks:
 
-            def get_parameter(element, evt: gr.EventData):
-                logger.debug(f"Getting parameter {evt.target.elem_id}")
-                try:
-                    target = evt.target.elem_id
-                    return getattr(self.cog.model_provider_cfg.gensettings, target, None)
-                except Exception:
-                    logger.exception("Failed to set parameter")
+            def evt_reload():
+                ret = []
+                for elem in self.dynamic_elements:
+                    try:
+                        elem_val = getattr(elem, "value", None)
+                        if not hasattr(self.cog.model_provider_cfg.gensettings, elem.elem_id):
+                            logger.warning(f"Element {elem.elem_id} not found in gensettings")
+                        else:
+                            current_val = getattr(self.cog.model_provider_cfg.gensettings, elem.elem_id)
+                            if elem_val != current_val:
+                                logger.debug(f"Updating {elem.elem_id} from {elem_val} to {current_val}")
+                                elem_val = current_val
+                    except Exception as e:
+                        logger.exception(f"Failed to get value for {elem.elem_id}", e)
+                    finally:
+                        ret.append(elem_val)
+                return ret
 
-            def set_parameter(element, evt: gr.EventData):
-                logger.info(f"Setting parameter {evt.target.elem_id} to {element}")
+            def get_self_attr(element):
+                try:
+                    target_id = element if isinstance(element, str) else element.elem_id
+                    if hasattr(self, target_id):
+                        return getattr(self, target_id)
+                    return element
+                except Exception as e:
+                    logger.exception(f"Failed to get self attr {target_id}")
+                    return None
+
+            def evt_set_param(element, evt: gr.EventData):
                 try:
                     input_name = evt.target.elem_id
                     input_value = element
+                    logger.debug(f"Setting '{input_name}' to {input_value}")
                     setattr(self.cog.model_provider_cfg.gensettings, input_name, input_value)
-                    logger.info(f"Set parameter {input_name} to {input_value}")
+                    return getattr(self.cog.model_provider_cfg.gensettings, input_name)
                 except Exception:
                     logger.exception("Failed to set parameter")
 
-            with gr.Row():
-                gr.Markdown(f"## {self.cog.name} webui")
+            with gr.Row().style(equal_height=True):
+                with gr.Column(scale=10):
+                    self.header_title = gr.Markdown(
+                        f"## {self.cog.name} webui",
+                        elem_id="header_title",
+                    )
+                with gr.Column(scale=1, min_width=40, elem_id="refresh_col"):
+                    self.reload_btn = gr.Button(
+                        label="refresh",
+                        elem_id="refresh_btn",
+                        type="button",
+                        value="🔄",
+                        variant="primary",
+                    ).style(full_width=True)
 
             # Language model settings
             with gr.Tab(label="LM Settings"):
@@ -206,48 +233,44 @@ class GradioUi:
                                     info="In units of 1e-4",
                                 )
 
-                                seed.change(fn=set_parameter, inputs=seed, outputs=None, api_name="seed")
-                                seed.set_event_trigger(
-                                    "load", get_parameter, inputs=seed, outputs=seed, every=2.0
+                                seed.input(fn=evt_set_param, inputs=seed, outputs=None, api_name="seed")
+                                temperature.input(
+                                    fn=evt_set_param, inputs=temperature, api_name="temperature"
                                 )
-                                temperature.change(
-                                    fn=set_parameter, inputs=temperature, outputs=None, api_name="temperature"
+                                top_p.input(fn=evt_set_param, inputs=top_p, api_name="top_p")
+                                top_k.input(fn=evt_set_param, inputs=top_k, api_name="top_k")
+                                typical_p.input(fn=evt_set_param, inputs=typical_p, api_name="typical_p")
+                                repetition_penalty.input(
+                                    fn=evt_set_param, inputs=repetition_penalty, api_name="repetition_penalty"
                                 )
-                                temperature.set_event_trigger(
-                                    "load", get_parameter, inputs=temperature, outputs=temperature, every=2.0
-                                )
-
-                                top_p.change(fn=set_parameter, inputs=top_p, outputs=None, api_name="top_p")
-                                top_k.change(fn=set_parameter, inputs=top_k, outputs=None, api_name="top_k")
-                                typical_p.change(
-                                    fn=set_parameter, inputs=typical_p, outputs=None, api_name="typical_p"
-                                )
-                                repetition_penalty.change(
-                                    fn=set_parameter,
-                                    inputs=repetition_penalty,
-                                    outputs=None,
-                                    api_name="repetition_penalty",
-                                )
-                                encoder_repetition_penalty.change(
-                                    fn=set_parameter,
+                                encoder_repetition_penalty.input(
+                                    fn=evt_set_param,
                                     inputs=encoder_repetition_penalty,
-                                    outputs=None,
                                     api_name="encoder_repetition_penalty",
                                 )
-                                no_repeat_ngram_size.change(
-                                    fn=set_parameter,
+                                no_repeat_ngram_size.input(
+                                    fn=evt_set_param,
                                     inputs=no_repeat_ngram_size,
-                                    outputs=None,
                                     api_name="no_repeat_ngram_size",
                                 )
-                                epsilon_cutoff.change(
-                                    fn=set_parameter,
-                                    inputs=epsilon_cutoff,
-                                    outputs=None,
-                                    api_name="epsilon_cutoff",
+                                epsilon_cutoff.input(
+                                    fn=evt_set_param, inputs=epsilon_cutoff, api_name="epsilon_cutoff"
                                 )
-                                eta_cutoff.change(
-                                    fn=set_parameter, inputs=eta_cutoff, outputs=None, api_name="eta_cutoff"
+                                eta_cutoff.input(fn=evt_set_param, inputs=eta_cutoff, api_name="eta_cutoff")
+
+                                self.dynamic_elements.extend(
+                                    [
+                                        seed,
+                                        temperature,
+                                        top_p,
+                                        top_k,
+                                        typical_p,
+                                        repetition_penalty,
+                                        encoder_repetition_penalty,
+                                        no_repeat_ngram_size,
+                                        epsilon_cutoff,
+                                        eta_cutoff,
+                                    ]
                                 )
 
                     # Column 2
@@ -272,9 +295,6 @@ class GradioUi:
                                     info="Disable do_sample and set a low top_k to use contrastive search mode.",
                                 )
 
-                                do_sample.change(fn=set_parameter, inputs=do_sample, outputs=None)
-                                penalty_alpha.change(fn=set_parameter, inputs=penalty_alpha, outputs=None)
-
                                 gr.Markdown("### Beam search (high memory usage)")
                                 num_beams = gr.Slider(
                                     value=self.lm_gensettings.num_beams,
@@ -298,9 +318,21 @@ class GradioUi:
                                     elem_id="early_stopping",
                                     info="Stop generation early if all beams have finished.",
                                 )
-                                num_beams.change(fn=set_parameter, inputs=num_beams, outputs=None)
-                                length_penalty.change(fn=set_parameter, inputs=length_penalty, outputs=None)
-                                early_stopping.change(fn=set_parameter, inputs=early_stopping, outputs=None)
+                                do_sample.input(fn=evt_set_param, inputs=do_sample, api_name="do_sample")
+                                penalty_alpha.input(
+                                    fn=evt_set_param, inputs=penalty_alpha, api_name="penalty_alpha"
+                                )
+                                num_beams.input(fn=evt_set_param, inputs=num_beams, api_name="num_beams")
+                                length_penalty.input(
+                                    fn=evt_set_param, inputs=length_penalty, api_name="length_penalty"
+                                )
+                                early_stopping.input(
+                                    fn=evt_set_param, inputs=early_stopping, api_name="early_stopping"
+                                )
+
+                                self.dynamic_elements.extend(
+                                    [do_sample, penalty_alpha, num_beams, length_penalty, early_stopping]
+                                )
 
                         with gr.Box():
                             with gr.Column():
@@ -350,98 +382,104 @@ class GradioUi:
                                     elem_id="truncation_length",
                                     info="Maximum length of the input to the model. For most models, this is 2048.",
                                 )
-                                min_length.change(fn=set_parameter, inputs=min_length, outputs=None)
-                                max_new_tokens.change(fn=set_parameter, inputs=max_new_tokens, outputs=None)
-                                ban_eos_token.change(fn=set_parameter, inputs=ban_eos_token, outputs=None)
-                                add_bos_token.change(fn=set_parameter, inputs=add_bos_token, outputs=None)
-                                skip_special_tokens.change(
-                                    set_parameter, inputs=skip_special_tokens, outputs=None
+                                min_length.input(fn=evt_set_param, inputs=min_length, api_name="min_length")
+                                max_new_tokens.input(
+                                    fn=evt_set_param, inputs=max_new_tokens, api_name="max_new_tokens"
                                 )
-                                truncation_length.change(
-                                    set_parameter, inputs=truncation_length, outputs=None
+                                ban_eos_token.input(
+                                    fn=evt_set_param, inputs=ban_eos_token, api_name="ban_eos_token"
+                                )
+                                add_bos_token.input(
+                                    fn=evt_set_param, inputs=add_bos_token, api_name="add_bos_token"
+                                )
+                                skip_special_tokens.input(
+                                    evt_set_param, inputs=skip_special_tokens, api_name="skip_special_tokens"
+                                )
+                                truncation_length.input(
+                                    evt_set_param, inputs=truncation_length, api_name="truncation_length"
                                 )
 
+                                self.dynamic_elements.extend(
+                                    [
+                                        min_length,
+                                        max_new_tokens,
+                                        ban_eos_token,
+                                        add_bos_token,
+                                        skip_special_tokens,
+                                        truncation_length,
+                                    ]
+                                )
                 # Prompt info and imagen info
             with gr.Tab(label="Status"):
                 with gr.Row(variant="panel").style(equal_height=True):
                     with gr.Column():
-
-                        def lm_last_prompt():
-                            return self.lm_last_prompt
-
-                        def lm_last_message():
-                            return self.lm_last_message
-
-                        def lm_last_response():
-                            return self.lm_last_response
-
                         with gr.Box():
                             with gr.Column():
                                 gr.Markdown("### LM Messages")
                                 self.gr_last_prompt = gr.Textbox(
-                                    value=lm_last_prompt,
+                                    value=partial(get_self_attr, "lm_last_prompt"),
                                     every=2.0,
                                     lines=15,
                                     max_lines=30,
                                     interactive=True,
                                     label="Current Prompt",
+                                    elem_id="lm_last_prompt",
                                 ).style(show_copy_button=True)
                                 self.gr_last_message = gr.Textbox(
-                                    value=lm_last_message,
+                                    value=partial(get_self_attr, "lm_last_message"),
                                     every=2.0,
                                     lines=1,
                                     max_lines=5,
                                     interactive=True,
                                     label="Last Message",
+                                    elem_id="lm_last_message",
                                 ).style(show_copy_button=True)
                                 self.gr_last_response = gr.Textbox(
-                                    value=lm_last_response,
+                                    value=partial(get_self_attr, "lm_last_response"),
                                     every=2.0,
                                     lines=1,
                                     max_lines=5,
                                     interactive=True,
                                     label="Last Response",
+                                    elem_id="lm_last_response",
                                 ).style(show_copy_button=True)
 
                     with gr.Column():
-
-                        def im_last_request():
-                            return self.im_last_request
-
-                        def im_last_image():
-                            return self.im_last_image
-
-                        def im_last_tags():
-                            return self.im_last_tags
-
                         with gr.Box():
                             with gr.Column():
                                 gr.Markdown("### Imagen")
                                 self.imagen_last_request = gr.Textbox(
-                                    value=im_last_request,
+                                    value=partial(get_self_attr, "im_last_request"),
                                     every=2.0,
                                     lines=2,
                                     max_lines=5,
                                     interactive=True,
                                     label="Last input request",
-                                    elem_id="imagen_last_request",
+                                    elem_id="im_last_request",
                                 ).style(show_copy_button=True)
                                 self.imagen_last_image = gr.Image(
-                                    value=im_last_image,
+                                    value=partial(get_self_attr, "im_last_image"),
                                     every=2.0,
                                     interactive=True,
                                     label="Last image",
-                                    elem_id="imagen_last_image",
+                                    elem_id="im_last_image",
                                 ).style(height=600)
                                 self.imagen_last_tags = gr.Textbox(
-                                    value=im_last_tags,
+                                    value=partial(get_self_attr, "im_last_tags"),
                                     every=2.0,
                                     lines=2,
                                     max_lines=5,
                                     interactive=True,
                                     label="Last output prompt",
-                                    elem_id="imagen_last_tags",
+                                    elem_id="im_last_tags",
                                 ).style(show_copy_button=True)
+
+            # set up the reload func
+            self.reload_btn.click(
+                evt_reload,
+                inputs=None,
+                outputs=self.dynamic_elements,
+            )
 
     async def launch(self, **kwargs):
         if self.config.enabled:
@@ -456,6 +494,7 @@ class GradioUi:
                     enable_queue=self.config.enable_queue,
                     width=self.config.width,
                     prevent_thread_lock=True,
+                    show_error=True,
                 )
                 logger.info("UI launched!")
             except Exception:

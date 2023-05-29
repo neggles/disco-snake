@@ -13,10 +13,7 @@ from zoneinfo import ZoneInfo
 import aiohttp
 from PIL import Image
 
-import logsnake
 from ai.settings import (
-    AI_LOG_DIR,
-    AI_LOG_FORMAT,
     IMAGES_DIR,
     ImagenApiParams,
     ImagenLMPrompt,
@@ -29,10 +26,6 @@ from ai.utils import any_in_text
 
 # setup cog logger
 logger = logging.getLogger(__name__)
-
-
-# IMAGE_SIZE_STEPS = [512, 544, 576, 608, 640, 672, 704, 736, 768, 800, 832, 864, 896, 928, 960]
-# IMAGE_TARGET_PIXELS = 524288  # no more than this many pixels in pre-upscale image
 
 # Just using hardcoded options for now
 IMAGE_SIZE_OPTS = [
