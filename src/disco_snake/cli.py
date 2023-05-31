@@ -70,6 +70,22 @@ class BotDaemon(daemonocle.Daemon):
         """Reload the bot."""
         pass
 
+    @daemonocle.expose_action
+    @click.argument("name")
+    def reload_cog(self, name: str):
+        """Unload a cog (if loaded) then load it."""
+        global bot
+        cog_module = f"cogs.{name}"
+
+        if cog_module in bot.extensions.keys():
+            logger.warning(f"Found extension {name}, unloading...")
+            bot.unload_extension(cog_module)
+
+        avail_cogs = bot.available_cogs()
+        if name not in avail_cogs:
+            logger.error(f"Could not find module {name} in cog dir")
+        bot.load_extension(cog_module)
+
 
 @click.command(
     cls=DaemonCLI,

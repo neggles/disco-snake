@@ -1,7 +1,7 @@
 import logging
 import re
 from copy import deepcopy
-from functools import cached_property, lru_cache
+from functools import lru_cache
 from typing import List, Optional, Union
 
 from pydantic import BaseModel, BaseSettings, Field
@@ -173,7 +173,7 @@ class ImagenApiParams(BaseModel):
 class ImagenLMPrompt(BaseModel):
     tags: List[str] = Field(...)
     header: List[str] = Field(...)
-    trailer: str = Field(...)
+    trailer: List[str] = Field(...)
     gensettings: OobaGenRequest = Field(...)
 
     def __post_init__(self):
@@ -191,7 +191,7 @@ class ImagenLMPrompt(BaseModel):
         return "\n".join(self.header).replace("{prompt_tags}", self.get_tags())
 
     def get_trailer(self) -> str:
-        return "\n\n" + self.trailer
+        return "\n".join(self.trailer).replace("{prompt_tags}", self.get_tags())
 
     def prompt(self, user_message: str) -> str:
         if len(user_message) == 0:

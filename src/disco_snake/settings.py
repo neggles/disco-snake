@@ -1,12 +1,18 @@
 import json
 import logging
 from functools import lru_cache
+from os import PathLike
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseConfig, BaseSettings, Field, PostgresDsn, validator
-from pydantic.env_settings import SettingsSourceCallable
+from pydantic.env_settings import (
+    EnvSettingsSource,
+    InitSettingsSource,
+    SecretsSettingsSource,
+    SettingsSourceCallable,
+)
 
 from disco_snake import CONFIG_PATH
 
@@ -14,33 +20,47 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def json_settings(settings: BaseSettings) -> Dict[str, Any]:
-    encoding = settings.__config__.env_file_encoding
-    config_path: Path = settings.__config__.json_config_path
-    classname = settings.__class__.__name__
+class JsonSettingsSource:
+    __slots__ = "json_config_path"
 
-    if config_path.exists() and config_path.is_file():
-        logger.info(f"Loading {classname} from JSON: {config_path}")
-        return json.loads(config_path.read_text(encoding=encoding))
-    logger.warning(f"No {classname} JSON found at {config_path}")
-    return {}
+    def __init__(self, json_config_path: Optional[PathLike] = None) -> None:
+        self.json_config_path: Optional[Path] = (
+            Path(json_config_path) if json_config_path is not None else None
+        )
+
+    def __call__(self, settings: BaseSettings) -> Dict[str, Any]:  # noqa C901
+        classname = settings.__class__.__name__
+        encoding = settings.__config__.env_file_encoding
+        if self.json_config_path is None:
+            pass
+        elif self.json_config_path.exists() and self.json_config_path.is_file():
+            logger.info(f"Loading {classname} config from path: {self.json_config_path}")
+            return json.loads(self.json_config_path.read_text(encoding=encoding))
+        logger.warning(f"No {classname} config found at {self.json_config_path}")
+        return {}
+
+    def __repr__(self) -> str:
+        return f"JsonSettingsSource(json_config_path={self.json_config_path!r})"
 
 
 class JsonConfig(BaseConfig):
-    json_config_path = Path.cwd().joinpath("config.json")
+    json_config_path: Optional[Path] = None
     env_file_encoding = "utf-8"
-    json_encoders = {
-        ZoneInfo: lambda v: str(v),
-    }
 
     @classmethod
     def customise_sources(
         cls,
-        init_settings: SettingsSourceCallable,
-        env_settings: SettingsSourceCallable,
-        file_secret_settings: SettingsSourceCallable,
+        init_settings: InitSettingsSource,
+        env_settings: EnvSettingsSource,
+        file_secret_settings: SecretsSettingsSource,
     ) -> Tuple[SettingsSourceCallable, ...]:
+        # pull json_config_path from init_settings if passed, otherwise use the class var
+        json_config_path = init_settings.init_kwargs.pop("json_config_path", cls.json_config_path)
+        # create a JsonSettingsSource with the json_config_path (which may be None)
+        json_settings = JsonSettingsSource(json_config_path=json_config_path)
+        # return the new settings sources
         return (
+            init_settings,
             env_settings,
             json_settings,
             file_secret_settings,

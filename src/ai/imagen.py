@@ -65,6 +65,11 @@ re_image_description = re.compile(r"\[image: ([^\]]+)\]", re.I + re.M)
 re_send_image = re.compile(r"[\[(].?(?:sends|sending) a? ?([^)\]]+)[)\]]", re.I + re.M)
 send_pic_regexes = [re_image_description, re_send_image]
 
+re_send_pic = re.compile(
+    r"" + r"",
+    flags=re.I + re.M,
+)
+
 
 class Imagen:
     SD_API_PATH = "/sdapi/v1/txt2img"
@@ -261,7 +266,7 @@ class Imagen:
             matches = regex.search(message)
             if matches is not None:
                 logger.debug("Message matched image description regex")
-                return matches.group(1), re_image_description.sub("", message).strip()
+                return matches.group(1), regex.sub("", message).strip()
         return None, message
 
     def strip_take_pic(self, message: str) -> str:
