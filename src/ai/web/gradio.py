@@ -1,6 +1,7 @@
 import logging
 from functools import partial, partialmethod
 from pathlib import Path
+from time import sleep
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import gradio as gr
@@ -101,14 +102,18 @@ class GradioUi:
                         ret.append(elem_val)
                 return ret
 
-            def get_self_attr(element):
+            def evt_get_attr(value, evt: gr.EventData = None):
                 try:
-                    target_id = element if isinstance(element, str) else element.elem_id
-                    if hasattr(self, target_id):
-                        return getattr(self, target_id)
-                    return element
+                    if evt is not None:
+                        ret = getattr(self, evt.target.elem_id, None)
+                    else:
+                        ret = value
+                    return {"value": ret, "__type__": "update"} if ret is not None else None
                 except Exception as e:
-                    logger.exception(f"Failed to get self attr {target_id}")
+                    if evt is not None:
+                        logger.exception(f"Failed to update {evt.target.elem_id}", e)
+                    else:
+                        logger.exception(f"Failed to update {value}", e)
                     return None
 
             def evt_set_param(element, evt: gr.EventData):
@@ -121,20 +126,29 @@ class GradioUi:
                 except Exception:
                     logger.exception("Failed to set parameter")
 
+            # title bar
             with gr.Row().style(equal_height=True):
-                with gr.Column(scale=10):
+                with gr.Column(scale=12):
                     self.header_title = gr.Markdown(
                         f"## {self.cog.name} webui",
                         elem_id="header_title",
                     )
-                with gr.Column(scale=1, min_width=40, elem_id="refresh_col"):
-                    self.reload_btn = gr.Button(
-                        label="refresh",
-                        elem_id="refresh_btn",
-                        type="button",
-                        value="🔄",
-                        variant="primary",
-                    ).style(full_width=True)
+                with gr.Column(scale=1, min_width=40, elem_id="spinner_col"):
+                    with gr.Row():
+                        self.spinner_btn = gr.Button(
+                            label="spinner",
+                            elem_id="spinner_btn",
+                            type="button",
+                            value="🤔",
+                            variant="secondary",
+                        )
+                        self.reload_btn = gr.Button(
+                            label="refresh",
+                            elem_id="refresh_btn",
+                            type="button",
+                            value="🔄",
+                            variant="primary",
+                        )
 
             # Language model settings
             with gr.Tab(label="LM Settings"):
@@ -409,76 +423,134 @@ class GradioUi:
                                         truncation_length,
                                     ]
                                 )
-                # Prompt info and imagen info
+
+            # Prompt info and imagen info
             with gr.Tab(label="Status"):
                 with gr.Row(variant="panel").style(equal_height=True):
                     with gr.Column():
                         with gr.Box():
                             with gr.Column():
                                 gr.Markdown("### LM Messages")
-                                self.gr_last_prompt = gr.Textbox(
-                                    value=partial(get_self_attr, "lm_last_prompt"),
-                                    every=2.0,
-                                    lines=15,
-                                    max_lines=30,
-                                    interactive=True,
-                                    label="Current Prompt",
-                                    elem_id="lm_last_prompt",
-                                ).style(show_copy_button=True)
                                 self.gr_last_message = gr.Textbox(
-                                    value=partial(get_self_attr, "lm_last_message"),
-                                    every=2.0,
+                                    value=partial(evt_get_attr, self.lm_last_message),
                                     lines=1,
                                     max_lines=5,
                                     interactive=True,
-                                    label="Last Message",
+                                    label="Message",
+                                    info="Last message to trigger model generation.",
                                     elem_id="lm_last_message",
+                                    every=2.0,
                                 ).style(show_copy_button=True)
                                 self.gr_last_response = gr.Textbox(
-                                    value=partial(get_self_attr, "lm_last_response"),
-                                    every=2.0,
+                                    value=partial(evt_get_attr, self.lm_last_response),
                                     lines=1,
                                     max_lines=5,
-                                    interactive=True,
-                                    label="Last Response",
+                                    interactive=False,
+                                    label="Response",
+                                    info="Last response from the model.",
                                     elem_id="lm_last_response",
+                                    every=2.0,
                                 ).style(show_copy_button=True)
+                                self.gr_last_prompt = gr.Textbox(
+                                    value=partial(evt_get_attr, self.lm_last_prompt),
+                                    lines=15,
+                                    max_lines=30,
+                                    interactive=False,
+                                    label="Prompt",
+                                    info="Last prompt sent to the model.",
+                                    elem_id="lm_last_prompt",
+                                    every=2.0,
+                                ).style(show_copy_button=True)
+
+                                # self.blocks.set_event_trigger(
+                                #     event_name="load",
+                                #     fn=partial(evt_get_attr, self.lm_last_message),
+                                #     inputs=None,
+                                #     outputs=self.gr_last_message,
+                                #     no_target=True,
+                                #     show_progress=False,
+                                #     every=2.0,
+                                # )
+                                # self.blocks.set_event_trigger(
+                                #     event_name="load",
+                                #     fn=partial(evt_get_attr, self.lm_last_response),
+                                #     inputs=None,
+                                #     outputs=self.gr_last_response,
+                                #     no_target=True,
+                                #     show_progress=False,
+                                #     every=2.0,
+                                # )
+                                # self.blocks.set_event_trigger(
+                                #     event_name="load",
+                                #     fn=partial(evt_get_attr, self.lm_last_prompt),
+                                #     inputs=None,
+                                #     outputs=self.gr_last_prompt,
+                                #     no_target=True,
+                                #     show_progress=False,
+                                #     every=2.0,
+                                # )
 
                     with gr.Column():
                         with gr.Box():
-                            with gr.Column():
+                            with gr.Column(), gr.Group():
                                 gr.Markdown("### Imagen")
                                 self.imagen_last_request = gr.Textbox(
-                                    value=partial(get_self_attr, "im_last_request"),
-                                    every=2.0,
+                                    value=partial(evt_get_attr, self.im_last_request),
                                     lines=2,
-                                    max_lines=5,
-                                    interactive=True,
+                                    max_lines=10,
+                                    interactive=False,
                                     label="Last input request",
                                     elem_id="im_last_request",
-                                ).style(show_copy_button=True)
+                                )
                                 self.imagen_last_image = gr.Image(
-                                    value=partial(get_self_attr, "im_last_image"),
-                                    every=2.0,
-                                    interactive=True,
+                                    value=partial(evt_get_attr, self.im_last_image),
+                                    interactive=False,
                                     label="Last image",
                                     elem_id="im_last_image",
-                                ).style(height=600)
+                                ).style(height=640)
                                 self.imagen_last_tags = gr.Textbox(
-                                    value=partial(get_self_attr, "im_last_tags"),
-                                    every=2.0,
-                                    lines=2,
-                                    max_lines=5,
-                                    interactive=True,
+                                    value=partial(evt_get_attr, self.im_last_tags),
+                                    lines=4,
+                                    max_lines=10,
+                                    interactive=False,
                                     label="Last output prompt",
                                     elem_id="im_last_tags",
-                                ).style(show_copy_button=True)
+                                )
+
+                                # self.imagen_last_request.set_event_trigger(
+                                #     event_name="load",
+                                #     fn=partial(evt_get_attr, self.im_last_request),
+                                #     inputs=None,
+                                #     outputs=self.imagen_last_request,
+                                #     no_target=True,
+                                #     show_progress=False,
+                                #     every=2.0,
+                                # )
+                                # self.imagen_last_image.set_event_trigger(
+                                #     event_name="load",
+                                #     fn=partial(evt_get_attr, self.im_last_image),
+                                #     inputs=None,
+                                #     outputs=self.imagen_last_image,
+                                #     no_target=True,
+                                #     show_progress=False,
+                                #     every=2.0,
+                                # )
+                                # self.imagen_last_tags.set_event_trigger(
+                                #     event_name="load",
+                                #     fn=partial(evt_get_attr, self.im_last_tags),
+                                #     inputs=None,
+                                #     outputs=self.imagen_last_tags,
+                                #     no_target=True,
+                                #     show_progress=False,
+                                #     every=2.0,
+                                # )
 
             # set up the reload func
             self.reload_btn.click(
                 evt_reload,
-                inputs=None,
+                inputs=[],
                 outputs=self.dynamic_elements,
+                show_progress=False,
             )
 
     async def launch(self, **kwargs):
@@ -488,13 +560,17 @@ class GradioUi:
                 logger.info("Creating components...")
                 self._create_components()
                 logger.info("Launching UI...")
+                self.blocks.queue(
+                    concurrency_count=1,
+                    status_update_rate=1.5,
+                )
                 self.blocks.launch(
                     server_name=self.config.bind_host,
                     server_port=self.config.bind_port,
-                    enable_queue=self.config.enable_queue,
                     width=self.config.width,
                     prevent_thread_lock=True,
                     show_error=True,
+                    enable_queue=True,
                 )
                 logger.info("UI launched!")
             except Exception:

@@ -24,10 +24,10 @@ services:
           create_host_path: true
     healthcheck:
       disable: false
-      test: pg_isready -U postgres -h 127.0.0.1
-      start_period: 30s
+      test: ["CMD", "pg_isready", "-U", "${PG_USER}", "-h", "127.0.0.1" ]
+      start_period: 5s
       interval: 5s
-      retries: 1
+      retries: 3
       timeout: 5s
 
   pgweb:
@@ -48,14 +48,14 @@ services:
         published: 5050
         protocol: tcp
     depends_on:
-      postgres:
-        condition: service_started
+      db:
+        condition: service_healthy
     healthcheck:
       disable: false
       test: [ "CMD", "nc", "-vz", "127.0.0.1", "8081" ]
-      start_period: 30s
+      start_period: 5s
       interval: 5s
-      retries: 1
+      retries: 3
       timeout: 5s
 
   pgadmin4:
@@ -81,12 +81,36 @@ services:
         published: 5050
         protocol: tcp
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
     healthcheck:
       disable: false
       test: [ "CMD", "nc", "-vz", "127.0.0.1", "5050" ]
-      start_period: 30s
+      start_period: 5s
       interval: 5s
-      retries: 1
+      retries: 3
       timeout: 5s
+
+  redis:
+    container_name: disco-redis
+    image: redis/redis-stack:7.2.0-M01
+    restart: unless-stopped
+    # environment:
+    #  REDIS_ARGS: ""
+    volumes:
+      - type: bind
+        source: ./data/redis/data
+        target: /data
+      - type: bind
+        source: ./data/redis/redis.conf
+        target: /redis-stack.conf
+        read_only: true
+    ports:
+      - mode: ingress
+        target: 6379
+        published: 6379
+        protocol: tcp
+      - mode: ingress
+        target: 8001
+        published: 5051
+        protocol: tcp

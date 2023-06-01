@@ -159,7 +159,7 @@ class Admin(commands.Cog, name=COG_NAME):
         ctx: ApplicationCommandInteraction,
         count: float = commands.Param(
             name="count",
-            default=10.0,
+            default=1.0,
             ge=0.0,
             le=100.0,
             description="Target number of messages to delete (max 100, may delete less if all=False)",
@@ -168,6 +168,11 @@ class Admin(commands.Cog, name=COG_NAME):
             name="all",
             default=False,
             description="Clear all messages, not just ones I sent",
+        ),
+        user: disnake.User = commands.Param(
+            name="user",
+            default=None,
+            description="Clear messages from a specific user",
         ),
     ):
         # send thinking message
@@ -189,14 +194,21 @@ class Admin(commands.Cog, name=COG_NAME):
 
         delet_self = 0
         delet_other = 0
+        delet_user = 0
         async for message in channel.history(limit=100):
             try:
                 if message.author.id == self.bot.user.id:
                     await message.delete()
                     delet_self += 1
+                    continue
+                elif user is not None and message.author.id == user.id:
+                    await message.delete()
+                    delet_other += 1
+                    delet_user += 1
                 elif clear_all is True:
                     await message.delete()
                     delet_other += 1
+                    continue
             except Exception as e:
                 continue
             finally:
@@ -209,9 +221,12 @@ class Admin(commands.Cog, name=COG_NAME):
         delet_embed.add_field(name="Requested", value=count, inline=True)
         delet_embed.add_field(name="Deleted", value=deleted, inline=True)
         delet_embed.add_field(name="All Users", value=clear_all, inline=True)
+        delet_embed.add_field(name="User", value=(user if user is not None else False), inline=True)
         if clear_all is True:
             delet_embed.add_field(name="From Self", value=delet_self, inline=True)
             delet_embed.add_field(name="From Others", value=delet_other, inline=True)
+        if user is not None:
+            delet_embed.add_field(name="From User", value=user.mention, inline=True)
         delet_embed.set_footer(text=f"Requested by {ctx.author.name}")
 
         await ctx.send(embed=delet_embed, ephemeral=True)

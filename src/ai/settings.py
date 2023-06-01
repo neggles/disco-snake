@@ -6,6 +6,7 @@ from typing import List, Optional, Union
 
 from pydantic import BaseModel, BaseSettings, Field
 from shimeji.model_provider import OobaGenRequest
+from sympy import Min
 
 from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
 from disco_snake.settings import JsonConfig
@@ -31,6 +32,16 @@ class ModelProviderConfig(BaseModel):
     password: Optional[str] = Field(None)
 
 
+class NamedSnowflake(BaseModel):
+    name: str = Field("")  # not actually used, just here so it can be in config
+    id: int = Field(...)
+
+
+class ContextBreak(BaseModel):
+    users: List[NamedSnowflake] = Field([])
+    roles: List[NamedSnowflake] = Field([])
+
+
 # configuration dataclasses
 class BotParameters(BaseModel):
     conditional_response: bool
@@ -46,6 +57,8 @@ class BotParameters(BaseModel):
     max_retries: int = 3
     ctxbreak_users: List[int] = Field([])
     ctxbreak_roles: List[int] = Field([])
+    guilds: List[int] = Field([])
+    dm_users: List[NamedSnowflake] = Field([])
 
 
 class VisionConfig(BaseModel):
@@ -88,7 +101,6 @@ class Prompt(BaseModel):
 
 class AiSettings(BaseSettings):
     name: str
-    guilds: List[int]
     prompt: Prompt
     gradio: GradioConfig
     params: BotParameters

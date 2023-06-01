@@ -52,6 +52,7 @@ from ai.types import MessageChannel
 from ai.ui import AiStatusEmbed
 from ai.utils import (
     anti_spam,
+    any_in_text,
     convert_mentions_emotes,
     get_full_class_name,
     get_lm_prompt_time,
@@ -82,9 +83,15 @@ re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
 re_unescape_format = re.compile(r"\\([*_~`])")
 re_strip_special = re.compile(r"[^a-zA-Z0-9]+", re.M)
+
 re_linebreak_name = re.compile(r"(\n|\r|\r\n)(\S+): ", re.M)
 re_start_expression = re.compile(r"^\s*[(\*]\w+[)\*]\s*", re.I + re.M)
-re_image_description = re.compile(r"^\s*\[image: ([^\]]+)\]", re.I + re.M)
+re_upper_first = re.compile(r"^([A-Z]\s?[^A-Z])")
+
+
+def re_match_lower(match: re.Match):
+    """function for re.sub() to convert the first match to lowercase"""
+    return match.group(1).lower()
 
 
 AVAILABLE_PARAMS = [
@@ -133,12 +140,14 @@ class Ai(commands.Cog, name=COG_UID):
         self.ctxbreak_roles = self.params.ctxbreak_roles
         self.lm_lock = Lock()  # used to stop multiple responses from happening at once
 
+        self.guild_ids: List[int] = self.params.guilds
+        self.dm_user_ids: List[int] = [x.id for x in self.params.dm_users]
+
         # we will populate these later during async init
         self.model_provider: OobaModel = None
         self.model_provider_type: str = self.model_provider_cfg.type
         self.chatbot: ChatBot = None
         self.logging_channel: Optional[TextChannel] = None
-        self.guilds: dict = {}
         self.tokenizer: LlamaTokenizerFast = None
         self.bad_words: List[str] = self.config.bad_words
 
@@ -253,7 +262,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         # Ignore messages from unapproved users in DMs/groups
         if isinstance(message.channel, (DMChannel, GroupChannel)):
-            if message.author.id not in self.bot.config.admin_ids:
+            if message.author.id not in [self.bot.config.admin_ids + self.dm_user_ids]:
                 logger.info(
                     f"Got a DM from non-owner {message.author.name}#{message.author.discriminator}. Ignoring..."
                 )
@@ -262,7 +271,7 @@ class Ai(commands.Cog, name=COG_UID):
         elif isinstance(message.channel, Thread):
             return
         # Ignore messages with no guild
-        elif message.guild is None or (message.guild.id not in self.config.guilds):
+        elif message.guild is None or (message.guild.id not in self.guild_ids):
             return
 
         try:
@@ -276,10 +285,11 @@ class Ai(commands.Cog, name=COG_UID):
                 conversation = None
 
                 if self.bot.user.mentioned_in(message) or self.name_in_text(message_content):
-                    logger.debug(f"Message: {message_content}")
+                    logger.debug(f"Mentioned in {message.channel}: {message_content}")
                     trigger = "mention"
 
                 elif isinstance(message.channel, DMChannel) and len(message_content) > 0:
+                    logger.debug(f"DM from {message.author}: {message_content}")
                     trigger = "DM"
 
                 elif message.channel.id in self.activity_channels:
@@ -332,37 +342,53 @@ class Ai(commands.Cog, name=COG_UID):
 
     # get the last 40 messages in the channel (or however many there are if less than 40)
     async def get_context_messages(
-        self, channel: MessageChannel, as_list: bool = True
+        self,
+        channel: MessageChannel,
+        message: Optional[Message] = None,
+        as_list: bool = True,
     ) -> Union[str, List[str]]:
-        messages = await channel.history(limit=50).flatten()
-        messages, to_remove = anti_spam(messages)
-        if to_remove:
-            logger.info(f"Removed {to_remove} messages from context.")
+        if message is not None:
+            messages = await channel.history(limit=50, before=message).flatten()
 
+        messages = await channel.history(limit=50).flatten()
         # magic tag to break context chain to get bot out of librarian mode
         for idx, message in enumerate(messages):
-            if ("<ctxbreak>" in message.content.lower()) and (
-                (message.author.id in self.ctxbreak_users)
-                or (message.author.id in self.bot.config.admin_ids)
-                or member_in_any_role(message.author, self.ctxbreak_roles)
-            ):
+            if self.is_ctxbreak_msg(message):
                 logger.debug("Found context break tag, breaking context chain")
                 messages = messages[0 : idx + 1]
                 break
 
         chain = []
-        for message in reversed(messages):
+        for msg in reversed(messages):
+            if msg.content is not None:
+                if msg.content.startswith("-"):
+                    logger.debug("skipping other bot command message")
+                    continue
+                if len(msg.content) > 300:
+                    if any_in_text(
+                        [
+                            "you have 10 tokens",
+                            'which stands for "do anything now"',
+                        ],
+                        msg.content.lower(),
+                    ):
+                        logger.debug("Skipping long message containing AI jailbreak bullshit")
+                        continue
+                if msg.content.startswith("DAN:"):
+                    logger.debug("Skipping stupid DAN message fuck you technocat")
+                    continue
+
             # set up author name
-            if message.author.bot is False:
-                author_name = f"{message.author.display_name.strip()}:"
-            elif message.author.id == self.bot.user.id:
+            if msg.author.bot is False:
+                author_name = f"{msg.author.display_name.strip()}:"
+            elif msg.author.id == self.bot.user.id:
                 author_name = f"{self.name}:"
             else:
                 logger.debug("Skipping non-self bot message")
                 continue
 
-            if len(message.embeds) > 0:
-                for embed in message.embeds:
+            if len(msg.embeds) > 0:
+                for embed in msg.embeds:
                     if embed.type == "image":
                         try:
                             caption = await self.eyes.perceive_url(embed.thumbnail.url)
@@ -371,24 +397,24 @@ class Ai(commands.Cog, name=COG_UID):
                         except Exception as e:
                             logger.exception(e)
                             chain.append(f"{author_name} [image: loading error]")
-                    elif embed.description is not None and message.author.id != self.bot.user.id:
+                    elif embed.description is not None and msg.author.id != self.bot.user.id:
                         chain.append(f"{author_name} [embed: {embed.description}]")
-                    elif embed.title is not None and message.author.id != self.bot.user.id:
+                    elif embed.title is not None and msg.author.id != self.bot.user.id:
                         chain.append(f"{author_name} [embed: {embed.title}]")
 
-            if message.content and len(message.embeds) == 0:
-                content = self.get_msg_content_clean(message)
+            if msg.content and len(msg.embeds) == 0:
+                content = self.get_msg_content_clean(msg)
                 if content.startswith("http"):
                     chain.append(f"{author_name} [a link to a webpage]")
                 elif content != "" and "```" not in content and not content.startswith("-"):
-                    if message.author.id == self.bot.user.id:
+                    if msg.author.id == self.bot.user.id:
                         # strip (laughs) from start of own context
                         content = re_start_expression.sub("", content)
                         chain.append(f"{author_name} {content}")
                     else:
                         chain.append(f"{author_name} {content}")
 
-            for attachment in message.attachments:
+            for attachment in msg.attachments:
                 try:
                     if not attachment.content_type.startswith("image/"):
                         logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
@@ -414,7 +440,7 @@ class Ai(commands.Cog, name=COG_UID):
                 [
                     "\n".join(conversation[:-1]),
                     "\n" + self.prompt.model.full,
-                    "\n".join(post_instruct),
+                    "\n".join(post_instruct).replace("### Human:", "").lstrip(),
                 ]
             )
         else:
@@ -597,6 +623,11 @@ class Ai(commands.Cog, name=COG_UID):
 
                 # trim hashes n shit
                 response = response.rstrip(" #}")
+
+                # if the first char is uppercase and the next isn't, force it to lowercase because
+                # bot keeps talking in sentence case and it's *wrong*
+                response = re.sub(re_upper_first, re_match_lower, response, 1)
+
                 debug_data["response"] = response
 
                 # Send response if not empty
@@ -671,7 +702,7 @@ class Ai(commands.Cog, name=COG_UID):
         logger.info("Idle loop running!")
 
     # Helper functions
-    def get_msg_content_clean(self, message: Message, content: str = None) -> str:
+    def get_msg_content_clean(self, message: Message, content: Optional[str] = None) -> str:
         content = content if content is not None else message.content
 
         if isinstance(message.channel, Thread):
@@ -695,7 +726,11 @@ class Ai(commands.Cog, name=COG_UID):
                 users=message.channel.members or message.mentions,
                 emojis=self.bot.emojis,
             )
+
+        # eliminate any and all content between angle brackets <>
         content = re_angle_bracket.sub("", content)
+        # turn newlines into spaces. this is a cheap hack but the model doesn't handle newlines well
+        content = content.replace("\n", " ")
         # if there's a codeblock in there, return an empty string
         return content.lstrip() if "```" not in content else ""
 
@@ -732,6 +767,16 @@ class Ai(commands.Cog, name=COG_UID):
                 for name in self.params.nicknames
             ]
         )
+
+    def is_ctxbreak_msg(self, message: Message) -> bool:
+        content = message.content.lower()
+        if not content.startswith("<ctxbreak>"):
+            return False
+        if message.author.id in list(self.ctxbreak_users + self.bot.config.admin_ids):
+            return True
+        if member_in_any_role(message.author, self.ctxbreak_roles):
+            return True
+        return False
 
     # Loop stuff to archive logs
     @tasks.loop(hours=1)
