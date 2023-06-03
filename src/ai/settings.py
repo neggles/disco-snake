@@ -2,26 +2,25 @@ import logging
 import re
 from copy import deepcopy
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional, Union
 
 from pydantic import BaseModel, BaseSettings, Field
 from shimeji.model_provider import OobaGenRequest
-from sympy import Min
 
-from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
+from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, get_suffix, get_suffix_name
 from disco_snake.settings import JsonConfig
 
-AI_DATA_DIR = DATADIR_PATH.joinpath("ai")
+AI_DATA_DIR = PACKAGE_ROOT.parent.joinpath("data", "ai")
 AI_LOG_DIR = LOGDIR_PATH
 AI_LOG_FORMAT = LOG_FORMAT
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-AI_CFG_PATH = AI_DATA_DIR.joinpath("config.json")
-
-IMAGEN_CFG_PATH = AI_DATA_DIR.joinpath("imagen.json")
-IMAGES_DIR = AI_DATA_DIR.joinpath("images")
+IMAGEN_CFG_PATH = AI_DATA_DIR.joinpath(get_suffix_name("imagen", ".json"))
+IMAGES_DIR = AI_DATA_DIR.joinpath(get_suffix_name("images"))
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ModelProviderConfig(BaseModel):
@@ -59,6 +58,7 @@ class BotParameters(BaseModel):
     ctxbreak_roles: List[int] = Field([])
     guilds: List[int] = Field([])
     dm_users: List[NamedSnowflake] = Field([])
+    sisters: List[NamedSnowflake] = Field([])
 
 
 class VisionConfig(BaseModel):
@@ -109,12 +109,14 @@ class AiSettings(BaseSettings):
     vision: Optional[VisionConfig] = None
 
     class Config(JsonConfig):
-        json_config_path = AI_CFG_PATH
+        json_config_path = AI_DATA_DIR.joinpath("config.json")
 
 
-@lru_cache(maxsize=1)
-def get_ai_settings() -> AiSettings:
-    settings = AiSettings()
+@lru_cache(maxsize=2)
+def get_ai_settings(config_path: Optional[Path] = None) -> AiSettings:
+    if config_path is None:
+        config_path = AI_DATA_DIR.joinpath(get_suffix_name("config", ".json"))
+    settings = AiSettings(json_config_path=config_path)
     return settings
 
 
@@ -248,10 +250,12 @@ class ImagenSettings(BaseSettings):
     sd_prompt: ImagenSDPrompt = Field(...)
 
     class Config(JsonConfig):
-        json_config_path = IMAGEN_CFG_PATH
+        json_config_path = AI_DATA_DIR.joinpath("imagen.json")
 
 
-@lru_cache(maxsize=1)
-def get_imagen_settings() -> ImagenSettings:
-    settings = ImagenSettings()
+@lru_cache(maxsize=2)
+def get_imagen_settings(config_path: Optional[Path] = None) -> ImagenSettings:
+    if config_path is None:
+        config_path = AI_DATA_DIR.joinpath(get_suffix_name("imagen", ".json"))
+    settings = ImagenSettings(json_config_path=config_path)
     return settings

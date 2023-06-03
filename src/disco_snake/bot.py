@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from functools import partial as partial_func
 from pathlib import Path
 from traceback import print_exception
-from typing import List
+from typing import List, Optional
 from zoneinfo import ZoneInfo
 
 from disnake import (
@@ -50,13 +50,11 @@ logger.propagate = True
 
 
 class DiscoSnake(commands.Bot):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, config_path: Path, *args, **kwargs):
         intents = kwargs.pop("intents", BOT_INTENTS)
-
         super().__init__(*args, command_prefix=None, intents=intents, **kwargs)
 
-        self.config = get_settings()
-
+        self.config = get_settings(config_path)
         self.datadir_path: Path = DATADIR_PATH
         self.cogdir_path: Path = COGDIR_PATH
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
@@ -340,3 +338,16 @@ class DiscoSnake(commands.Bot):
     async def before_user_save_task(self) -> None:
         logger.info("waiting for ready... just to be sure")
         await self.wait_until_ready()
+
+
+def get_bot(config_path: Optional[Path] = None):
+    """
+    Get the bot instance
+    :param config_path: The path to the config file
+    :return: The bot instance
+    """
+    if config_path is None:
+        config_path = Path("config.json")
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    return DiscoSnake(config_path)

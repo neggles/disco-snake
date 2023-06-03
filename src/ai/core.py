@@ -143,6 +143,9 @@ class Ai(commands.Cog, name=COG_UID):
         self.dm_user_ids: List[int] = [x.id for x in self.params.dm_users]
         self.dm_user_ids.extend(self.bot.config.admin_ids)
 
+        # bot user IDs that we're allowed to see/hear
+        self.sister_ids = [x.id for x in self.params.sisters]
+
         # we will populate these later during async init
         self.model_provider: OobaModel = None
         self.model_provider_type: str = self.model_provider_cfg.type
@@ -302,8 +305,10 @@ class Ai(commands.Cog, name=COG_UID):
                             logger.debug(f"Model wants to respond to '{message_content}', responding...")
                             trigger = "conditional"
 
-                    elif self.last_response < (
-                        datetime.now(tz=self.timezone) - timedelta(seconds=(self.idle_msg_sec / 2))
+                    elif (
+                        self.last_response
+                        < (datetime.now(tz=self.timezone) - timedelta(seconds=(self.idle_msg_sec / 2)))
+                        and self.idle_messaging is True
                     ):
                         # prevent infinite loops if things go wrong
                         self.last_response = datetime.now(tz=self.timezone)
@@ -382,12 +387,12 @@ class Ai(commands.Cog, name=COG_UID):
                     continue
 
             # set up author name
-            if msg.author.bot is False:
-                author_name = f"### Human: {msg.author.display_name.strip()}:"
-            elif msg.author.id == self.bot.user.id:
+            if msg.author.id == self.bot.user.id:
                 author_name = f"### Assistant: {self.name}:"
+            elif msg.author.bot is False or (msg.author.id in self.sister_ids):
+                author_name = f"### Human: {msg.author.display_name.strip()}:"
             else:
-                logger.debug("Skipping non-self bot message")
+                logger.debug("Skipping non-self/sibling bot message")
                 continue
 
             if len(msg.embeds) > 0:

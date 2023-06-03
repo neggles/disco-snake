@@ -14,7 +14,7 @@ from pydantic.env_settings import (
     SettingsSourceCallable,
 )
 
-from disco_snake import CONFIG_PATH
+from disco_snake import DEF_CONFIG_PATH, get_suffix_name
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     timezone: ZoneInfo = Field("UTC")
     owner: str = Field("N/A")
     repo_url: str = Field("N/A")
+    db_uri: PostgresDsn = Field(..., env="DB_URI")
+    ai_conf_name: Optional[str] = Field(None)
 
     owner_id: int = Field(...)
     admin_ids: List[int] = Field(..., unique_items=True)
@@ -86,7 +88,6 @@ class Settings(BaseSettings):
     debug: bool = Field(False)
     reload: bool = Field(False)
 
-    db_uri: PostgresDsn = Field(..., env="DB_URI")
     disable_cogs: List[str] = Field([])
 
     @validator("timezone", pre=True, always=True)
@@ -94,10 +95,12 @@ class Settings(BaseSettings):
         return ZoneInfo(v)
 
     class Config(JsonConfig):
-        json_config_path = CONFIG_PATH
+        json_config_path = DEF_CONFIG_PATH
 
 
-@lru_cache(maxsize=1)
-def get_settings() -> Settings:
-    settings = Settings()
+@lru_cache(maxsize=2)
+def get_settings(config_path: Optional[Path] = None) -> Settings:
+    if config_path is None:
+        config_path = DEF_CONFIG_PATH.with_stem(get_suffix_name(DEF_CONFIG_PATH.stem))
+    settings = Settings(json_config_path=config_path)
     return settings

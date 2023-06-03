@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from alembic.environment import EnvironmentContext
 from alembic.script import ScriptDirectory
+from rich import inspect
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -16,6 +17,9 @@ try:
     bot_settings: Settings = get_settings()
 except Exception as e:
     bot_settings = None
+
+## Get X args
+x_args = context.get_x_argument(as_dictionary=True)
 
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
@@ -31,6 +35,11 @@ target_metadata = Base.metadata
 ## Custom: If bot config object is loaded, use it to set the db_uri, otherwise use the .ini
 if bot_settings is not None:
     pg_uri = bot_settings.db_uri
+    x_port = x_args.get("port", None)
+    if x_port is not None:
+        print(f"Using x_port: {x_port}")
+        pg_uri = pg_uri.replace(pg_uri.port, x_port)
+    print(f"Using bot config db_uri: {pg_uri}")
     config.set_main_option("sqlalchemy.url", pg_uri)
 
 
