@@ -116,7 +116,6 @@ class Ai(commands.Cog, name=COG_UID):
         self.last_response = datetime.now(timezone.utc) - timedelta(minutes=10)
 
         # Load config file
-        self.cfg_path: Path = AI_DATA_DIR.joinpath("config.json")
         self.config = get_ai_settings()
 
         # Parse config file
@@ -142,6 +141,7 @@ class Ai(commands.Cog, name=COG_UID):
 
         self.guild_ids: List[int] = self.params.guilds
         self.dm_user_ids: List[int] = [x.id for x in self.params.dm_users]
+        self.dm_user_ids.extend(self.bot.config.admin_ids)
 
         # we will populate these later during async init
         self.model_provider: OobaModel = None
@@ -159,8 +159,9 @@ class Ai(commands.Cog, name=COG_UID):
         self.webui = GradioUi(cog=self, config=self.config.gradio)
 
         # somewhere to put the last context we generated for debugging
-        self.debug_datadir: Path = AI_LOG_DIR.joinpath("ai")
-        self.debug_datadir.mkdir(parents=True, exist_ok=True)
+        self.debug_dir: Path = AI_LOG_DIR.joinpath("ai")
+        self.debug_dir.mkdir(parents=True, exist_ok=True)
+        self.debug_dir.joinpath("dm").mkdir(parents=True, exist_ok=True)
 
         if self.debug is True:
             transformers_logging.set_verbosity_debug()
@@ -234,6 +235,10 @@ class Ai(commands.Cog, name=COG_UID):
         logger.info("Starting WebUI (if enabled)...")
         await self.webui.launch()
 
+        logger.debug("DMs are enabled for the following users:")
+        for user_id in self.dm_user_ids:
+            logger.debug(f" - {user_id}")
+
         logger.info("AI engine initialized... probably?")
         if self.idle_messaging is True:
             logger.info("Starting idle messaging loop")
@@ -262,10 +267,8 @@ class Ai(commands.Cog, name=COG_UID):
 
         # Ignore messages from unapproved users in DMs/groups
         if isinstance(message.channel, (DMChannel, GroupChannel)):
-            if message.author.id not in [self.bot.config.admin_ids + self.dm_user_ids]:
-                logger.info(
-                    f"Got a DM from non-owner {message.author.name}#{message.author.discriminator}. Ignoring..."
-                )
+            if message.author.id not in self.dm_user_ids:
+                logger.info(f"Got a DM from non-owner {message.author} (ID {message.author.id}). Ignoring...")
                 return
         # Ignore threads
         elif isinstance(message.channel, Thread):
@@ -321,7 +324,7 @@ class Ai(commands.Cog, name=COG_UID):
                 return
 
             exc_desc = str(f"**``{exc_class}``**\n```{format_exc()}```")
-            error_file = self.debug_datadir.joinpath(f"error-{datetime.now(timezone.utc)}.txt")
+            error_file = self.debug_dir.joinpath(f"error-{datetime.now(timezone.utc)}.txt".replace(" ", ""))
             error_file.write_text(exc_desc)
 
             if len(exc_desc) < 2048:
@@ -380,9 +383,9 @@ class Ai(commands.Cog, name=COG_UID):
 
             # set up author name
             if msg.author.bot is False:
-                author_name = f"{msg.author.display_name.strip()}:"
+                author_name = f"### Human: {msg.author.display_name.strip()}:"
             elif msg.author.id == self.bot.user.id:
-                author_name = f"{self.name}:"
+                author_name = f"### Assistant: {self.name}:"
             else:
                 logger.debug("Skipping non-self bot message")
                 continue
@@ -410,9 +413,7 @@ class Ai(commands.Cog, name=COG_UID):
                     if msg.author.id == self.bot.user.id:
                         # strip (laughs) from start of own context
                         content = re_start_expression.sub("", content)
-                        chain.append(f"{author_name} {content}")
-                    else:
-                        chain.append(f"{author_name} {content}")
+                    chain.append(f"{author_name} {content}")
 
             for attachment in msg.attachments:
                 try:
@@ -447,7 +448,7 @@ class Ai(commands.Cog, name=COG_UID):
             conversation = "\n".join(conversation)
 
         prompt_entry = ContextEntry(
-            text=self.get_prompt(message, include_model=(not self.prompt.instruct)),
+            text=self.get_prompt(message),
             prefix="",
             suffix="",
             reserved_tokens=512,
@@ -463,7 +464,7 @@ class Ai(commands.Cog, name=COG_UID):
         contextmgr.add_entry(prompt_entry)
 
         conversation_entry = ContextEntry(
-            text=conversation + f"\n{self.name}:",
+            text=conversation + f"\n### Assistant: {self.name}:",
             prefix="",
             suffix="",
             reserved_tokens=1024,
@@ -517,32 +518,34 @@ class Ai(commands.Cog, name=COG_UID):
             context = await self.build_ctx(conversation, message)
 
             # war crime for alpaca, needs more newlines
-            # context_lines = context.splitlines()
-            # new_lines = []
-            # first = True
-            # for line in context_lines:
-            #     if line.startswith("### "):
-            #         _, content = line.split(":", 1)
-            #         if line.startswith("### Response:"):
-            #             if first is True:
-            #                 # strip empty newline at end of prompt
-            #                 new_lines = new_lines[:-1]
-            #                 # add response without extra newline
-            #                 new_lines.append(f"### Response:\n{content.strip()}")
-            #                 first = False
-            #             else:
-            #                 # newline then response
-            #                 new_lines.append(f"\n### Response:\n{content.strip()}")
-            #         else:
-            #             if first is True:
-            #                 new_lines.append(f"### Instruction:\n{content.strip()}")
-            #                 first = False
-            #             else:
-            #                 new_lines.append(f"\n### Instruction:\n{content.strip()}")
-            #     else:
-            #         new_lines.append(line)
-            # context = "\n".join(new_lines).replace("\n\n\n", "\n\n")
-            # context = context.rstrip()
+            context_lines = context.splitlines()
+            new_lines = []
+            first = True
+            for line in context_lines:
+                if line.startswith("### "):
+                    _, content = line.split(":", 1)
+                    if line.startswith("### Assistant:") and line != "### Assistant:":
+                        if first is True:
+                            # strip empty newline at end of prompt
+                            new_lines = new_lines[:-1]
+                            # add response without extra newline
+                            new_lines.append(f"### Assistant: {content.strip()}")
+                            first = False
+                        else:
+                            # newline then response
+                            new_lines.append(f"### Assistant: {content.strip()}")
+                    elif line.startswith("### Human:") and line != "### Human:":
+                        if first is True:
+                            new_lines.append(f"### Human: {content.strip()}")
+                            first = False
+                        else:
+                            new_lines.append(f"### Human: {content.strip()}")
+                    else:
+                        new_lines.append(line)
+                else:
+                    new_lines.append(line)
+            context = "\n".join(new_lines).replace("\n\n\n", "\n\n")
+            context = context.rstrip()
             debug_data["context"] = context.splitlines()
 
             try:
@@ -665,7 +668,11 @@ class Ai(commands.Cog, name=COG_UID):
                 logger.exception(e)
             finally:
                 if self.debug:
-                    dump_file = self.debug_datadir.joinpath(f"msg-{message.id}-{msg_timestamp}.json")
+                    dump_file = f"msg-{message.id}-{msg_timestamp}.json"
+                    if debug_data.get("trigger", None) == "DM":
+                        dump_file = self.debug_dir.joinpath("dm", dump_file)
+                    else:
+                        dump_file = self.debug_dir.joinpath(dump_file)
                     with dump_file.open("w", encoding="utf-8") as f:
                         json.dump(debug_data, f, indent=4, skipkeys=True, default=str, ensure_ascii=False)
                     logger.debug(f"Dumped message debug data to {dump_file.name}")
@@ -772,6 +779,8 @@ class Ai(commands.Cog, name=COG_UID):
         content = message.content.lower()
         if not content.startswith("<ctxbreak>"):
             return False
+        if isinstance(message.channel, DMChannel):
+            return True
         if message.author.id in list(self.ctxbreak_users + self.bot.config.admin_ids):
             return True
         if member_in_any_role(message.author, self.ctxbreak_roles):
@@ -787,7 +796,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.archive_logs(seconds=86400)
 
     def archive_logs(self, seconds: int = 86400):
-        for file in self.debug_datadir.glob("*.json"):
+        for file in self.debug_dir.glob("*.json"):
             file_age = (datetime.now() - datetime.fromtimestamp(file.stat().st_mtime)).total_seconds()
             if file_age >= seconds:
                 logger.debug(f"Archiving debug log {file.name}")

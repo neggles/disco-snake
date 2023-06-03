@@ -20,7 +20,7 @@ div.tab_nav > button {
     align-items: flex-end;
 }
 
-#refresh_col {
+#button_col {
     align-items: flex-end;
 }
 
@@ -35,4 +35,12 @@ div.tab_nav > button {
     min-width: 40px !important;
     min-height: 40px !important;
     max-height: 40px;
+}
+
+#lm_last_message, #lm_last_prompt, #lm_last_response {
+    overflow-y: auto !important;
+}
+
+#im_last_request, #im_last_tags {
+    overflow-y: auto !important;
 }
