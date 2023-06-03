@@ -240,3 +240,6 @@ src/disco_snake/_version.py
 
 # local misc
 /misc
+
+# compose override
+/docker-compose.*.yml
