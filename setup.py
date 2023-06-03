@@ -6,7 +6,7 @@ with open("requirements.txt") as f:
 setup(
     name="Shimeji",
     description="Shimeji is a framework to create chatbots.",
-    version="0.2.0",
+    version="0.2.1",
     license="GPLv2",
     author="Hitomi-Team, neggles",
     url="https://github.com/neggles/Shimeji",
