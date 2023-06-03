@@ -3,4 +3,9 @@ from .llama import tokenizer as Llama
 
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
-__all__ = ["GPT2", "Llama", "AutoTokenizer", "PreTrainedTokenizerFast"]
+__all__ = [
+    "GPT2",
+    "Llama",
+    "AutoTokenizer",
+    "PreTrainedTokenizerFast",
+]

@@ -5,10 +5,9 @@ from typing import Any, List, Optional, Union
 
 import aiohttp
 import requests
-from httpx import head
 from pydantic import BaseModel, Field
 
-from shimeji.tokenizers import GPT2, AutoTokenizer, Llama
+from .tokenizers import GPT2, AutoTokenizer, Llama
 
 
 class ModelGenArgs(BaseModel):
