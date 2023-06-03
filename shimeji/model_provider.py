@@ -5,6 +5,7 @@ from typing import Any, List, Optional, Union
 
 import aiohttp
 import requests
+from httpx import head
 from pydantic import BaseModel, Field
 
 from shimeji.tokenizers import GPT2, AutoTokenizer, Llama
@@ -88,10 +89,12 @@ class OobaGenRequest(BaseModel):
     max_new_tokens: int = 250
     do_sample: bool = True
     temperature: float = 0.7
-    top_p: float = 0.5
+    top_p: float = 1.0
     typical_p: float = 1.0
-    repetition_penalty: float = 1.125
-    encoder_repetition_penalty: float = 1.2
+    epsilon_cutoff: float = 0.0
+    eta_cutoff: float = 0.0
+    repetition_penalty: float = 1.1
+    encoder_repetition_penalty: float = 1.0
     top_k: int = 40
     min_length: int = 0
     no_repeat_ngram_size: int = 0
@@ -105,8 +108,6 @@ class OobaGenRequest(BaseModel):
     ban_eos_token: bool = False
     skip_special_tokens: bool = True
     stopping_strings: List[str] = []
-    epsilon_cutoff: float = 0.0
-    eta_cutoff: float = 0.0
 
     @classmethod
     def from_generic(cls, req: ModelGenRequest) -> "OobaGenRequest":
@@ -663,7 +664,11 @@ class EnmaModel(ModelProvider):
             if arg is None:
                 raise ValueError("Missing required argument: " + arg)
         try:
-            r = requests.post(f"{self.endpoint_url}", data=json.dumps(argdict, ensure_ascii=False))
+            r = requests.post(
+                f"{self.endpoint_url}",
+                headers={"Content-Type": "application/json"},
+                data=json.dumps(argdict, ensure_ascii=False),
+            )
             r.encoding = "utf-8"
         except Exception as e:
             raise e
@@ -697,7 +702,7 @@ class EnmaModel(ModelProvider):
         for arg in argdict.values():
             if arg is None:
                 raise ValueError("Missing required argument: " + arg)
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers={"Content-Type": "application/json"}) as session:
             try:
                 async with session.post(f"{self.endpoint_url}", json=argdict) as resp:
                     if resp.status == 200:
@@ -832,7 +837,7 @@ class TextSynthModel(ModelProvider):
             "top_k": args.sample_args.top_k,
             "stop": self.tokenizer.decode(args.gen_args.eos_token_id),
         }
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers={"Content-Type": "application/json"}) as session:
             try:
                 async with session.post(
                     f"{self.endpoint_url}/v1/engines/{model}/completions",
@@ -923,7 +928,11 @@ class OobaModel(ModelProvider):
             args: OobaGenRequest = OobaGenRequest.from_generic(args)
 
         try:
-            r = requests.post(f"{self.endpoint_url}/api/v1/generate", json=args.dict())
+            r = requests.post(
+                f"{self.endpoint_url}/api/v1/generate",
+                headers={"Content-Type": "application/json"},
+                json=args.dict(),
+            )
             r.encoding = "utf-8"
         except Exception as e:
             raise e
@@ -999,7 +1008,7 @@ class OobaModel(ModelProvider):
         args.max_new_tokens = 24
         args.min_length = 0
         response = await self.generate_async(args)
-        if response.strip().startswith((name, prefix + name, prefix + " " + name)):
+        if response.strip().startswith((name, prefix + name, prefix + ": " + name)):
             return True
         else:
             return False

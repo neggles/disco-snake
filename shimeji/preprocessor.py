@@ -234,7 +234,7 @@ class ContextPreprocessor(Preprocessor):
         else:
             main_entry = ContextEntry(
                 text=context,
-                suffix="\n",
+                suffix="",
                 reserved_tokens=512,
                 insertion_order=0,
                 trim_direction=TRIM_DIR_TOP,
