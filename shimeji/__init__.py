@@ -8,7 +8,7 @@ __path__ = __import__("pkgutil").extend_path(__path__, __name__)
 
 from shimeji.shimeji import ChatBot
 
-from shimeji import memory, model_provider, postprocessor, preprocessor, util
+from shimeji import memory, model_provider, postprocessor, preprocessor, tokenizers, util
 
 __all__ = [
     "ChatBot",
@@ -16,5 +16,6 @@ __all__ = [
     "model_provider",
     "postprocessor",
     "preprocessor",
+    "tokenizers",
     "util",
 ]
