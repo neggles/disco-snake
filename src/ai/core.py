@@ -87,6 +87,10 @@ re_strip_special = re.compile(r"[^a-zA-Z0-9]+", re.M)
 re_linebreak_name = re.compile(r"(\n|\r|\r\n)(\S+): ", re.M)
 re_start_expression = re.compile(r"^\s*[(\*]\w+[)\*]\s*", re.I + re.M)
 re_upper_first = re.compile(r"^([A-Z]\s?[^A-Z])")
+re_detect_url = re.compile(
+    r"[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)",
+    re.M + re.I,
+)
 
 
 def re_match_lower(match: re.Match):
@@ -124,6 +128,9 @@ class Ai(commands.Cog, name=COG_UID):
         # Load config params up into top level properties
         self.params = self.config.params
         self.prompt: Prompt = self.config.prompt
+        self.prefix_user: str = self.prompt.prefix_user
+        self.prefix_bot: str = self.prompt.prefix_bot
+        self.prefix_sep: str = self.prompt.prefix_sep
 
         self.activity_channels: List[int] = self.params.activity_channels
         self.conditional_response: bool = self.params.conditional_response
@@ -192,7 +199,7 @@ class Ai(commands.Cog, name=COG_UID):
         prompt.append(self.prompt.character.full)
         if include_model:
             prompt.append(self.prompt.model.full)
-        prompt = "\n\n".join(prompt)
+        prompt = "\n".join(prompt)
 
         replace_tokens = {
             "bot_name": self.name,
@@ -201,7 +208,6 @@ class Ai(commands.Cog, name=COG_UID):
         }
         for token, replacement in replace_tokens.items():
             prompt = prompt.replace(f"{{{token}}}", replacement)
-
         return prompt
 
     async def cog_load(self) -> None:
@@ -300,8 +306,9 @@ class Ai(commands.Cog, name=COG_UID):
 
                 elif message.channel.id in self.activity_channels:
                     if self.conditional_response is True:
-                        conversation = await self.get_context_messages(message.channel, as_list=False)
-                        if await self.model_provider.should_respond_async(conversation, self.name, "\n"):
+                        conversation = await self.get_context_messages(message.channel)
+                        conv_str = "\n".join(conversation)
+                        if await self.model_provider.should_respond_async((f"{conv_str}"), self.name, "\n"):
                             logger.debug(f"Model wants to respond to '{message_content}', responding...")
                             trigger = "conditional"
 
@@ -388,9 +395,9 @@ class Ai(commands.Cog, name=COG_UID):
 
             # set up author name
             if msg.author.id == self.bot.user.id:
-                author_name = f"### Assistant: {self.name}:"
+                author_name = f"{self.prefix_bot}{self.prefix_sep}{self.name}:"
             elif msg.author.bot is False or (msg.author.id in self.sister_ids):
-                author_name = f"### Human: {msg.author.display_name.strip()}:"
+                author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
             else:
                 logger.debug("Skipping non-self/sibling bot message")
                 continue
@@ -433,7 +440,7 @@ class Ai(commands.Cog, name=COG_UID):
                     chain.append(f"{author_name} [image: loading error]")
 
         chain = [x.strip() for x in chain if x.strip() != ""]
-        return chain if as_list else "\n".join(chain)
+        return chain if as_list is True else ("\n".join(chain))
 
     # assemble a prompt/context for the model
     async def build_ctx(self, conversation: List[str], message: Message):
@@ -446,7 +453,7 @@ class Ai(commands.Cog, name=COG_UID):
                 [
                     "\n".join(conversation[:-1]),
                     "\n" + self.prompt.model.full,
-                    "\n".join(post_instruct).replace("### Human:", "").lstrip(),
+                    "\n".join(post_instruct).replace(self.prefix_user, "").lstrip(),
                 ]
             )
         else:
@@ -469,7 +476,7 @@ class Ai(commands.Cog, name=COG_UID):
         contextmgr.add_entry(prompt_entry)
 
         conversation_entry = ContextEntry(
-            text=conversation + f"\n### Assistant: {self.name}:",
+            text=conversation + f"\n{self.prefix_bot} {self.name}:",
             prefix="",
             suffix="",
             reserved_tokens=1024,
@@ -523,33 +530,34 @@ class Ai(commands.Cog, name=COG_UID):
             context = await self.build_ctx(conversation, message)
 
             # war crime for alpaca, needs more newlines
-            context_lines = context.splitlines()
-            new_lines = []
-            first = True
-            for line in context_lines:
-                if line.startswith("### "):
-                    _, content = line.split(":", 1)
-                    if line.startswith("### Assistant:") and line != "### Assistant:":
-                        if first is True:
-                            # strip empty newline at end of prompt
-                            new_lines = new_lines[:-1]
-                            # add response without extra newline
-                            new_lines.append(f"### Assistant: {content.strip()}")
-                            first = False
-                        else:
-                            # newline then response
-                            new_lines.append(f"### Assistant: {content.strip()}")
-                    elif line.startswith("### Human:") and line != "### Human:":
-                        if first is True:
-                            new_lines.append(f"### Human: {content.strip()}")
-                            first = False
-                        else:
-                            new_lines.append(f"### Human: {content.strip()}")
-                    else:
-                        new_lines.append(line)
-                else:
-                    new_lines.append(line)
-            context = "\n".join(new_lines).replace("\n\n\n", "\n\n")
+            # context_lines = context.splitlines()
+            # new_lines = []
+            # first = True
+            # for line in context_lines:
+            #     if line.startswith("### "):
+            #         _, content = line.split(":", 1)
+            #         if line.startswith(self.prefix_bot) and line != self.prefix_bot:
+            #             if first is True:
+            #                 # strip empty newline at end of prompt
+            #                 new_lines = new_lines[:-1]
+            #                 # add response without extra newline
+            #                 new_lines.append(f"{self.prefix_bot}{self.prefix_sep}{content.strip()}")
+            #                 first = False
+            #                 continue
+            #             else:
+            #                 # newline then response
+            #                 new_lines.append(f"{self.prefix_bot}{self.prefix_sep}{content.strip()}")
+            #                 continue
+            #         elif line.startswith(self.prefix_user) and line != self.prefix_user:
+            #             if first is True:
+            #                 new_lines.append(f"{self.prefix_user}{self.prefix_sep}{content.strip()}")
+            #                 first = False
+            #                 continue
+            #             else:
+            #                 new_lines.append(f"{self.prefix_user}{self.prefix_sep}{content.strip()}")
+            #                 continue
+            #     new_lines.append(line)
+            # context = "\n".join(new_lines).replace("\n\n\n", "\n\n")
             context = context.rstrip()
             debug_data["context"] = context.splitlines()
 
@@ -568,6 +576,9 @@ class Ai(commands.Cog, name=COG_UID):
                             continue
                         if "as a language model" in response.lower():
                             logger.info(f"Response admits to being an AI: {response}\nRetrying...")
+                            continue
+                        if re_detect_url.search(response):
+                            logger.info(f"Response contains a URL: {response}\nRetrying...")
                             continue
                         break  # no bad words, we're good, break out of the loop to avoid executing the else:
                     else:
@@ -634,7 +645,7 @@ class Ai(commands.Cog, name=COG_UID):
 
                 # if the first char is uppercase and the next isn't, force it to lowercase because
                 # bot keeps talking in sentence case and it's *wrong*
-                response = re.sub(re_upper_first, re_match_lower, response, 1)
+                # response = re.sub(re_upper_first, re_match_lower, response, 1)
 
                 debug_data["response"] = response
 

@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 # Just using hardcoded options for now
 IMAGE_SIZE_OPTS = [
-    (512, 1024),
     (544, 960),
     (576, 896),
     (608, 864),
@@ -41,7 +40,7 @@ IMAGE_SIZE_OPTS = [
     (800, 640),
     (848, 544),
     (864, 600),
-    (896, 585),
+    (896, 576),
     (928, 564),
     (960, 480),
 ]
@@ -61,7 +60,7 @@ re_surrounded = re.compile(r"\*[^*]*?(\*|$)", flags=re.I + re.M)
 re_clean_filename = re.compile(r"[^a-zA-Z0-9_\- ]+")  # for removing non-alphanumeric characters
 re_single_dash = re.compile(r"-+")  # for removing multiple dashes
 
-re_image_description = re.compile(r"\[image: ([^\]]+)\]", re.I + re.M)
+re_image_description = re.compile(r"\[\s*image: ([^\]]+)\s*\]", re.I + re.M)
 re_send_image = re.compile(r"[\[(].?(?:sends|sending) a? ?([^)\]]+)[)\]]", re.I + re.M)
 send_pic_regexes = [re_image_description, re_send_image]
 
@@ -171,6 +170,12 @@ class Imagen:
             lm_tags = f", ({lm_tags}:{self.sd_prompt.lm_weight})"
 
         combined_tags = f"{time_tag}{format_tags}{lm_tags}"
+
+        # now we split and rejoin
+        split_tags = [x.strip() for x in combined_tags.split(",")]
+        split_tags = [x for x in split_tags if len(x) > 3 and (x not in self.sd_prompt.banned_tags)]
+        combined_tags = ", ".join(split_tags)
+
         self.lm_last_response = combined_tags
         image_prompt = self.sd_prompt.prompt(combined_tags)
 
@@ -178,13 +183,14 @@ class Imagen:
         width, height = get_image_dimensions()
 
         # make sure we do portrait if the user asks for a portrait
-        if any_in_text(
-            ["portrait", "vertical", "of you ", "of yourself ", "selfie"],
-            user_prompt,
-        ):
+        if any_in_text(["portrait", "of you ", "of yourself ", "selfie"], user_prompt):
             width, height = min(width, height), max(width, height)
             # but clamp the height to 1.5x the width
             height = min(height, int(width * 1.5))
+        if any_in_text(["landscape", "horizontal", "the view"], user_prompt):
+            width, height = max(width, height), min(width, height)
+            # but clamp the width to 1.5x the height
+            width = min(width, int(height * 1.5))
 
         # Build the request and return it
         gen_request: Dict[str, Any] = self.sd_api_params.get_request(

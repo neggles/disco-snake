@@ -81,22 +81,25 @@ class PromptElement(BaseModel):
     prefix: str = Field(...)
     prompt: Union[str, List[str]] = Field(...)
     suffix: str = Field(...)
+    concat: str = Field("\n")
 
     @property
     def full(self) -> str:
         if isinstance(self.prompt, list):
-            prompt = "\n".join(self.prompt)
+            prompt = self.concat.join(self.prompt)
         else:
             prompt = self.prompt
-        return "\n".join([self.prefix, prompt, self.suffix]).strip()
+        return self.concat.join([self.prefix, prompt, self.suffix]).strip()
 
 
 class Prompt(BaseModel):
     instruct: Optional[bool] = Field(True)
     character: PromptElement = Field(...)
     system: PromptElement = Field(...)
-    user: Optional[PromptElement] = Field(None)
     model: PromptElement = Field(...)
+    prefix_bot: str = Field("\n")
+    prefix_user: str = Field("\n")
+    prefix_sep: str = Field("\n")
 
 
 class AiSettings(BaseSettings):
@@ -223,10 +226,11 @@ class ImagenLMPrompt(BaseModel):
 
 
 class ImagenSDPrompt(BaseModel):
-    leading: List[str]
-    trailing: List[str]
-    negative: List[str]
     lm_weight: float = 1.15
+    leading: List[str] = Field(...)
+    trailing: List[str] = Field(...)
+    negative: List[str] = Field(...)
+    banned_tags: List[str] = Field(...)
 
     def prompt(self, prompt: str) -> str:
         leading_tags = ", ".join(self.leading)
