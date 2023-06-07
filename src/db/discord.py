@@ -50,9 +50,8 @@ class DiscordUser(Base):
     last_updated: Mapped[UpdateTimestamp]
 
     tos_accepted: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
-    tos_accepted_at: Mapped[Timestamp]
-    log_disable: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
-    log_anonymous: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
+    tos_rejected: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
+    tos_timestamp: Mapped[Timestamp]
 
     @hybrid_property
     def name(self) -> str:

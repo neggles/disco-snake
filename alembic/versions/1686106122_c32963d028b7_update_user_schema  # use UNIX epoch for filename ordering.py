@@ -19,20 +19,16 @@ def upgrade() -> None:
     op.create_unique_constraint("users_id_key", "users", ["id"])
     op.drop_constraint("users_global_name_key", "users", type_="unique")
     op.drop_column("users", "global_name")
+    op.alter_column("users", column_name="tos_accepted_at", new_column_name="tos_timestamp")
     op.add_column(
         "users",
-        sa.Column("log_disable", sa.Boolean(), server_default=sa.false(), nullable=False),
+        sa.Column("tos_rejected", sa.Boolean(), server_default=sa.false(), nullable=False),
     )
-    op.add_column(
-        "users",
-        sa.Column("log_anonymous", sa.Boolean(), server_default=sa.false(), nullable=False),
-    )
-    op.execute("UPDATE users SET log_disable = false, log_anonymous = false")
 
 
 def downgrade() -> None:
-    op.drop_column("users", "log_anonymous")
-    op.drop_column("users", "log_disable")
+    op.drop_column("users", "tos_rejected")
+    op.alter_column("users", column_name="tos_timestamp", new_column_name="tos_accepted_at")
     op.add_column(
         "users",
         sa.Column("global_name", sa.VARCHAR(), nullable=True),
