@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseConfig, BaseSettings, Field, PostgresDsn, validator
+from pydantic import AnyUrl, BaseConfig, BaseSettings, Field, PostgresDsn, validator
 from pydantic.env_settings import (
     EnvSettingsSource,
     InitSettingsSource,
@@ -80,7 +80,9 @@ class Settings(BaseSettings):
 
     owner_id: int = Field(...)
     admin_ids: List[int] = Field(..., unique_items=True)
-    home_guild: int
+    home_guild: int = Field(...)
+    support_guild: int = Field(...)
+    support_invite: AnyUrl = Field(...)
 
     status_type: str = Field("playing")
     statuses: List[str] = Field(["with your heart"])

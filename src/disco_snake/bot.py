@@ -60,6 +60,10 @@ class DiscoSnake(commands.Bot):
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
         self.home_guild: Guild = None  # set in on_ready
 
+        # support channel stuff for cog
+        self.support_guild: Guild = None  # set in on_ready
+        self.support_invite: str = self.config.support_invite
+
         # thread pool for blocking code
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="bot")
 
@@ -74,6 +78,10 @@ class DiscoSnake(commands.Bot):
     @property
     def fuzzyuptime(self) -> str:
         return fuzzydelta(self.uptime)
+
+    @property
+    def owner_link(self):
+        return f"[{self.owner}](https://discordapp.com/users/{self.owner_id})"
 
     async def do(self, func, *args, **kwargs):
         funcname = getattr(func, "__name__", None)
@@ -162,9 +170,9 @@ class DiscoSnake(commands.Bot):
         logger.info(f"Running on: {platform.system()} {platform.release()} ({os.name})")
         logger.info("-------------------")
         if self.home_guild is None:
-            logger.info("Saving home guild metadata to disk")
             self.home_guild = self.get_guild(self.config.home_guild)
-            self.save_guild_metadata(self.home_guild.id)
+        if self.support_guild is None:
+            self.support_guild = self.get_guild(self.config.support_guild)
         if not self.status_task.is_running():
             logger.info("Starting status update task")
             self.status_task.start()
