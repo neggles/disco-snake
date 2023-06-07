@@ -32,6 +32,12 @@ logger = logsnake.setup_logger(
     propagate=True,
 )
 
+# redirect aiogram logger to cog logger
+aiogram_logger = logging.getLogger("aiogram")
+aiogram_logger.propagate = False
+for handler in logger.handlers:
+    aiogram_logger.addHandler(handler)
+
 
 TG_DATA_DIR = DATADIR_PATH.joinpath("telegram")
 
@@ -93,7 +99,7 @@ class TelegramCog(commands.Cog, name="telegram"):
     ):
         """Start the Telegram polling loop"""
         loop = asyncio.get_event_loop()
-        logger.info("Starting polling")
+        logger.info("Starting polling...")
         await self.exec._startup_polling()
         self.task = loop.create_task(
             self.dp.start_polling(
@@ -104,8 +110,7 @@ class TelegramCog(commands.Cog, name="telegram"):
                 allowed_updates=allowed_updates,
             )
         )
-        logger.info("polling started")
-        logger.info(f"{self.task}")
+        logger.info("Poller is running")
 
     ### Telegram shit
     async def tg_welcome(self, message: Message):

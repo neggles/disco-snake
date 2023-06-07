@@ -34,6 +34,7 @@ class ModelProviderConfig(BaseModel):
 class NamedSnowflake(BaseModel):
     name: str = Field("")  # not actually used, just here so it can be in config
     id: int = Field(...)
+    note: Optional[str] = Field(None)
 
 
 class ContextBreak(BaseModel):
@@ -55,7 +56,7 @@ class BotParameters(BaseModel):
     memory_enable: bool = False
     max_retries: int = 3
     ctxbreak_users: List[int] = Field([])
-    ctxbreak_roles: List[int] = Field([])
+    ctxbreak_roles: List[NamedSnowflake] = Field([])
     guilds: List[int] = Field([])
     dm_users: List[NamedSnowflake] = Field([])
     sisters: List[NamedSnowflake] = Field([])

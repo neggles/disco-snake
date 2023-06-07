@@ -4,10 +4,11 @@ import logging
 import re
 from asyncio import Lock
 from datetime import datetime, timedelta, timezone
+from functools import cached_property
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -16,10 +17,12 @@ from disnake import (
     Embed,
     File,
     GroupChannel,
+    Member,
     Message,
     MessageInteraction,
     TextChannel,
     Thread,
+    User,
 )
 from disnake.ext import commands, tasks
 from Levenshtein import distance as lev_distance
@@ -34,6 +37,8 @@ from shimeji.util import (
     TRIM_TYPE_NEWLINE,
     ContextEntry,
 )
+from sqlalchemy import select
+from sqlalchemy.orm import lazyload, load_only
 from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
 from transformers.utils import logging as transformers_logging
 
@@ -51,7 +56,6 @@ from ai.settings import (
 from ai.types import MessageChannel
 from ai.ui import AiStatusEmbed
 from ai.utils import (
-    anti_spam,
     any_in_text,
     convert_mentions_emotes,
     get_full_class_name,
@@ -60,6 +64,8 @@ from ai.utils import (
     restore_mentions_emotes,
 )
 from ai.web import GradioUi
+from cogs.privacy import PrivacyEmbed, PrivacyView, get_policy_text
+from db import DiscordUser, Session, async_sessionmaker
 from disco_snake import checks
 from disco_snake.bot import DiscoSnake
 
@@ -149,6 +155,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.guild_ids: List[int] = self.params.guilds
         self.dm_user_ids: List[int] = [x.id for x in self.params.dm_users]
         self.dm_user_ids.extend(self.bot.config.admin_ids)
+        self.ignored_user_ids: Set[int] = {}
 
         # bot user IDs that we're allowed to see/hear
         self.sister_ids = [x.id for x in self.params.sisters]
@@ -183,12 +190,51 @@ class Ai(commands.Cog, name=COG_UID):
     def name(self) -> str:
         return self.config.name
 
+    @tasks.loop(seconds=60)
+    async def update_ignored(self):
+        """Check the database for users who have rejected the ToS and get a list of their IDs for message filtering"""
+        async with Session.begin() as session:
+            query = (
+                select(DiscordUser)
+                .options(load_only("id", "tos_accepted", "tos_rejected", raiseload=True))
+                .filter(DiscordUser.tos_rejected is True)
+            )
+            result = await session.scalars(query)
+            users = result.all()
+        self.ignored_user_ids.update([x.id for x in users])
+
+    async def user_accepted_tos(self, user: Union[User, Member, int]) -> Optional[bool]:
+        """Checks if a user has accepted the ToS, rejected, or not completed the process.
+        Returns True if accepted, False if rejected, None if not completed.
+        """
+        user_id = user.id if isinstance(user, (User, Member)) else user
+        async with Session.begin() as session:
+            user: DiscordUser = await session.get(DiscordUser, user_id)
+            if user.tos_rejected is True:
+                return False
+            if user.tos_accepted is True:
+                return True
+            if user is None:
+                logger.debug(f"User {user_id} has not completed the ToS process.")
+                return None
+
+    async def tos_accepted_users(self) -> Set[int]:
+        async with Session.begin() as session:
+            query = (
+                select(DiscordUser)
+                .options(load_only("id", "tos_accepted", "tos_rejected", raiseload=True))
+                .filter(DiscordUser.tos_accepted is True)
+            )
+            result = await session.scalars(query)
+            users = result.all()
+        return {x.id for x in users}
+
     # retrieve the LM prompt and inject name, time, etc.
     def get_prompt(self, ctx: Optional[MessageInteraction] = None, include_model: bool = False) -> str:
         if ctx is None:
-            location_context = "and her friends in a Discord server"
+            location_context = "and friends in a Discord server"
         elif hasattr(ctx, "guild") and ctx.guild is not None:
-            location_context = f"and her friends in the {ctx.guild.name} Discord server"
+            location_context = f'and friends in the "{ctx.guild.name}" Discord server'
         elif hasattr(ctx, "author") and ctx.author is not None:
             location_context = f"and {ctx.author.display_name} in a Discord DM"
         else:
@@ -248,13 +294,15 @@ class Ai(commands.Cog, name=COG_UID):
         for user_id in self.dm_user_ids:
             logger.debug(f" - {user_id}")
 
+        if not self.update_ignored.is_running():
+            logger.debug("Starting update_ignored task...")
+            self.update_ignored.start()
+
         logger.info("AI engine initialized... probably?")
         if self.idle_messaging is True:
             logger.info("Starting idle messaging loop")
             self.idle_loop.start()
         if not self.log_archive_loop.is_running():
-            logger.info("Archiving logs from over 15 min ago")
-            self.archive_logs(seconds=900)
             logger.info("Starting log archive loop")
             self.log_archive_loop.start()
 
@@ -268,6 +316,8 @@ class Ai(commands.Cog, name=COG_UID):
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
         if (message.author.bot is True) or (message.author == self.bot.user):
+            return
+        if message.author.id in self.ignored_user_ids:
             return
         if "```" in message.content:
             return
@@ -295,9 +345,15 @@ class Ai(commands.Cog, name=COG_UID):
             async with self.lm_lock:
                 trigger = None
                 conversation = None
+                send_tos_request = False
 
                 if self.bot.user.mentioned_in(message) or self.name_in_text(message_content):
                     logger.debug(f"Mentioned in {message.channel}: {message_content}")
+                    tos_accepted = await self.user_accepted_tos(message.author)
+                    if tos_accepted is None:
+                        send_tos_request = True
+                    elif tos_accepted is False:
+                        return
                     trigger = "mention"
 
                 elif isinstance(message.channel, DMChannel) and len(message_content) > 0:
@@ -308,7 +364,9 @@ class Ai(commands.Cog, name=COG_UID):
                     if self.conditional_response is True:
                         conversation = await self.get_context_messages(message.channel)
                         conv_str = "\n".join(conversation)
-                        if await self.model_provider.should_respond_async((f"{conv_str}"), self.name, "\n"):
+                        if await self.model_provider.should_respond_async(
+                            (f"{conv_str}"), self.name, f"\n{self.prefix_bot}"
+                        ):
                             logger.debug(f"Model wants to respond to '{message_content}', responding...")
                             trigger = "conditional"
 
@@ -325,11 +383,14 @@ class Ai(commands.Cog, name=COG_UID):
                     if conversation is None:
                         await message.channel.trigger_typing()
                         conversation = await self.get_context_messages(message.channel)
-                    await self.respond(conversation, message, trigger)
+                    if send_tos_request is False:
+                        await self.respond(conversation, message, trigger)
+                    else:
+                        await self.respond(conversation, message, trigger, "Please check your DMs!")
+                        await self.check_send_tos(message)
 
         except Exception as e:
-            logger.error(e)
-            logger.error(format_exc())
+            logger.exception(e)
             exc_class = get_full_class_name(e)
             if exc_class == "HTTPException":
                 # don't bother, the backend is down
@@ -364,8 +425,9 @@ class Ai(commands.Cog, name=COG_UID):
     ) -> Union[str, List[str]]:
         if message is not None:
             messages = await channel.history(limit=50, before=message).flatten()
+        else:
+            messages = await channel.history(limit=50).flatten()
 
-        messages = await channel.history(limit=50).flatten()
         # magic tag to break context chain to get bot out of librarian mode
         for idx, message in enumerate(messages):
             if self.is_ctxbreak_msg(message):
@@ -375,27 +437,27 @@ class Ai(commands.Cog, name=COG_UID):
 
         chain = []
         for msg in reversed(messages):
+            if msg.author.id in self.ignored_user_ids:
+                continue  # skip users who rejected the privacy policy
             if msg.content is not None:
                 if msg.content.startswith("-"):
                     logger.debug("skipping other bot command message")
                     continue
-                if len(msg.content) > 300:
-                    if any_in_text(
-                        [
-                            "you have 10 tokens",
-                            'which stands for "do anything now"',
-                        ],
-                        msg.content.lower(),
-                    ):
-                        logger.debug("Skipping long message containing AI jailbreak bullshit")
-                        continue
+                if len(msg.content) > 300 and any_in_text(
+                    ["you have 10 tokens", 'which stands for "do anything now"'], msg.content.lower()
+                ):
+                    logger.debug("Skipping long message containing AI jailbreak bullshit")
+                    continue
                 if msg.content.startswith("DAN:"):
-                    logger.debug("Skipping stupid DAN message fuck you technocat")
+                    logger.debug("Skipping stupid DAN message (looking at u technocat)")
                     continue
 
             # set up author name
             if msg.author.id == self.bot.user.id:
-                author_name = f"{self.prefix_bot}{self.prefix_sep}{self.name}:"
+                if msg.content.startswith("This bot is an AI chatbot made by"):
+                    # this is a TOS message in a DM so lets skip it
+                    continue
+                author_name = f"{self.prefix_bot}{self.prefix_sep}{msg.author.display_name.strip()}:"
             elif msg.author.bot is False or (msg.author.id in self.sister_ids):
                 author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
             else:
@@ -495,7 +557,13 @@ class Ai(commands.Cog, name=COG_UID):
         return context.replace("\n\n", "\n").replace("\n\n", "\n")
 
     # actual response logic
-    async def respond(self, conversation: List[str], message: Message, trigger: str = None) -> str:
+    async def respond(
+        self,
+        conversation: List[str],
+        message: Message,
+        trigger: Optional[str] = None,
+        append: Optional[str] = None,
+    ) -> str:
         async with message.channel.typing():
             debug_data: Dict[str, Any] = {}
 
@@ -641,12 +709,10 @@ class Ai(commands.Cog, name=COG_UID):
                     )
 
                 # trim hashes n shit
-                response = response.rstrip(" #}")
+                response = response.rstrip("\"' #}").lstrip("\"'")
 
-                # if the first char is uppercase and the next isn't, force it to lowercase because
-                # bot keeps talking in sentence case and it's *wrong*
-                # response = re.sub(re_upper_first, re_match_lower, response, 1)
-
+                if append is not None and len(append.strip()) > 0:
+                    response = f"{response} < {append.strip()} >"
                 debug_data["response"] = response
 
                 # Send response if not empty
@@ -724,7 +790,41 @@ class Ai(commands.Cog, name=COG_UID):
         await asyncio.sleep(10)
         logger.info("Idle loop running!")
 
-    # Helper functions
+    # check if the person triggering the bot has agreed to ToS or not and send it if not
+    async def check_send_tos(self, message: Message) -> bool:
+        logger.debug(f"Checking ToS for {message.author} ({message.author.id})")
+        try:
+            async with Session.begin() as session:
+                user: DiscordUser = await session.get(DiscordUser, message.author.id)
+                if user is None:
+                    user = DiscordUser.from_discord(message.author)
+                    await session.merge(user)
+                    await session.commit()
+                    user = await session.get(DiscordUser, message.author.id)
+                if user is None:
+                    raise Exception("Failed to create or retrieve user")
+
+            # send the form in a DM if they haven't accepted or rejected it yet
+            if user.tos_accepted is not True:
+                logger.debug(f"Sending privacy embed to {message.author} ({message.author.id})")
+                invite = await self.bot.support_invite()
+                embed = PrivacyEmbed(
+                    author=message.author, support_guild=self.bot.support_guild, user=user, invite=invite
+                )
+                view = PrivacyView(user=user)
+                content = get_policy_text(self.bot)
+                await message.author.send(content=content, embed=embed, view=view)
+                logger.debug(f"Sent privacy embed to {message.author} ({message.author.id})")
+                return False
+            else:
+                logger.debug(f"User {message.author} ({message.author.id}) has accepted ToS")
+                return True
+        except Exception as e:
+            logger.exception("error checking tos")
+            raise e
+
+    ## Helper functions
+    # clean up a message's content
     def get_msg_content_clean(self, message: Message, content: Optional[str] = None) -> str:
         content = content if content is not None else message.content
 
@@ -757,6 +857,7 @@ class Ai(commands.Cog, name=COG_UID):
         # if there's a codeblock in there, return an empty string
         return content.lstrip() if "```" not in content else ""
 
+    # clean out some bad tokens from responses and fix up mentions
     def fixup_bot_user_tokens(self, response: str, message: Message) -> str:
         """
         Fix <USER>, <BOT>, etc tokens in the response, and unescape any escaped markdown formatting
@@ -809,12 +910,9 @@ class Ai(commands.Cog, name=COG_UID):
         """
         Move message log files over 24h old to the archive directory
         """
-        self.archive_logs(seconds=86400)
-
-    def archive_logs(self, seconds: int = 86400):
         for file in self.debug_dir.glob("*.json"):
             file_age = (datetime.now() - datetime.fromtimestamp(file.stat().st_mtime)).total_seconds()
-            if file_age >= seconds:
+            if file_age >= (3600 * 24):
                 logger.debug(f"Archiving debug log {file.name}")
                 file = file.rename(file.parent / "archive" / file.name)
 

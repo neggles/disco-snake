@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -20,8 +21,10 @@ from disnake import (
     Guild,
     Intents,
     InteractionResponseType,
+    Invite,
     Member,
     Message,
+    TextChannel,
     __version__ as DISNAKE_VERSION,
 )
 from disnake.ext import commands, tasks
@@ -58,11 +61,6 @@ class DiscoSnake(commands.Bot):
         self.datadir_path: Path = DATADIR_PATH
         self.cogdir_path: Path = COGDIR_PATH
         self.start_time: datetime = datetime.now(tz=ZoneInfo("UTC"))
-        self.home_guild: Guild = None  # set in on_ready
-
-        # support channel stuff for cog
-        self.support_guild: Guild = None  # set in on_ready
-        self.support_invite: str = self.config.support_invite
 
         # thread pool for blocking code
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="bot")
@@ -82,6 +80,26 @@ class DiscoSnake(commands.Bot):
     @property
     def owner_link(self):
         return f"[{self.owner}](https://discordapp.com/users/{self.owner_id})"
+
+    @property
+    def support_guild(self) -> Guild:
+        return self.get_guild(self.config.support_guild)
+
+    @property
+    def home_guild(self) -> Guild:
+        return self.get_guild(self.config.home_guild)
+
+    @property
+    def support_channel(self) -> TextChannel:
+        channel = self.get_channel(self.config.support_channel)
+        if channel is None:
+            channel = self.support_guild.rules_channel or self.support_guild.text_channels[0]
+        return channel
+
+    async def support_invite(self) -> Invite:
+        return await self.support_channel.create_invite(
+            reason="Support Invite", max_uses=1, max_age=1800, unique=True
+        )
 
     async def do(self, func, *args, **kwargs):
         funcname = getattr(func, "__name__", None)
@@ -169,10 +187,6 @@ class DiscoSnake(commands.Bot):
         logger.info(f"Python version: {platform.python_version()}")
         logger.info(f"Running on: {platform.system()} {platform.release()} ({os.name})")
         logger.info("-------------------")
-        if self.home_guild is None:
-            self.home_guild = self.get_guild(self.config.home_guild)
-        if self.support_guild is None:
-            self.support_guild = self.get_guild(self.config.support_guild)
         if not self.status_task.is_running():
             logger.info("Starting status update task")
             self.status_task.start()
@@ -181,8 +195,6 @@ class DiscoSnake(commands.Bot):
             self.user_save_task.start()
 
     async def on_message(self, message: Message) -> None:
-        if message.author == self.user or (message.author.bot is True):
-            return
         await self.process_commands(message)
 
     async def on_slash_command(self, ctx: ApplicationCommandInteraction) -> None:
@@ -340,7 +352,6 @@ class DiscoSnake(commands.Bot):
                     user_obj = DiscordUser.from_discord(user)
                     await session.merge(user_obj)
                 await session.commit()
-        logger.debug("User database updated")
 
     @user_save_task.before_loop
     async def before_user_save_task(self) -> None:

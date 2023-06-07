@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     admin_ids: List[int] = Field(..., unique_items=True)
     home_guild: int = Field(...)
     support_guild: int = Field(...)
-    support_invite: AnyUrl = Field(...)
+    support_channel: int = Field(...)
 
     status_type: str = Field("playing")
     statuses: List[str] = Field(["with your heart"])
