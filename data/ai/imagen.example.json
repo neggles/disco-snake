@@ -5,30 +5,30 @@
     "timezone": "Asia/Tokyo"
   },
   "lm_prompt": {
-    "tags": ["masterpiece", "best quality", "exceptional", "1girl", "solo"],
+    "tags": ["1girl", "masterpiece", "best quality", "exceptional"],
     "header": [
+      "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.",
       "### Instruction:",
-      "Please write a prompt for a text-to-image diffusion model, matching the description provided as input.",
+      "Please write a Danbooru tag prompt for a text-to-image diffusion model, matching the description provided as input.",
       "Example prompt: \"{prompt_tags}, open mouth, long hair, orange eyes, smile, :d, long sleeves, blush, collared shirt, bangs, indoors, hair between eyes, blue shirt, bow, hair bow, book, holding, cowboy shot, looking to the side, singing, indoors, hair ornament, sidelocks, arms up, bright colours, vivid colours, cinematic light, chiaroscuro, light particles\". Example prompt: \"{prompt_tags}, cowboy shot, dutch angle, long hair, black hair, purple eyes, bangs, hair between eyes, sidelock, hair ornament, sweatshirt, black sweatshirt, skirt, short skirt, socks, white socks, footwear, black footwear, blush, looking at viewer, outdoors, night, wind, depth of field, reflections, backlighting\".",
       "Use only Danbooru image board tags. Tags must be comma separated. Include image composition tags as well as tags describing clothing. Always start with \"{prompt_tags}\". No capitalization. No special characters. Do not use \"monochrome\", \"black and white\", or \"monochromatic\".",
-      "",
       "### Input:",
       ""
     ],
     "trailer": "\n### Response:\n",
     "gensettings": {
       "prompt": "a cute girl looking out her apartment window at the streets of tokyo",
-      "max_new_tokens": 120,
+      "max_new_tokens": 96,
       "do_sample": true,
-      "temperature": 0.71,
-      "top_p": 0.15,
+      "temperature": 0.75,
+      "top_p": 0.47,
       "typical_p": 1.0,
-      "repetition_penalty": 1.2,
+      "repetition_penalty": 1.18,
       "encoder_repetition_penalty": 1.0,
-      "top_k": 10,
-      "min_length": 3,
-      "no_repeat_ngram_size": 0,
-      "num_beams": 1,
+      "top_k": 100,
+      "min_length": 24,
+      "no_repeat_ngram_size": 20,
+      "num_beams": 3,
       "penalty_alpha": 0.0,
       "length_penalty": 1.0,
       "early_stopping": true,
@@ -37,7 +37,7 @@
       "truncation_length": 2048,
       "ban_eos_token": false,
       "skip_special_tokens": true,
-      "stopping_strings": ["</s>", ".", "\n", "!", ":", ")", "("]
+      "stopping_strings": [".", "\n", "?", "!", ":", ")", "(", "[", "]"]
     }
   },
   "api_params": {
@@ -83,6 +83,20 @@
       "child",
       "cameltoe",
       "cleavage"
+    ],
+    "banned_tags": [
+      "nsfw",
+      "nude",
+      "loli",
+      "child",
+      "large breasts",
+      "nsfw",
+      "cameltoe",
+      "cleavage",
+      "panties",
+      "nightgown",
+      "see-through",
+      "transparent"
     ]
   }
 }
