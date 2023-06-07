@@ -8,7 +8,7 @@ from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym_for
 
-from db.base import Base, BigIntPK, CreateTimestamp, Timestamp, UpdateTimestamp
+from db.base import Base, CreateTimestamp, Timestamp, UpdateTimestamp
 
 ## Annotated types for Discord objects
 DiscordSnowflake = Annotated[
@@ -51,7 +51,8 @@ class DiscordUser(Base):
 
     tos_accepted: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
     tos_accepted_at: Mapped[Timestamp]
-    # tos_accept_msg: Mapped[]
+    log_disable: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
+    log_anonymous: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
 
     @hybrid_property
     def name(self) -> str:
