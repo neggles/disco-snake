@@ -167,14 +167,13 @@ class Imagen:
                 format_tags = f"{format_tags}, holding"
 
         if len(lm_tags) > 0:
-            lm_tags = f", ({lm_tags}:{self.sd_prompt.lm_weight})"
+            split_tags = [x.strip() for x in lm_tags.split(",") if len(x) > 3]
+            lm_tags = [x for x in split_tags if x not in self.sd_prompt.banned_tags]
+            logger.debug(f"Removed {len(split_tags) - len(lm_tags)} tags from lm_tags, remaining: {lm_tags}")
+            lm_tags = ", ".join(lm_tags)
+            lm_tags = f"({lm_tags}:{self.sd_prompt.lm_weight})"
 
-        combined_tags = f"{time_tag}{format_tags}{lm_tags}"
-
-        # now we split and rejoin
-        split_tags = [x.strip() for x in combined_tags.split(",")]
-        split_tags = [x for x in split_tags if len(x) > 3 and (x not in self.sd_prompt.banned_tags)]
-        combined_tags = ", ".join(split_tags)
+        combined_tags = f"{time_tag}, {format_tags}, {lm_tags}"
 
         self.lm_last_response = combined_tags
         image_prompt = self.sd_prompt.prompt(combined_tags)
@@ -246,7 +245,9 @@ class Imagen:
                                 indent=2,
                                 skipkeys=True,
                                 default=str,
-                            )
+                                ensure_ascii=False,
+                            ),
+                            encoding="utf-8",
                         )
                         # this could return the image object, but we're saving it anyway and it's easier to
                         # load a disnake File() from a path, so, uh... memory leak prevention? :sweat_smile:
