@@ -1,5 +1,5 @@
 import logging
-from typing import Union
+from typing import Optional, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -9,12 +9,13 @@ from disnake import (
     Guild,
     Invite,
     Member,
-    MessageCommandInteraction,
+    Message,
     User,
     ui,
 )
 from disnake.ext import commands
 from disnake.ui import Button, View
+from httpx import delete
 
 from db import DiscordUser, Session
 from disco_snake import checks
@@ -24,7 +25,7 @@ logger = logging.getLogger(__package__)
 
 COG_UID = "privacy"
 
-POLICY_TEXT = """This bot is an AI chatbot made by {org_name}.
+POLICY_TEXT = """This is an AI chatbot made by {org_name}.
 
 When you interact with {org_name} chatbots, we collect data about your interactions to enhance your experience. This includes your Discord user account ID, username, and display names. We keep a record of your messages, timestamps, conversation contexts, hashes of received images and their auto-generated captions, and generated images. This data is used for troubleshooting, bot memory, feature and functionality improvements, abuse detection, analytics, and model training.
 
@@ -64,6 +65,7 @@ class PrivacyEmbed(Embed):
 class PrivacyView(View):
     def __init__(self, user: DiscordUser):
         self.user: DiscordUser = user
+        self.message: Optional[Message] = None
         super().__init__(timeout=180)
 
     @ui.button(label="Accept", style=ButtonStyle.green, custom_id=f"{COG_UID}:PrivacyView:accept")
@@ -94,7 +96,7 @@ class PrivacyView(View):
                 delete_after=60,
             )
         finally:
-            await ctx.edit_original_response(view=self)
+            await ctx.edit_original_response(view=self, delete_after=300)
             self.stop()
 
     @ui.button(label="Reject", style=ButtonStyle.red, custom_id=f"{COG_UID}:PrivacyView:reject")
@@ -124,8 +126,23 @@ class PrivacyView(View):
                 delete_after=60,
             )
         finally:
-            await ctx.edit_original_response(view=self)
+            await ctx.edit_original_response(view=self, delete_after=300)
             self.stop()
+
+    async def on_timeout(self):
+        self.accept.disabled = True
+        self.accept.style = ButtonStyle.grey
+
+        self.reject.disabled = True
+        self.reject.style = ButtonStyle.grey
+        self.message = await self.message.edit(
+            content="Interaction timed out."
+            + "\nPlease invoke /privacy if you wish to change your privacy settings."
+            + "\nThis message will be deleted in 5 minutes.",
+            view=self,
+            embed=None,
+            delete_after=300,
+        )
 
 
 class Privacy(commands.Cog, name=COG_UID):

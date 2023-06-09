@@ -454,10 +454,11 @@ class Ai(commands.Cog, name=COG_UID):
 
             # set up author name
             if msg.author.id == self.bot.user.id:
-                if msg.content.startswith("This bot is an AI chatbot made by"):
+                if msg.content.startswith("This is an AI chatbot made by"):
                     # this is a TOS message in a DM so lets skip it
                     continue
-                author_name = f"{self.prefix_bot}{self.prefix_sep}{msg.author.display_name.strip()}:"
+                # author_name = f"{self.prefix_bot}{self.prefix_sep}{msg.author.display_name.strip()}:"
+                author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
             elif msg.author.bot is False or (msg.author.id in self.sister_ids):
                 author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
             else:
@@ -502,6 +503,8 @@ class Ai(commands.Cog, name=COG_UID):
                     chain.append(f"{author_name} [image: loading error]")
 
         chain = [x.strip() for x in chain if x.strip() != ""]
+        if chain[-1].lower().startswith(f"{self.prefix_user}{self.prefix_sep}{self.name}:".lower()):
+            chain = chain[:-1]  # remove last message if it's from the bot, cheap hack for now
         return chain if as_list is True else ("\n".join(chain))
 
     # assemble a prompt/context for the model
@@ -538,7 +541,7 @@ class Ai(commands.Cog, name=COG_UID):
         contextmgr.add_entry(prompt_entry)
 
         conversation_entry = ContextEntry(
-            text=conversation + f"\n{self.prefix_bot} {self.name}:",
+            text=conversation + f"\n{self.name}:",
             prefix="",
             suffix="",
             reserved_tokens=1024,

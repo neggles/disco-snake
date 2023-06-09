@@ -29,7 +29,6 @@ known-first-party = [
     "exceptions",
     "helpers",
     "logsnake",
-    "webui",
 ]
 known-third-party = ["alembic", "disnake"]
 

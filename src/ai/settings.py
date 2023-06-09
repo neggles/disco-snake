@@ -8,7 +8,7 @@ from typing import List, Optional, Union
 from pydantic import BaseModel, BaseSettings, Field
 from shimeji.model_provider import OobaGenRequest
 
-from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, get_suffix, get_suffix_name
+from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, get_suffix_name
 from disco_snake.settings import JsonConfig
 
 AI_DATA_DIR = PACKAGE_ROOT.parent.joinpath("data", "ai")

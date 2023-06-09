@@ -1,2 +1,10 @@
-# setuptools_scm will grab all tracked files, minus these exclusions
 prune .vscode
+prune .github
+exclude .git_archival.txt
+exclude .pre-commit-config.yaml
+exclude *.nix
+include *.rst
+include *.toml
+include alembic.ini
+prune /misc
+prune /temp
