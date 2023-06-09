@@ -1,7 +1,6 @@
 import json
 import logging
 import sys
-from argparse import ArgumentParser, Namespace
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional
@@ -16,7 +15,7 @@ from rich.pretty import install as install_pretty
 from rich.traceback import install as install_traceback
 
 import logsnake
-from disco_snake import DATADIR_PATH, DEF_CONFIG_PATH, LOG_FORMAT, LOGDIR_PATH, get_suffix
+from disco_snake import DATADIR_PATH, DEF_DATA_PATH, LOG_FORMAT, LOGDIR_PATH, config_suffix, per_config_name
 from disco_snake.bot import DiscoSnake
 from helpers.misc import parse_log_level
 
@@ -49,7 +48,7 @@ logger = logsnake.setup_logger(
 install_pretty()
 install_traceback(show_locals=True)
 
-noisy_loggers = ["httpx", "disnake.gateway", "disnake.http", "disnake.client"]
+noisy_loggers = ["httpx", "disnake.gateway", "disnake.http", "dis"]
 
 
 def cb_shutdown(message: str, code: int):
@@ -79,33 +78,23 @@ class BotDaemon(FHSDaemon):
         bot.load_extension(cog_module)
 
 
-def get_pid_file() -> Path:
-    """Please just look away. It's not safe here."""
-    parser = ArgumentParser()
-    parser.add_argument("-c", "--config", default=DEF_CONFIG_PATH)
-    args, _ = parser.parse_known_args(args=sys.argv[1:])
-    config_path = Path(args.config)
-    pidfile_path = config_path.parent.joinpath(f"daemon/{config_path.stem}.pid")
-    return pidfile_path
-
-
 @click.command(
     cls=DaemonCLI,
     daemon_class=BotDaemon,
     daemon_params={
         "name": "disco-snake",
         "shutdown_callback": cb_shutdown,
-        "prefix": get_suffix(path=True),
+        "prefix": config_suffix(daemon_path=True),
         "stop_timeout": 60,
     },
 )
 @click.option(
     "-c",
     "--config",
-    type=click.Path(exists=True, dir_okay=False),
-    default=DEF_CONFIG_PATH,
-    help="Path to config file to use",
-    show_default=f"{DEF_CONFIG_PATH.relative_to(Path.cwd())}",
+    type=str,
+    default=None,
+    help="Name of the configuration to use.",
+    show_default="None (no config suffix)",
 )
 @click.version_option(package_name="disco-snake")
 @pass_daemon
@@ -113,15 +102,23 @@ def cli(daemon: BotDaemon, config: Optional[Path] = None):
     """
     disco-snake discord bot CLI service controller.
 
-    CONFIG_FILE is the path to the config file to use. If not specified, the default config file
-    location will be used.
+    pass --config <name> to use a specific configuration file / data dir suffix.
     """
-    logger.warn("This is a work in progress. Use at your own risk.")
-    logger.info(f"Using config file: {config}")
+    # get config suffix
+    suffix = config_suffix()
+    config_path = DEF_DATA_PATH.joinpath(per_config_name("config.json"))
+
+    logger.info(f"Config name: {config or 'default'}")
+    logger.info(f"Config suffix: {suffix or 'default'}")
+    if suffix is not None and config != suffix:
+        logger.error(f"Config name {config} does not match config_suffix() {suffix}")
+        logger.error("Will use config_suffix() instead, but something is very wrong.")
+
+    logger.info(f"Config path: {config_path}")
     logger.info(f"DATADIR_PATH: {DATADIR_PATH}")
     logger.info(f"LOGDIR_PATH: {LOGDIR_PATH}")
-    logger.info(f"Prefix path: {get_suffix(path=True)}")
-    return start_bot(daemon, config_path=config)
+    logger.info(f"Daemon data path: {config_suffix(daemon_path=True)}")
+    return start_bot(daemon, config_path)
 
 
 def start_bot(daemon: BotDaemon, config_path: Optional[Path] = None):

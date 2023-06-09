@@ -130,29 +130,30 @@ class DiscordUser(Base):
 
 
 ## coming back to these later
-# class UsernameHistory(Base):
-#     __tablename__ = "username_history"
-#     __table_args__ = (sa.PrimaryKeyConstraint("user_id", "timestamp"),)
+if False:
 
-#     user_id: Mapped[int] = mapped_column(sa.BigInteger, sa.ForeignKey("users.id", ondelete="CASCADE"))
-#     user: Mapped[DiscordUser] = relationship(backref="username_history")
-#     timestamp: Mapped[datetime] = mapped_column(
-#         pg.TIMESTAMP(timezone=True, precision=2),
-#         server_default=sa.func.current_timestamp(),
-#         nullable=False,
-#     )
-#     username: Mapped[DiscordName] = mapped_column(nullable=False)
+    class UsernameHistory(Base):
+        __tablename__ = "username_history"
+        __table_args__ = (sa.PrimaryKeyConstraint("user_id", "timestamp"),)
 
+        user_id: Mapped[int] = mapped_column(sa.BigInteger, sa.ForeignKey("users.id", ondelete="CASCADE"))
+        user: Mapped[DiscordUser] = relationship(backref="username_history")
+        timestamp: Mapped[datetime] = mapped_column(
+            pg.TIMESTAMP(timezone=True, precision=2),
+            server_default=sa.func.current_timestamp(),
+            nullable=False,
+        )
+        username: Mapped[DiscordName] = mapped_column(nullable=False)
 
-# class NicknameHistory(Base):
-#     __tablename__ = "nickname_history"
-#     __table_args__ = (sa.PrimaryKeyConstraint("user_id", "timestamp"),)
+    class NicknameHistory(Base):
+        __tablename__ = "nickname_history"
+        __table_args__ = (sa.PrimaryKeyConstraint("user_id", "timestamp"),)
 
-#     user_id: Mapped[int] = mapped_column(sa.BigInteger, sa.ForeignKey("users.id", ondelete="CASCADE"))
-#     guild_id: Mapped[int] = mapped_column(sa.BigInteger, sa.ForeignKey("guilds.id", ondelete="CASCADE"))
-#     timestamp: Mapped[datetime] = mapped_column(
-#         pg.TIMESTAMP(timezone=True, precision=2),
-#         server_default=sa.func.current_timestamp(),
-#         nullable=False,
-#     )
-#     username: Mapped[str] = mapped_column(sa.String, nullable=False)
+        user_id: Mapped[int] = mapped_column(sa.BigInteger, sa.ForeignKey("users.id", ondelete="CASCADE"))
+        guild_id: Mapped[int] = mapped_column(sa.BigInteger, sa.ForeignKey("guilds.id", ondelete="CASCADE"))
+        timestamp: Mapped[datetime] = mapped_column(
+            pg.TIMESTAMP(timezone=True, precision=2),
+            server_default=sa.func.current_timestamp(),
+            nullable=False,
+        )
+        username: Mapped[str] = mapped_column(sa.String, nullable=False)

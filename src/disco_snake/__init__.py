@@ -23,49 +23,57 @@ PACKAGE_ROOT = get_package_root()
 COGDIR_PATH = PACKAGE_ROOT.joinpath("cogs")
 LOGDIR_PATH = PACKAGE_ROOT.parent.joinpath("logs")
 DATADIR_PATH = PACKAGE_ROOT.parent.joinpath("data")
-DEF_CONFIG_PATH = DATADIR_PATH.joinpath("config.json")
+DEF_DATA_PATH = DATADIR_PATH
+DEF_DAEMON_PATH = DATADIR_PATH.joinpath("daemon")
 
 
 @lru_cache(maxsize=2)
-def get_suffix(path: bool = False) -> Optional[str]:
-    """oh this? this is a war crime.
+def config_suffix(daemon_path: bool = False) -> Optional[str | Path]:
+    """oh this? this is a war crime. don't look at it. please. i'm begging you.
 
-    This needs to be callable from the CLI, and it needs to be callable *before* any of the config
-    loading happens. So we can't just use the config to get the suffix, because the config hasn't
-    been loaded yet. So we have to do this.
+    Retrieves the config suffix from the CLI args. This needs to be callable from the CLI,
+    and it needs to be callable *before* any of the config loading happens, because the config
+    file contains the suffix. So we have to do this. I'm sorry. I'm so sorry.
 
-    I'm sorry. I'm so sorry.
+    passing daemon_path=True will return the path to the daemonocle prefix directory instead of the string suffix.
     """
     # ok so we make our heinous argument parser
     parser = ArgumentParser()
-    parser.add_argument("-c", "--config", default=DEF_CONFIG_PATH)
-    # we parse the args and throw away the leftovers
+    parser.add_argument("-c", "--config", default=None, required=False, help="config name to use")
+    # we parse the args, throwing away the ones we don't know about, and get our config name
     args, _ = parser.parse_known_args(args=argv[1:])
-    # we get our config path from the args
-    config_path = Path(args.config)
-    # we get the name of the config file without the extension, and remove the "config-" part
-    suffix = config_path.stem.replace("config", "").lstrip("-")
-    # we'll just return None if it's the default/empty suffix and we don't want the path
-    if path is False:
-        return f"{suffix}" if suffix != "" else None
-    # otherwise we make the daemonocle prefix path and return it
-    return config_path.parent.joinpath(f"daemon/{suffix}")
+    config_name = args.config
+
+    # if we're using the default config, we can return now
+    if config_name is None:
+        return DEF_DAEMON_PATH if daemon_path is True else None
+
+    # otherwise we need to check if the config file exists
+    config_path = DEF_DATA_PATH.joinpath(f"config-{config_name}.json")
+    if config_path.exists() is False:
+        raise FileNotFoundError(f"Config file {config_path} does not exist!")
+
+    # and return either the name or the daemonocle prefix path
+    return DEF_DAEMON_PATH.joinpath(f"{config_name}") if daemon_path is True else config_name
     # then either way we go turn ourselves in to the police
 
 
-def get_suffix_name(name: str, extension: Optional[str] = None) -> str:
+def per_config_name(name: str, extension: Optional[str] = None) -> str:
     """Append the config suffix to a name, if it exists."""
-    if extension is not None:
-        extension = f".{extension}" if not extension.startswith(".") else extension
-    else:
-        extension = ""
-    suffix = get_suffix()
-    return f"{name}{extension}" if suffix is None else f"{name}-{suffix}{extension}"
+    if extension is None and "." in name:
+        # if we don't have an extension, but the name has one, split it
+        name, extension = name.rsplit(".", 1)
+    # get our config suffix and append it to the name if it exists
+    suffix = config_suffix()
+    name = f"{name}-{suffix}" if suffix is not None else name
+
+    # and return the name with the extension if provided
+    return f"{name}.{extension.lstrip('.')}" if extension is not None else name
 
 
-if get_suffix() is not None:
-    LOGDIR_PATH = LOGDIR_PATH.joinpath(get_suffix())
-    DATADIR_PATH = DATADIR_PATH.joinpath(get_suffix())
+if config_suffix() is not None:
+    LOGDIR_PATH = LOGDIR_PATH.joinpath(config_suffix())
+    DATADIR_PATH = DATADIR_PATH.joinpath(config_suffix())
 
 BLACKLIST_PATH = DATADIR_PATH.joinpath("blacklist.json")
 MISCDATA_PATH = DATADIR_PATH.joinpath("misc")

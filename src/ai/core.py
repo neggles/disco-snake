@@ -4,11 +4,11 @@ import logging
 import re
 from asyncio import Lock
 from datetime import datetime, timedelta, timezone
-from functools import cached_property
+from os import mkdir
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -58,6 +58,7 @@ from ai.ui import AiStatusEmbed
 from ai.utils import (
     any_in_text,
     convert_mentions_emotes,
+    extract_tokenizer,
     get_full_class_name,
     get_lm_prompt_time,
     member_in_any_role,
@@ -104,22 +105,21 @@ def re_match_lower(match: re.Match):
     return match.group(1).lower()
 
 
-AVAILABLE_PARAMS = [
-    "Temperature",
-    "Top P",
-    "Top K",
-    "Typical P",
-    "Rep P",
-    "Min Length",
-    "Max Length",
-]
-
-
 async def autocomplete_params(ctx, string: str) -> list[str]:
-    return [param for param in AVAILABLE_PARAMS if string.lower() in param.lower()]
+    return [param for param in Ai.SET_PARAMS if string.lower() in param.lower()]
 
 
 class Ai(commands.Cog, name=COG_UID):
+    SET_PARAMS: ClassVar[List[str]] = [
+        "Temperature",
+        "Top P",
+        "Top K",
+        "Typical P",
+        "Rep P",
+        "Min Length",
+        "Max Length",
+    ]
+
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
         self.timezone = self.bot.timezone
@@ -180,11 +180,6 @@ class Ai(commands.Cog, name=COG_UID):
         self.debug_dir.mkdir(parents=True, exist_ok=True)
         self.debug_dir.joinpath("dm").mkdir(parents=True, exist_ok=True)
 
-        if self.debug is True:
-            transformers_logging.set_verbosity_debug()
-        else:
-            transformers_logging.set_verbosity_info()
-
     # Getters for config object sub-properties
     @property
     def name(self) -> str:
@@ -244,7 +239,7 @@ class Ai(commands.Cog, name=COG_UID):
         prompt.append(self.prompt.system.full)
         prompt.append(self.prompt.character.full)
         if include_model:
-            prompt.append(self.prompt.model.full)
+            prompt.append(self.prompt.model.full.rstrip())
         prompt = "\n".join(prompt)
 
         replace_tokens = {
@@ -260,8 +255,13 @@ class Ai(commands.Cog, name=COG_UID):
         logger.info("AI engine initializing, please wait...")
 
         logger.debug("Initializing Tokenizer...")
+        tokenizer_dir = AI_DATA_DIR.joinpath("tokenizers/llama")
+        if not tokenizer_dir.exists():
+            tokenizer_dir.mkdir(parents=True, exist_ok=True)
+        if not tokenizer_dir.joinpath("tokenizer.json").exists():
+            extract_tokenizer(tokenizer_dir)
         self.tokenizer = LlamaTokenizerFast.from_pretrained(
-            pretrained_model_name_or_path=AI_DATA_DIR.joinpath("tokenizers/llama").as_posix(),
+            pretrained_model_name_or_path=tokenizer_dir.as_posix(),
             local_files_only=True,
         )
 
@@ -322,6 +322,8 @@ class Ai(commands.Cog, name=COG_UID):
         if "```" in message.content:
             return
         if message.content.strip() == ".":
+            return
+        if message.content.startswith("-") or message.content.startswith(", "):
             return
 
         # Ignore messages from unapproved users in DMs/groups
@@ -424,7 +426,7 @@ class Ai(commands.Cog, name=COG_UID):
         as_list: bool = True,
     ) -> Union[str, List[str]]:
         if message is not None:
-            messages = await channel.history(limit=50, before=message).flatten()
+            messages = await channel.history(limit=50, before=message.created_at).flatten()
         else:
             messages = await channel.history(limit=50).flatten()
 
@@ -440,7 +442,7 @@ class Ai(commands.Cog, name=COG_UID):
             if msg.author.id in self.ignored_user_ids:
                 continue  # skip users who rejected the privacy policy
             if msg.content is not None:
-                if msg.content.startswith("-"):
+                if msg.content.startswith("-") or msg.content.startswith(", "):
                     logger.debug("skipping other bot command message")
                     continue
                 if len(msg.content) > 300 and any_in_text(
@@ -517,7 +519,7 @@ class Ai(commands.Cog, name=COG_UID):
             conversation = "\n".join(
                 [
                     "\n".join(conversation[:-1]),
-                    "\n" + self.prompt.model.full,
+                    "\n" + self.prompt.model.full.rstrip(),
                     "\n".join(post_instruct).replace(self.prefix_user, "").lstrip(),
                 ]
             )
@@ -816,7 +818,7 @@ class Ai(commands.Cog, name=COG_UID):
                 )
                 view = PrivacyView(user=user)
                 content = get_policy_text(self.bot)
-                await message.author.send(content=content, embed=embed, view=view)
+                view.message = await message.author.send(content=content, embed=embed, view=view)
                 logger.debug(f"Sent privacy embed to {message.author} ({message.author.id})")
                 return False
             else:

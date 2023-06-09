@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from pydantic import AnyUrl, BaseConfig, BaseSettings, Field, PostgresDsn, validator
+from pydantic import BaseConfig, BaseSettings, Field, PostgresDsn, validator
 from pydantic.env_settings import (
     EnvSettingsSource,
     InitSettingsSource,
@@ -14,7 +14,7 @@ from pydantic.env_settings import (
     SettingsSourceCallable,
 )
 
-from disco_snake import DEF_CONFIG_PATH, get_suffix_name
+from disco_snake import DATADIR_PATH, per_config_name, DEF_DATA_PATH
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -97,12 +97,12 @@ class Settings(BaseSettings):
         return ZoneInfo(v)
 
     class Config(JsonConfig):
-        json_config_path = DEF_CONFIG_PATH
+        json_config_path = DEF_DATA_PATH.joinpath(per_config_name("config.json"))
 
 
 @lru_cache(maxsize=2)
 def get_settings(config_path: Optional[Path] = None) -> Settings:
     if config_path is None:
-        config_path = DEF_CONFIG_PATH.with_stem(get_suffix_name(DEF_CONFIG_PATH.stem))
+        config_path = DEF_DATA_PATH.joinpath(per_config_name("config.json"))
     settings = Settings(json_config_path=config_path)
     return settings
