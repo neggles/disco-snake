@@ -57,7 +57,6 @@ from ai.settings import (
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
 from ai.ui import AiStatusEmbed
 from ai.utils import (
-    MentionMixin,
     get_full_class_name,
     get_lm_prompt_time,
     member_in_any_role,
@@ -1054,24 +1053,7 @@ class Ai(commands.Cog, name=COG_UID):
         finally:
             await ctx.send(embed=embed, ephemeral=True)
 
-    # @commands.message_command(name="takepic", description="Take a picture")
-    # @checks.not_blacklisted()
-    # async def take_pic_command(self, ctx: MessageCommandInteraction):
-    #     pass
-
-    # @commands.message_command(name="Regenerate", description="Re-run message generation")
-    # @checks.not_blacklisted()
-    # async def regenerate_command(self, ctx: MessageCommandInteraction):
-    #     await ctx.response.defer(ephemeral=True)
-    #     target = ctx.target
-
-    #     if target.author.id != self.bot.user.id:
-    #         return await ctx.response.send_message(
-    #             "I can't regenerate messages I didn't send.", ephemeral=True
-    #         )
-
-    #     pass
-
+    ## mention and emoji handling
     def _stringify_mentions(self, text: str, guild: Optional[Guild] = None) -> Tuple[str, Dict[str, int]]:
         mentions = {}
         for mention in re_mention.finditer(text):
@@ -1097,7 +1079,7 @@ class Ai(commands.Cog, name=COG_UID):
             emoji_name = match.group(1)
             emoji_id = int(match.group(2))
             emojis[emoji_name] = emoji_id
-            text = text.replace(f"<:{emoji_name}:{emoji_id}", f":{emoji_name}:")
+            text = text.replace(f"<:{emoji_name}:{emoji_id}>", f":{emoji_name}:")
         return text, emojis
 
     def _restore_emoji(self, text: str, emojis: Dict[str, int]) -> str:
@@ -1113,7 +1095,11 @@ class Ai(commands.Cog, name=COG_UID):
         text, mentions = self._stringify_mentions(text, message.guild)
         text, emojis = self._stringify_emoji(text)
         self._mention_cache[message.id] = mentions
+        if len(self._mention_cache.keys()) > 100:
+            _ = self._mention_cache.pop(next(iter(self._mention_cache.keys())))
         self._emoji_cache[message.id] = emojis
+        if len(self._emoji_cache.keys()) > 100:
+            _ = self._emoji_cache.pop(next(iter(self._emoji_cache.keys())))
         return text
 
     def restore_mentions_emoji(self, text: str, message: Message) -> str:
