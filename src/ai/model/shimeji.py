@@ -11,7 +11,7 @@ from shimeji.model_provider import (
 )
 from transformers import PreTrainedTokenizerFast
 
-from ai.settings import ModelProviderConfig
+from ai.settings import LMApiConfig
 
 
 class ModelGenSettings(BaseModel):
@@ -24,7 +24,7 @@ class ModelGenSettings(BaseModel):
         self.sample_args = ModelSampleArgs(**self.sample_args)
 
 
-def get_sukima_model(cfg: ModelProviderConfig, tokenizer: PreTrainedTokenizerFast) -> SukimaModel:
+def get_sukima_model(cfg: LMApiConfig, tokenizer: PreTrainedTokenizerFast) -> SukimaModel:
     # load model provider gen_args into basemodel
     gen_settings = ModelGenSettings(**cfg.gensettings)
 
@@ -44,7 +44,7 @@ def get_sukima_model(cfg: ModelProviderConfig, tokenizer: PreTrainedTokenizerFas
     )
 
 
-def get_enma_model(cfg: ModelProviderConfig, tokenizer: PreTrainedTokenizerFast) -> EnmaModel:
+def get_enma_model(cfg: LMApiConfig, tokenizer: PreTrainedTokenizerFast) -> EnmaModel:
     # load model provider gen_args into basemodel
     gen_settings = ModelGenSettings(**cfg.gensettings)
 
@@ -62,7 +62,7 @@ def get_enma_model(cfg: ModelProviderConfig, tokenizer: PreTrainedTokenizerFast)
     )
 
 
-def get_ooba_model(cfg: ModelProviderConfig, tokenizer: PreTrainedTokenizerFast) -> OobaModel:
+def get_ooba_model(cfg: LMApiConfig, tokenizer: PreTrainedTokenizerFast) -> OobaModel:
     # load model provider gen_args into basemodel
 
     return OobaModel(

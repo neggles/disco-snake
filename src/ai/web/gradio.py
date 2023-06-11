@@ -37,7 +37,7 @@ class GradioUi:
         else:
             self.theme = self.config.theme
 
-        self.lm_gensettings = cog.model_provider_cfg.gensettings
+        self.lm_gensettings = cog.provider_config.gensettings
         self.dynamic_elements = {}
 
         try:
@@ -89,10 +89,10 @@ class GradioUi:
                 for elem in self.dynamic_elements:
                     try:
                         elem_val = getattr(elem, "value", None)
-                        if not hasattr(self.cog.model_provider_cfg.gensettings, elem.elem_id):
+                        if not hasattr(self.cog.provider_config.gensettings, elem.elem_id):
                             logger.warning(f"Element {elem.elem_id} not found in gensettings")
                         else:
-                            current_val = getattr(self.cog.model_provider_cfg.gensettings, elem.elem_id)
+                            current_val = getattr(self.cog.provider_config.gensettings, elem.elem_id)
                             if elem_val != current_val:
                                 logger.debug(f"Updating {elem.elem_id} from {elem_val} to {current_val}")
                                 elem_val = current_val
@@ -107,8 +107,8 @@ class GradioUi:
                     input_name = evt.target.elem_id
                     input_value = element
                     logger.debug(f"Setting '{input_name}' to {input_value}")
-                    setattr(self.cog.model_provider_cfg.gensettings, input_name, input_value)
-                    return getattr(self.cog.model_provider_cfg.gensettings, input_name)
+                    setattr(self.cog.provider_config.gensettings, input_name, input_value)
+                    return getattr(self.cog.provider_config.gensettings, input_name)
                 except Exception:
                     logger.exception("Failed to set parameter")
 

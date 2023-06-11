@@ -1,10 +1,12 @@
 import logging
 import re
 from copy import deepcopy
+from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Union
 
+from pandas import NA
 from pydantic import BaseModel, BaseSettings, Field
 from shimeji.model_provider import OobaGenRequest
 
@@ -23,23 +25,73 @@ IMAGES_DIR = AI_DATA_DIR.joinpath(per_config_name("images"))
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 
-class ModelProviderConfig(BaseModel):
-    endpoint: str = Field(...)
-    type: str = Field("ooba")
-    gensettings: OobaGenRequest = Field(...)
-    username: Optional[str] = Field(None)
-    password: Optional[str] = Field(None)
+class ResponseMode(str, Enum):
+    """Bitflag field for response modes"""
+
+    NoRespond = "no"  # Completely ignore all messages from this channel
+    Mentioned = "mentions"  # Only respond to messages from this channel with a mention
+    IdleAuto = "idleauto"  # enable idle messaging
+    FullAuto = "fullauto"  # Respond to mentions and allow auto-triggering
+
+
+class BotMode(str, Enum):
+    Strip = "strip"  # Ignore all other bots entirely, strip them from the context
+    Ignore = "ignore"  # Won't be triggered by bot messages but can still see them
+    Siblings = "siblings"  # Will strip all bots except for listed siblings from the context
+    All = "all"  # Will not strip any bots from the context (not recommended)
 
 
 class NamedSnowflake(BaseModel):
-    name: str = Field("")  # not actually used, just here so it can be in config
     id: int = Field(...)
+    name: str = Field("")  # not actually used, just here so it can be in config
     note: Optional[str] = Field(None)
 
 
-class ContextBreak(BaseModel):
+class PermissionList(BaseModel):
     users: List[NamedSnowflake] = Field([])
     roles: List[NamedSnowflake] = Field([])
+
+    @property
+    def user_ids(self) -> List[int]:
+        return [x.id for x in self.users]
+
+    @property
+    def role_ids(self) -> List[int]:
+        return [x.id for x in self.roles]
+
+
+class ChannelSettings(NamedSnowflake):
+    respond: Optional[ResponseMode] = Field(None)
+    bot_action: Optional[BotMode] = Field(None)
+    imagen: Optional[bool] = Field(True)
+
+
+class GuildSettings(NamedSnowflake):
+    enabled: bool = Field(True)
+    respond: ResponseMode = Field(ResponseMode.Mentioned)
+    bot_action: BotMode = Field(BotMode.Siblings)
+    channels: List[ChannelSettings] = Field(default_factory=list)
+
+    def channel_enabled(self, channel_id: int) -> bool:
+        """
+        Returns whether the bot should respond to messages in this channel,
+        based on the guild's default setting and the channel's settings.
+        """
+        if self.enabled is False:
+            return False  # guild is disabled, don't respond
+        if channel_id in [x.id for x in self.channels if x.respond != ResponseMode.NoRespond]:
+            return True  # channel is explicitly enabled
+        return self.respond != ResponseMode.NoRespond  # guild default
+
+    def channel_respond_mode(self, channel_id: int) -> ResponseMode:
+        if channel_id in [x.id for x in self.channels if x.respond is not None]:
+            return next(x.respond for x in self.channels if x.id == channel_id)
+        return self.respond
+
+    def channel_bot_mode(self, channel_id: int) -> BotMode:
+        if channel_id in [x.id for x in self.channels if x.bot_action is not None]:
+            return next(x.bot_action for x in self.channels if x.id == channel_id)
+        return self.bot_action
 
 
 # configuration dataclasses
@@ -55,27 +107,17 @@ class BotParameters(BaseModel):
     debug: bool = False
     memory_enable: bool = False
     max_retries: int = 3
-    ctxbreak_users: List[int] = Field([])
-    ctxbreak_roles: List[NamedSnowflake] = Field([])
-    guilds: List[int] = Field([])
+    ctxbreak: PermissionList = Field(default_factory=PermissionList)
+    guilds: List[GuildSettings] = Field([])
     dm_users: List[NamedSnowflake] = Field([])
-    sisters: List[NamedSnowflake] = Field([])
+    siblings: List[NamedSnowflake] = Field([])
 
+    @property
+    def guild_ids(self) -> List[int]:
+        return [x.id for x in self.guilds]
 
-class VisionConfig(BaseModel):
-    enabled: bool = False
-    model_name: str = "clip"
-    api_host: str = "http://localhost:7862"
-    api_token: Optional[str] = None
-
-
-class GradioConfig(BaseModel):
-    enabled: bool = False
-    bind_host: str = "127.0.0.1"
-    bind_port: int = 7863
-    enable_queue: bool = True
-    width: str = "100%"
-    theme: Optional[str] = None
+    def get_guild_settings(self, guild_id: int) -> Optional[GuildSettings]:
+        return next((x for x in self.guilds if x.id == guild_id), None)
 
 
 class PromptElement(BaseModel):
@@ -103,12 +145,37 @@ class Prompt(BaseModel):
     prefix_sep: str = Field("\n")
 
 
+class GradioConfig(BaseModel):
+    enabled: bool = False
+    bind_host: str = "127.0.0.1"
+    bind_port: int = 7863
+    enable_queue: bool = True
+    width: str = "100%"
+    theme: Optional[str] = None
+
+
+class LMApiConfig(BaseModel):
+    endpoint: str = Field(...)
+    provider: str = Field("ooba")
+    modeltype: str = Field(...)
+    gensettings: OobaGenRequest = Field(...)
+    username: Optional[str] = Field(None)
+    password: Optional[str] = Field(None)
+
+
+class VisionConfig(BaseModel):
+    enabled: bool = False
+    modeltype: str = "clip"
+    api_host: str = "http://localhost:7862"
+    api_token: Optional[str] = None
+
+
 class AiSettings(BaseSettings):
     name: str
     prompt: Prompt
     gradio: GradioConfig
     params: BotParameters
-    model_provider: ModelProviderConfig
+    model_provider: LMApiConfig
     bad_words: List[str] = Field([])
     vision: Optional[VisionConfig] = None
 

@@ -22,9 +22,9 @@ PURPLE = Colour(0x9966FF)
 class AiStatusEmbed(Embed):
     def __init__(self, cog: "Ai", user: User | Member, *args, verbose: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
-        gensettings: OobaGenRequest = cog.model_provider_cfg.gensettings
+        gensettings: OobaGenRequest = cog.provider_config.gensettings
 
-        vision_model = cog.eyes.config.model_name if cog.eyes is not None else "N/A"
+        vision_model = cog.eyes.config.modeltype if cog.eyes is not None else "N/A"
         imagen_model = cog.imagen.config.api_params.checkpoint if cog.imagen is not None else "N/A"
 
         self.description = "**AI Engine Status**" if not self.description else self.description

@@ -99,7 +99,7 @@ class DiscoEyes:
             proxy_url=attachment.proxy_url,
             height=attachment.height,
             width=attachment.width,
-            captioned_with=self.config.model_name,
+            captioned_with=self.config.modeltype,
             caption=await self._perceive_attachment(attachment),
             captioned_at=datetime.now(tz=self.timezone),
         )

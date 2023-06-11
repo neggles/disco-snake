@@ -4,7 +4,6 @@ import logging
 import re
 from asyncio import Lock
 from datetime import datetime, timedelta, timezone
-from os import mkdir
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
@@ -39,8 +38,7 @@ from shimeji.util import (
 )
 from sqlalchemy import select
 from sqlalchemy.orm import lazyload, load_only
-from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
-from transformers.utils import logging as transformers_logging
+from transformers import AutoTokenizer
 
 import logsnake
 from ai.eyes import DiscoEyes
@@ -49,16 +47,18 @@ from ai.settings import (
     AI_DATA_DIR,
     AI_LOG_DIR,
     AI_LOG_FORMAT,
-    ModelProviderConfig,
+    BotMode,
+    LMApiConfig,
     Prompt,
+    ResponseMode,
     get_ai_settings,
 )
+from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
 from ai.types import MessageChannel
 from ai.ui import AiStatusEmbed
 from ai.utils import (
     any_in_text,
     convert_mentions_emotes,
-    extract_tokenizer,
     get_full_class_name,
     get_lm_prompt_time,
     member_in_any_role,
@@ -66,9 +66,12 @@ from ai.utils import (
 )
 from ai.web import GradioUi
 from cogs.privacy import PrivacyEmbed, PrivacyView, get_policy_text
-from db import DiscordUser, Session, async_sessionmaker
+from db import DiscordUser, Session
 from disco_snake import checks
 from disco_snake.bot import DiscoSnake
+
+logger = logging.getLogger(__name__)
+
 
 COG_UID = "ai"
 
@@ -129,7 +132,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.config = get_ai_settings()
 
         # Parse config file
-        self.model_provider_cfg: ModelProviderConfig = self.config.model_provider
+        self.provider_config: LMApiConfig = self.config.model_provider
 
         # Load config params up into top level properties
         self.params = self.config.params
@@ -148,28 +151,28 @@ class Ai(commands.Cog, name=COG_UID):
         self.nicknames: List[str] = self.params.nicknames
         self.debug: bool = self.params.debug
         self.max_retries = self.params.max_retries
-        self.ctxbreak_users = self.params.ctxbreak_users
-        self.ctxbreak_roles = self.params.ctxbreak_roles
+        self.ctxbreak = self.params.ctxbreak
         self.lm_lock = Lock()  # used to stop multiple responses from happening at once
 
-        self.guild_ids: List[int] = self.params.guilds
+        self.guilds: List[int] = self.params.guilds
         self.dm_user_ids: List[int] = [x.id for x in self.params.dm_users]
         self.dm_user_ids.extend(self.bot.config.admin_ids)
         self.ignored_user_ids: Set[int] = {}
 
         # bot user IDs that we're allowed to see/hear
-        self.sister_ids = [x.id for x in self.params.sisters]
+        self.sibling_ids = [x.id for x in self.params.siblings]
 
         # we will populate these later during async init
         self.model_provider: OobaModel = None
-        self.model_provider_type: str = self.model_provider_cfg.type
+        self.model_provider_name: str = self.provider_config.provider
         self.chatbot: ChatBot = None
         self.logging_channel: Optional[TextChannel] = None
-        self.tokenizer: LlamaTokenizerFast = None
+        self.tokenizer_type = self.provider_config.modeltype
+        self.tokenizer: PreTrainedTokenizerBase = None
         self.bad_words: List[str] = self.config.bad_words
 
         # selfietron
-        self.imagen = Imagen(lm_api_host=self.model_provider_cfg.endpoint)
+        self.imagen = Imagen(cog=self)
         self.eyes = DiscoEyes(cog=self)
 
         # gradio ui
@@ -184,6 +187,10 @@ class Ai(commands.Cog, name=COG_UID):
     @property
     def name(self) -> str:
         return self.config.name
+
+    @property
+    def lm_gensettings(self):
+        return self.provider_config.gensettings
 
     @tasks.loop(seconds=60)
     async def update_ignored(self):
@@ -224,33 +231,6 @@ class Ai(commands.Cog, name=COG_UID):
             users = result.all()
         return {x.id for x in users}
 
-    # retrieve the LM prompt and inject name, time, etc.
-    def get_prompt(self, ctx: Optional[MessageInteraction] = None, include_model: bool = False) -> str:
-        if ctx is None:
-            location_context = "and friends in a Discord server"
-        elif hasattr(ctx, "guild") and ctx.guild is not None:
-            location_context = f'and friends in the "{ctx.guild.name}" Discord server'
-        elif hasattr(ctx, "author") and ctx.author is not None:
-            location_context = f"and {ctx.author.display_name} in a Discord DM"
-        else:
-            location_context = "and a friend in a Discord DM"
-
-        prompt = []
-        prompt.append(self.prompt.system.full)
-        prompt.append(self.prompt.character.full)
-        if include_model:
-            prompt.append(self.prompt.model.full.rstrip())
-        prompt = "\n".join(prompt)
-
-        replace_tokens = {
-            "bot_name": self.name,
-            "location_context": location_context,
-            "current_time": get_lm_prompt_time(),
-        }
-        for token, replacement in replace_tokens.items():
-            prompt = prompt.replace(f"{{{token}}}", replacement)
-        return prompt
-
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
 
@@ -260,20 +240,20 @@ class Ai(commands.Cog, name=COG_UID):
             tokenizer_dir.mkdir(parents=True, exist_ok=True)
         if not tokenizer_dir.joinpath("tokenizer.json").exists():
             extract_tokenizer(tokenizer_dir)
-        self.tokenizer = LlamaTokenizerFast.from_pretrained(
-            pretrained_model_name_or_path=tokenizer_dir.as_posix(),
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            pretrained_model_name_or_path=tokenizer_dir,
             local_files_only=True,
+            use_fast=True,
         )
-
         logger.debug("Initializing Model Provider...")
-        if self.model_provider_type == "ooba":
+        if self.model_provider_name == "ooba":
             self.model_provider = OobaModel(
-                endpoint_url=self.model_provider_cfg.endpoint,
-                args=self.model_provider_cfg.gensettings,
+                endpoint_url=self.provider_config.endpoint,
+                args=self.provider_config.gensettings,
                 tokenizer=self.tokenizer,
             )
         else:
-            raise ValueError(f"Unknown model provider type: {self.model_provider_type}")
+            raise ValueError(f"Unknown model provider type: {self.model_provider_name}")
 
         logger.debug("Initializing ChatBot object")
         self.chatbot = ChatBot(
@@ -326,70 +306,87 @@ class Ai(commands.Cog, name=COG_UID):
         if message.content.startswith("-") or message.content.startswith(", "):
             return
 
+        direct_message = isinstance(message.channel, (DMChannel, GroupChannel))
+        guild_settings = self.params.get_guild_settings(message.guild.id)
+
         # Ignore messages from unapproved users in DMs/groups
-        if isinstance(message.channel, (DMChannel, GroupChannel)):
+        if direct_message:
             if message.author.id not in self.dm_user_ids:
-                logger.info(f"Got a DM from non-owner {message.author} (ID {message.author.id}). Ignoring...")
+                logger.debug(f"DM from {message.author} (ID {message.author.id}) ignored")
                 return
-        # Ignore threads
-        elif isinstance(message.channel, Thread):
+        # Ignore threads and messages with no guild (e.g. system messages)
+        elif isinstance(message.channel, Thread) or message.guild is None:
             return
-        # Ignore messages with no guild
-        elif message.guild is None or (message.guild.id not in self.guild_ids):
-            return
+
+        if not direct_message:
+            if guild_settings is None:
+                return  # ignore messages from guilds that don't have settings
+            if guild_settings.enabled is False:
+                return  # ignore messages from guilds that have the bot disabled
+            if guild_settings.channel_enabled(message.channel.id) is False:
+                return  # ignore messages from channels that have the bot disabled
+            elif message.channel.permissions_for(message.guild.me).send_messages is False:
+                # channel is enabled but we don't have permission to respond
+                logger.warn(
+                    f"Got message in enabled channel {message.channel} but don't have permission to respond"
+                )
+                return
+
+        # Now that we've filtered out messages we don't care about, let's get the message content
+        message_content = self.get_msg_content_clean(message)
+        if message_content == "":
+            return  # ignore empty messages
+
+        # Check if we're mentioned and check if the user has accepted the ToS
+        mentioned = self.check_mention(message)
+        tos_send_request = False
+        tos_accepted = await self.user_accepted_tos(message.author)
+        if tos_accepted is False:
+            return  # ignore messages from users who have rejected the ToS
+        if tos_accepted is None:
+            tos_send_request = True  # send a ToS request if the user hasn't accepted or rejected yet
+
+        trigger = None  # the trigger that caused the bot to respond
+        conversation = None  # the conversation that the bot will respond to
 
         try:
-            message_content = self.get_msg_content_clean(message)
-            if message_content == "":
-                # logger.debug("Message was empty after cleaning.")
-                return
-
             async with self.lm_lock:
-                trigger = None
-                conversation = None
-                send_tos_request = False
-
-                if self.bot.user.mentioned_in(message) or self.name_in_text(message_content):
+                if mentioned:
                     logger.debug(f"Mentioned in {message.channel}: {message_content}")
-                    tos_accepted = await self.user_accepted_tos(message.author)
-                    if tos_accepted is None:
-                        send_tos_request = True
-                    elif tos_accepted is False:
-                        return
                     trigger = "mention"
 
-                elif isinstance(message.channel, DMChannel) and len(message_content) > 0:
+                elif direct_message and len(message_content) > 0:
                     logger.debug(f"DM from {message.author}: {message_content}")
                     trigger = "DM"
 
-                elif message.channel.id in self.activity_channels:
-                    if self.conditional_response is True:
-                        conversation = await self.get_context_messages(message.channel)
-                        conv_str = "\n".join(conversation)
-                        if await self.model_provider.should_respond_async(
-                            (f"{conv_str}"), self.name, f"\n{self.prefix_bot}"
-                        ):
-                            logger.debug(f"Model wants to respond to '{message_content}', responding...")
-                            trigger = "conditional"
+                # elif message.channel.id in self.activity_channels:
+                #     if self.conditional_response is True:
+                #         conversation = await self.get_message_context(message)
+                #         conv_str = "\n".join(conversation)
+                #         if await self.model_provider.should_respond_async(
+                #             (f"{conv_str}"), self.name, f"\n{self.prefix_bot}"
+                #         ):
+                #             logger.debug(f"Model wants to respond to '{message_content}', responding...")
+                #             trigger = "conditional"
 
-                    elif (
-                        self.last_response
-                        < (datetime.now(tz=self.timezone) - timedelta(seconds=(self.idle_msg_sec / 2)))
-                        and self.idle_messaging is True
-                    ):
-                        # prevent infinite loops if things go wrong
-                        self.last_response = datetime.now(tz=self.timezone)
-                        trigger = "activity"
+                #     elif (
+                #         self.last_response
+                #         < (datetime.now(tz=self.timezone) - timedelta(seconds=(self.idle_msg_sec / 2)))
+                #         and self.idle_messaging is True
+                #     ):
+                #         # prevent infinite loops if things go wrong
+                #         self.last_response = datetime.now(tz=self.timezone)
+                #         trigger = "activity"
 
                 if trigger is not None:
                     if conversation is None:
-                        await message.channel.trigger_typing()
-                        conversation = await self.get_context_messages(message.channel)
-                    if send_tos_request is False:
-                        await self.respond(conversation, message, trigger)
-                    else:
-                        await self.respond(conversation, message, trigger, "Please check your DMs!")
+                        conversation = await self.get_message_context(message)
+
+                    if tos_send_request is True:
+                        await self.do_response(conversation, message, trigger, "Please check your DMs!")
                         await self.check_send_tos(message)
+                    else:
+                        await self.do_response(conversation, message, trigger)
 
         except Exception as e:
             logger.exception(e)
@@ -407,7 +404,7 @@ class Ai(commands.Cog, name=COG_UID):
                 if self.logging_channel is not None:
                     await self.logging_channel.send(embed=embed)
                 else:
-                    await message.channel.send(embed=embed, delete_after=300.0)
+                    await message.channel.send(embed=embed, delete_after=60.0)
             else:
                 embed = Embed(
                     title="**Exception**",
@@ -416,19 +413,44 @@ class Ai(commands.Cog, name=COG_UID):
                 if self.logging_channel is not None:
                     await self.logging_channel.send(embed=embed, file=File(error_file))
                 else:
-                    await message.channel.send(embed=embed, file=File(error_file), delete_after=300.0)
+                    await message.channel.send(embed=embed, file=File(error_file), delete_after=60.0)
 
-    # get the last 40 messages in the channel (or however many there are if less than 40)
-    async def get_context_messages(
+    # retrieve the LM prompt and inject name, time, etc.
+    def get_prompt(self, ctx: Optional[MessageInteraction] = None, include_model: bool = False) -> str:
+        if ctx is None:
+            location_context = "and friends in a Discord server"
+        elif hasattr(ctx, "guild") and ctx.guild is not None:
+            location_context = f'and friends in the "{ctx.guild.name}" Discord server'
+        elif hasattr(ctx, "author") and ctx.author is not None:
+            location_context = f"and {ctx.author.display_name} in a Discord DM"
+        else:
+            location_context = "and a friend in a Discord DM"
+
+        prompt = []
+        prompt.append(self.prompt.system.full)
+        prompt.append(self.prompt.character.full)
+        if include_model:
+            prompt.append(self.prompt.model.full.rstrip())
+        prompt = "\n".join(prompt)
+
+        replace_tokens = {
+            "bot_name": self.name,
+            "location_context": location_context,
+            "current_time": get_lm_prompt_time(),
+        }
+        for token, replacement in replace_tokens.items():
+            prompt = prompt.replace(f"{{{token}}}", replacement)
+        return prompt
+
+    # get the last N messages in a channel, up to and including the message that triggered the response
+    async def get_message_context(
         self,
-        channel: MessageChannel,
-        message: Optional[Message] = None,
+        message: Message,
+        limit: int = 50,
         as_list: bool = True,
     ) -> Union[str, List[str]]:
-        if message is not None:
-            messages = await channel.history(limit=50, before=message.created_at).flatten()
-        else:
-            messages = await channel.history(limit=50).flatten()
+        messages = await message.channel.history(limit=limit, before=message).flatten()
+        messages.insert(0, message)  # add the message that triggered the response
 
         # magic tag to break context chain to get bot out of librarian mode
         for idx, message in enumerate(messages):
@@ -436,6 +458,8 @@ class Ai(commands.Cog, name=COG_UID):
                 logger.debug("Found context break tag, breaking context chain")
                 messages = messages[0 : idx + 1]
                 break
+
+        bot_mode = self.params.get_guild_settings(message.guild.id).channel_bot_mode(message.channel.id)
 
         chain = []
         for msg in reversed(messages):
@@ -454,18 +478,18 @@ class Ai(commands.Cog, name=COG_UID):
                     logger.debug("Skipping stupid DAN message (looking at u technocat)")
                     continue
 
-            # set up author name
             if msg.author.id == self.bot.user.id:
                 if msg.content.startswith("This is an AI chatbot made by"):
-                    # this is a TOS message in a DM so lets skip it
-                    continue
-                # author_name = f"{self.prefix_bot}{self.prefix_sep}{msg.author.display_name.strip()}:"
-                author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
-            elif msg.author.bot is False or (msg.author.id in self.sister_ids):
-                author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
-            else:
-                logger.debug("Skipping non-self/sibling bot message")
-                continue
+                    continue  # this is a TOS message in a DM so lets skip it
+            elif msg.author.bot is True:  # bots who aren't us
+                if bot_mode == BotMode.Strip:
+                    continue  # skip all other bot messages if we're in strip mode
+                elif bot_mode == BotMode.Siblings:
+                    if msg.author.id not in self.sibling_ids:
+                        continue  # skip non-sibling bot messages
+
+            # set up author name
+            author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
 
             if len(msg.embeds) > 0:
                 for embed in msg.embeds:
@@ -477,7 +501,7 @@ class Ai(commands.Cog, name=COG_UID):
                         except Exception as e:
                             logger.exception(e)
                             chain.append(f"{author_name} [image: loading error]")
-                    elif embed.description is not None and msg.author.id != self.bot.user.id:
+                    elif embed.description is not None and msg.author.bot is False:
                         chain.append(f"{author_name} [embed: {embed.description}]")
                     elif embed.title is not None and msg.author.id != self.bot.user.id:
                         chain.append(f"{author_name} [embed: {embed.title}]")
@@ -510,7 +534,7 @@ class Ai(commands.Cog, name=COG_UID):
         return chain if as_list is True else ("\n".join(chain))
 
     # assemble a prompt/context for the model
-    async def build_ctx(self, conversation: List[str], message: Message):
+    async def process_context(self, conversation: List[str], message: Message):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
         logger.debug(f"building context from {len(conversation)} messages")
 
@@ -562,7 +586,7 @@ class Ai(commands.Cog, name=COG_UID):
         return context.replace("\n\n", "\n").replace("\n\n", "\n")
 
     # actual response logic
-    async def respond(
+    async def do_response(
         self,
         conversation: List[str],
         message: Message,
@@ -595,12 +619,12 @@ class Ai(commands.Cog, name=COG_UID):
             }
 
             try:
-                debug_data["gensettings"] = self.model_provider_cfg.gensettings.dict()
+                debug_data["gensettings"] = self.provider_config.gensettings.dict()
             except Exception as e:
                 logger.exception("Failed to get gensettings")
 
             # Build context
-            context = await self.build_ctx(conversation, message)
+            context = await self.process_context(conversation, message)
 
             # war crime for alpaca, needs more newlines
             # context_lines = context.splitlines()
@@ -783,8 +807,8 @@ class Ai(commands.Cog, name=COG_UID):
                     logger.debug(f"Running idle response to message {message.id}")
                     # if it's been more than <idle_messaging_interval> sec, send a response
                     async with self.lm_lock:
-                        conversation = await self.get_context_messages(message.channel, as_list=True)
-                        await self.respond(conversation, message)
+                        conversation = await self.get_message_context(message)
+                        await self.do_response(conversation, message)
         else:
             return
 
@@ -795,6 +819,7 @@ class Ai(commands.Cog, name=COG_UID):
         await asyncio.sleep(10)
         logger.info("Idle loop running!")
 
+    ## Helper functions
     # check if the person triggering the bot has agreed to ToS or not and send it if not
     async def check_send_tos(self, message: Message) -> bool:
         logger.debug(f"Checking ToS for {message.author} ({message.author.id})")
@@ -828,7 +853,6 @@ class Ai(commands.Cog, name=COG_UID):
             logger.exception("error checking tos")
             raise e
 
-    ## Helper functions
     # clean up a message's content
     def get_msg_content_clean(self, message: Message, content: Optional[str] = None) -> str:
         content = content if content is not None else message.content
@@ -873,6 +897,7 @@ class Ai(commands.Cog, name=COG_UID):
         response = re_unescape_format.sub(r"\1", response)
         return response
 
+    # search for bad words in a message
     def find_bad_words(self, input: str) -> str:
         found_words: List[str] = []
         input_words: str = input.split()
@@ -889,6 +914,7 @@ class Ai(commands.Cog, name=COG_UID):
             logger.warn(f"Found bad words: {' | '.join(found_words)}")
         return found_words
 
+    # check if the bot's name or a nickname is in the message
     def name_in_text(self, text: str) -> bool:
         return any(
             [
@@ -897,19 +923,31 @@ class Ai(commands.Cog, name=COG_UID):
             ]
         )
 
-    def is_ctxbreak_msg(self, message: Message) -> bool:
-        content = message.content.lower()
-        if not content.startswith("<ctxbreak>"):
+    # check if the bot was mentioned in a message
+    def check_mention(self, message: Message) -> bool:
+        """Checks if the bot was mentioned in a message"""
+        if message.guild is None:
             return False
-        if isinstance(message.channel, DMChannel):
+        if self.bot.user in message.mentions or message.guild.me in message.mentions:
             return True
-        if message.author.id in list(self.ctxbreak_users + self.bot.config.admin_ids):
-            return True
-        if member_in_any_role(message.author, self.ctxbreak_roles):
+        if self.name_in_text(message.content):
             return True
         return False
 
-    # Loop stuff to archive logs
+    # check if a given message is a context break message
+    def is_ctxbreak_msg(self, message: Message) -> bool:
+        content = message.content.lower()
+        if not content.startswith("<ctxbreak>"):
+            return False  # not a context break message
+        if isinstance(message.channel, DMChannel):
+            return True  # people can always break context in DMs
+        if message.author.id in list(self.ctxbreak.user_ids + self.bot.config.admin_ids):
+            return True  # admins and ctxbreak users can always break context
+        if member_in_any_role(message.author, self.ctxbreak.role_ids):
+            return True  # ctxbreak role havers can always break context
+        return False  # otherwise, no
+
+    # Loop to archive debug logs
     @tasks.loop(hours=1)
     async def log_archive_loop(self) -> None:
         """
@@ -996,32 +1034,32 @@ class Ai(commands.Cog, name=COG_UID):
             match param:
                 case "Temperature":
                     new_value = float(value)
-                    old_value = self.model_provider_cfg.gensettings.temperature
-                    self.model_provider_cfg.gensettings.temperature = new_value
+                    old_value = self.lm_gensettings.temperature
+                    self.provider_config.gensettings.temperature = new_value
                 case "Top P":
                     new_value = float(value)
-                    old_value = self.model_provider_cfg.gensettings.top_p
-                    self.model_provider_cfg.gensettings.top_p = new_value
+                    old_value = self.lm_gensettings.top_p
+                    self.provider_config.gensettings.top_p = new_value
                 case "Top K":
                     new_value = int(value)
-                    old_value = self.model_provider_cfg.gensettings.top_k
-                    self.model_provider_cfg.gensettings.top_k = new_value
+                    old_value = self.lm_gensettings.top_k
+                    self.provider_config.gensettings.top_k = new_value
                 case "Typical P":
                     new_value = float(value)
-                    old_value = self.model_provider_cfg.gensettings.typical_p
-                    self.model_provider_cfg.gensettings.typical_p = new_value
+                    old_value = self.lm_gensettings.typical_p
+                    self.provider_config.gensettings.typical_p = new_value
                 case "Rep P":
                     new_value = float(value)
-                    old_value = self.model_provider_cfg.gensettings.repetition_penalty
-                    self.model_provider_cfg.gensettings.repetition_penalty = new_value
+                    old_value = self.lm_gensettings.repetition_penalty
+                    self.provider_config.gensettings.repetition_penalty = new_value
                 case "Min Length":
                     new_value = int(value)
-                    old_value = self.model_provider_cfg.gensettings.min_length
-                    self.model_provider_cfg.gensettings.min_length = new_value
+                    old_value = self.lm_gensettings.min_length
+                    self.provider_config.gensettings.min_length = new_value
                 case "Max Length":
                     new_value = int(value)
-                    old_value = self.model_provider_cfg.gensettings.max_new_tokens
-                    self.model_provider_cfg.gensettings.max_new_tokens = new_value
+                    old_value = self.lm_gensettings.max_new_tokens
+                    self.provider_config.gensettings.max_new_tokens = new_value
                 case _:
                     raise ValueError(f"Unknown parameter: {param}")
 

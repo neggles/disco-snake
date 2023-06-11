@@ -127,7 +127,11 @@ class DiscoSnake(commands.Bot):
                     "avatar": str(member.avatar.url) if member.avatar else None,
                     "bot": member.bot,
                     "system": member.system,
-                    "slots": {slot: getattr(member, slot, None) for slot in member.__slots__},
+                    "slots": {
+                        slot: getattr(member, slot, None)
+                        for slot in member.__slots__
+                        if not slot.startswith("_")
+                    },
                 }
                 for member in guild.members
             ],
@@ -139,11 +143,17 @@ class DiscoSnake(commands.Bot):
                         {"id": channel.category_id, "name": channel.category.name} if channel.category else {}
                     ),
                     "position": channel.position,
-                    "slots": {slot: getattr(channel, slot, None) for slot in channel.__slots__},
+                    "slots": {
+                        slot: getattr(channel, slot, None)
+                        for slot in channel.__slots__
+                        if not slot.startswith("_")
+                    },
                 }
                 for channel in guild.channels
             ],
-            "slots": {slot: getattr(guild, slot, None) for slot in guild.__slots__},
+            "slots": {
+                slot: getattr(guild, slot, None) for slot in guild.__slots__ if not slot.startswith("_")
+            },
         }
 
         # save member_data
@@ -193,6 +203,9 @@ class DiscoSnake(commands.Bot):
         if not self.user_save_task.is_running():
             logger.info("Starting user save task")
             self.user_save_task.start()
+        if not self.guild_save_task.is_running():
+            logger.info("Starting guild save task")
+            self.guild_save_task.start()
 
     async def on_message(self, message: Message) -> None:
         await self.process_commands(message)
@@ -355,6 +368,16 @@ class DiscoSnake(commands.Bot):
 
     @user_save_task.before_loop
     async def before_user_save_task(self) -> None:
+        logger.info("waiting for ready... just to be sure")
+        await self.wait_until_ready()
+
+    @tasks.loop(minutes=1.0, count=1)
+    async def guild_save_task(self) -> None:
+        for guild in self.guilds:
+            self.save_guild_metadata(guild.id)
+
+    @guild_save_task.before_loop
+    async def before_guild_save_task(self) -> None:
         logger.info("waiting for ready... just to be sure")
         await self.wait_until_ready()
 

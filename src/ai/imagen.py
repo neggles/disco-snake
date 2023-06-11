@@ -7,7 +7,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from random import choice, randint
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -23,6 +23,9 @@ from ai.settings import (
     get_imagen_settings,
 )
 from ai.utils import any_in_text
+
+if TYPE_CHECKING:
+    from ai import Ai
 
 # setup cog logger
 logger = logging.getLogger(__name__)
@@ -71,7 +74,8 @@ re_send_pic = re.compile(
 class Imagen:
     SD_API_PATH = "/sdapi/v1/txt2img"
 
-    def __init__(self, lm_api_host: str) -> None:
+    def __init__(self, cog: "Ai") -> None:
+        self.ai: "Ai" = cog
         self.config: ImagenSettings = get_imagen_settings()
         self.params: ImagenParams = self.config.params
         self.timezone: str = self.params.timezone
@@ -81,7 +85,7 @@ class Imagen:
         self.sd_api_params: ImagenApiParams = self.config.api_params
 
         self.lm_prompt: ImagenLMPrompt = self.config.lm_prompt
-        self.lm_api_host: str = lm_api_host.rstrip("/")
+        self.lm_api_host: str = self.ai.provider_config.endpoint.rstrip("/")
 
         IMAGES_DIR.mkdir(exist_ok=True, parents=True)
 

@@ -52,7 +52,8 @@
     "ctxbreak_roles": [85023948059823409852, 392489032842903890]
   },
   "model_provider": {
-    "type": "ooba",
+    "provider": "ooba",
+    "modeltype": "llama",
     "endpoint": "http://localhost:5000",
     "gensettings": {
       "prompt": "",

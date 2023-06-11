@@ -199,24 +199,3 @@ def json_dump(obj: Any, file: Path, indent: int = 4, sort_keys: bool = True) -> 
     with file.open("w", encoding="utf-8") as f:
         json.dump(obj, f, indent=indent, sort_keys=sort_keys)
     return json.dumps(obj, indent=indent, sort_keys=sort_keys)
-
-
-def extract_tokenizer(target_dir: Path):
-    try:
-        data_dir = resources.files(f"{__name__.split('.')[0]}.tokenizers.llama")
-        for f in data_dir.iterdir():
-            target_dir.joinpath(f.name).write_bytes(f.read_bytes())
-    except Exception as e:
-        logger.exception(f"Failed to extract tokenizer: {e}")
-        raise e
-
-
-def get_tokenizer() -> LlamaTokenizerFast:
-    """Get the tokenizer by extracting it from package data files and loading it"""
-    with TemporaryDirectory(prefix="disco_snake_", ignore_cleanup_errors=True) as temp_dir:
-        temp_path = Path(temp_dir)
-        extract_tokenizer(temp_path)
-        tokenizer = LlamaTokenizerFast.from_pretrained(
-            pretrained_model_name_or_path=temp_path, local_files_only=True
-        )
-    return tokenizer
