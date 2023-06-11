@@ -3,22 +3,24 @@ import logging
 import re
 from datetime import datetime
 from difflib import SequenceMatcher
-from importlib import resources
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 import Levenshtein as lev
 from disnake import Emoji, Guild, Member, Message, Role
-from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
 
 from ai.types import ListOfUsers
+from disco_snake.bot import DiscoSnake
 
 logger = logging.getLogger(__name__)
 
 # for stripping extra spaces from ai responses
-RE_SPACES = re.compile(r"\s+")
+re_spaces = re.compile(r"\s+")
+
+# capture mentions and emojis
+re_mention = re.compile(r"<@(\d+)>", re.I)
+re_emoji = re.compile(r"<:([^:]+):(\d+)>", re.I)
 
 
 def shorten_spaces(text: str) -> str:
@@ -26,7 +28,7 @@ def shorten_spaces(text: str) -> str:
     Remove extra spaces from a string (e.g. "  hello  world  " -> " hello world ")
 
     """
-    return RE_SPACES.sub(" ", text)
+    return re_spaces.sub(" ", text)
 
 
 def anti_spam(messages: Union[List[Message], Message], threshold=0.8) -> Tuple[List[Message], int]:
@@ -45,29 +47,6 @@ def anti_spam(messages: Union[List[Message], Message], threshold=0.8) -> Tuple[L
 
     # Return filtered messages and number of removed messages
     return [msg for msg in messages if msg.id not in spam], len(spam)
-
-
-def restore_mentions_emotes(text: str, users: ListOfUsers, emojis: List[Emoji]) -> str:
-    # sort users from largest username to smallest
-    users.sort(key=lambda user: len(user.name), reverse=True)
-
-    for user in users:
-        text = text.replace(f"@{user.display_name}", f"<@{user.id}>")
-
-    for emoji in emojis:
-        text = text.replace(f":{emoji.name}:", f"<:{emoji.name}:{emoji.id}>")
-
-    return shorten_spaces(text)
-
-
-def convert_mentions_emotes(text: str, users: ListOfUsers, emojis: List[Emoji]) -> str:
-    for user in users:
-        text = text.replace(f"<@{user.id}>", f"@{user.display_name}")
-
-    for emoji in emojis:
-        text = text.replace(f"<:{emoji.name}:{emoji.id}>", f":{emoji.name}:")
-
-    return text
 
 
 def standardize_punctuation(text: str) -> str:

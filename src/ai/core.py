@@ -16,8 +16,10 @@ from disnake import (
     Embed,
     File,
     GroupChannel,
+    Guild,
     Member,
     Message,
+    MessageCommandInteraction,
     MessageInteraction,
     TextChannel,
     Thread,
@@ -50,19 +52,15 @@ from ai.settings import (
     BotMode,
     LMApiConfig,
     Prompt,
-    ResponseMode,
     get_ai_settings,
 )
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
-from ai.types import MessageChannel
 from ai.ui import AiStatusEmbed
 from ai.utils import (
-    any_in_text,
-    convert_mentions_emotes,
+    MentionMixin,
     get_full_class_name,
     get_lm_prompt_time,
     member_in_any_role,
-    restore_mentions_emotes,
 )
 from ai.web import GradioUi
 from cogs.privacy import PrivacyEmbed, PrivacyView, get_policy_text
@@ -70,12 +68,9 @@ from db import DiscordUser, Session
 from disco_snake import checks
 from disco_snake.bot import DiscoSnake
 
-logger = logging.getLogger(__name__)
-
-
 COG_UID = "ai"
 
-logger = logsnake.setup_logger(
+ai_logger = logsnake.setup_logger(
     name=COG_UID,
     level=logging.DEBUG,
     isRootLogger=False,
@@ -86,6 +81,7 @@ logger = logsnake.setup_logger(
     backupCount=3,
     propagate=True,
 )
+logger = logging.getLogger(__name__)
 
 
 re_angle_bracket = re.compile(r"\<(.*)\>", re.M)
@@ -101,6 +97,10 @@ re_detect_url = re.compile(
     r"[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)",
     re.M + re.I,
 )
+
+# capture mentions and emojis
+re_mention = re.compile(r"<@(\d+)>", re.I)
+re_emoji = re.compile(r"<:([^:]+):(\d+)>", re.I)
 
 
 def re_match_lower(match: re.Match):
@@ -160,7 +160,8 @@ class Ai(commands.Cog, name=COG_UID):
         self.ignored_user_ids: Set[int] = {}
 
         # bot user IDs that we're allowed to see/hear
-        self.sibling_ids = [x.id for x in self.params.siblings]
+        self.siblings = self.params.siblings
+        self.sibling_ids = self.params.sibling_ids
 
         # we will populate these later during async init
         self.model_provider: OobaModel = None
@@ -182,6 +183,10 @@ class Ai(commands.Cog, name=COG_UID):
         self.debug_dir: Path = AI_LOG_DIR.joinpath("ai")
         self.debug_dir.mkdir(parents=True, exist_ok=True)
         self.debug_dir.joinpath("dm").mkdir(parents=True, exist_ok=True)
+
+        # for the MentionMixin
+        self._mention_cache: Dict[int, Any] = {}
+        self._emoji_cache: Dict[int, Any] = {}
 
     # Getters for config object sub-properties
     @property
@@ -467,15 +472,7 @@ class Ai(commands.Cog, name=COG_UID):
                 continue  # skip users who rejected the privacy policy
             if msg.content is not None:
                 if msg.content.startswith("-") or msg.content.startswith(", "):
-                    logger.debug("skipping other bot command message")
-                    continue
-                if len(msg.content) > 300 and any_in_text(
-                    ["you have 10 tokens", 'which stands for "do anything now"'], msg.content.lower()
-                ):
-                    logger.debug("Skipping long message containing AI jailbreak bullshit")
-                    continue
-                if msg.content.startswith("DAN:"):
-                    logger.debug("Skipping stupid DAN message (looking at u technocat)")
+                    # skip messages that start with a command prefix or a comma-space
                     continue
 
             if msg.author.id == self.bot.user.id:
@@ -484,9 +481,8 @@ class Ai(commands.Cog, name=COG_UID):
             elif msg.author.bot is True:  # bots who aren't us
                 if bot_mode == BotMode.Strip:
                     continue  # skip all other bot messages if we're in strip mode
-                elif bot_mode == BotMode.Siblings:
-                    if msg.author.id not in self.sibling_ids:
-                        continue  # skip non-sibling bot messages
+                if bot_mode == BotMode.Siblings and (msg.author.id not in self.sibling_ids):
+                    continue  # skip non-sibling bot messages
 
             # set up author name
             author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
@@ -710,7 +706,8 @@ class Ai(commands.Cog, name=COG_UID):
                         response_image = await self.take_pic(message=message)
                         should_reply = True
                     except Exception as e:
-                        raise Exception("Failed to generate image response") from e
+                        logger.exception("Failed to generate image response")
+                        pass
 
                 debug_data["response_raw"] = response
 
@@ -726,16 +723,8 @@ class Ai(commands.Cog, name=COG_UID):
                 response = response.lstrip()
 
                 if isinstance(message.channel, (TextChannel, Thread)):
-                    members = (
-                        message.channel.guild.members
-                        if message.channel.guild is not None and isinstance(message.channel, Thread)
-                        else message.channel.members
-                    )
-                    response = restore_mentions_emotes(
-                        text=response,
-                        users=members,
-                        emojis=self.bot.emojis,
-                    )
+                    # restore mentions and emojis to their original form
+                    response = self.restore_mentions_emoji(text=response, message=message)
 
                 # trim hashes n shit
                 response = response.rstrip("\"' #}").lstrip("\"'")
@@ -856,35 +845,18 @@ class Ai(commands.Cog, name=COG_UID):
     # clean up a message's content
     def get_msg_content_clean(self, message: Message, content: Optional[str] = None) -> str:
         content = content if content is not None else message.content
-
-        if isinstance(message.channel, Thread):
-            member_ids = [x.id for x in message.channel.members]
-            content = convert_mentions_emotes(
-                text=content,
-                users=self.bot.loop.run_until_complete(
-                    message.channel.guild.get_or_fetch_members(member_ids)
-                ),
-                emojis=self.bot.emojis,
-            )
-        elif isinstance(message.channel, (DMChannel, GroupChannel)):
-            content = convert_mentions_emotes(
-                text=content,
-                users=[message.channel.me, message.channel.recipient, message.author],
-                emojis=self.bot.emojis,
-            )
-        else:
-            content = convert_mentions_emotes(
-                text=content,
-                users=message.channel.members or message.mentions,
-                emojis=self.bot.emojis,
-            )
+        # logger.debug(f"Cleaning message content: {content}")
+        content = self.stringify_mentions_emoji(content, message=message)
 
         # eliminate any and all content between angle brackets <>
         content = re_angle_bracket.sub("", content)
         # turn newlines into spaces. this is a cheap hack but the model doesn't handle newlines well
         content = content.replace("\n", " ")
         # if there's a codeblock in there, return an empty string
-        return content.lstrip() if "```" not in content else ""
+        content = content.lstrip() if "```" not in content else ""
+        # return the content, mentions, and emoji if requested, otherwise just the content
+        # logger.debug(f"Cleaned message content: {content}")
+        return content
 
     # clean out some bad tokens from responses and fix up mentions
     def fixup_bot_user_tokens(self, response: str, message: Message) -> str:
@@ -960,7 +932,7 @@ class Ai(commands.Cog, name=COG_UID):
                 file = file.rename(file.parent / "archive" / file.name)
 
     # Image generation stuff
-    async def take_pic(self, message: Union[Message, str]) -> Tuple[File, dict]:
+    async def take_pic(self, message: Union[Message, str]) -> Optional[Tuple[File, dict]]:
         """
         hold up, let me take a selfie
         """
@@ -992,15 +964,19 @@ class Ai(commands.Cog, name=COG_UID):
         logger.info(f"SD API Request: {json.dumps(sdapi_request)}")
 
         # submit it
-        result_path = await self.imagen.submit_request(sdapi_request)
-        # return a discord File object to upstream
-        result_file = File(result_path, filename=result_path.name)
-        if self.webui.config.enabled:
-            try:
-                self.webui.imagen_update(lm_trigger, lm_tags, result_path)
-            except Exception as e:
-                logger.exception(e)
-        return result_file
+        try:
+            result_path = await self.imagen.submit_request(sdapi_request)
+            # return a discord File object to upstream
+            result_file = File(result_path, filename=result_path.name)
+            if self.webui.config.enabled:
+                try:
+                    self.webui.imagen_update(lm_trigger, lm_tags, result_path)
+                except Exception as e:
+                    logger.exception(e)
+            return result_file
+        except RuntimeError as e:
+            logger.exception(e)
+            raise e
 
     # UI stuff
     @commands.slash_command(name="ai", description="AI Management")
@@ -1077,6 +1053,73 @@ class Ai(commands.Cog, name=COG_UID):
             embed.add_field(name="Exception", value=e, inline=False)
         finally:
             await ctx.send(embed=embed, ephemeral=True)
+
+    # @commands.message_command(name="takepic", description="Take a picture")
+    # @checks.not_blacklisted()
+    # async def take_pic_command(self, ctx: MessageCommandInteraction):
+    #     pass
+
+    # @commands.message_command(name="Regenerate", description="Re-run message generation")
+    # @checks.not_blacklisted()
+    # async def regenerate_command(self, ctx: MessageCommandInteraction):
+    #     await ctx.response.defer(ephemeral=True)
+    #     target = ctx.target
+
+    #     if target.author.id != self.bot.user.id:
+    #         return await ctx.response.send_message(
+    #             "I can't regenerate messages I didn't send.", ephemeral=True
+    #         )
+
+    #     pass
+
+    def _stringify_mentions(self, text: str, guild: Optional[Guild] = None) -> Tuple[str, Dict[str, int]]:
+        mentions = {}
+        for mention in re_mention.finditer(text):
+            user_id = int(mention.group(1))
+            user = self.bot.get_user(user_id) if guild is None else guild.get_member(user_id)
+            name_string = "@deleted-user" if user is None else f"@{user.display_name}"
+            # store mention in dict
+            mentions[name_string] = user_id
+            # replace mention with display name
+            text = text.replace(f"<@{user_id}>", name_string)
+        return text, mentions
+
+    def _restore_mentions(self, text: str, mentions: Dict[str, int]) -> str:
+        for mention, user_id in mentions.items():
+            if mention == "@deleted-user":
+                continue
+            text = text.replace(mention, f"<@{user_id}>")
+        return text
+
+    def _stringify_emoji(self, text: str) -> Tuple[str, Dict[str, int]]:
+        emojis = {}
+        for match in re_emoji.finditer(text):
+            emoji_name = match.group(1)
+            emoji_id = int(match.group(2))
+            emojis[emoji_name] = emoji_id
+            text = text.replace(f"<:{emoji_name}:{emoji_id}", f":{emoji_name}:")
+        return text, emojis
+
+    def _restore_emoji(self, text: str, emojis: Dict[str, int]) -> str:
+        for emoji_name, emoji_id in emojis.items():
+            text = text.replace(f":{emoji_name}:", f"<:{emoji_name}:{emoji_id}>")
+        return text
+
+    def stringify_mentions_emoji(
+        self,
+        text: str,
+        message: Message,
+    ) -> str:
+        text, mentions = self._stringify_mentions(text, message.guild)
+        text, emojis = self._stringify_emoji(text)
+        self._mention_cache[message.id] = mentions
+        self._emoji_cache[message.id] = emojis
+        return text
+
+    def restore_mentions_emoji(self, text: str, message: Message) -> str:
+        text = self._restore_mentions(text, self._mention_cache[message.id])
+        text = self._restore_emoji(text, self._emoji_cache[message.id])
+        return text
 
 
 def setup(bot):

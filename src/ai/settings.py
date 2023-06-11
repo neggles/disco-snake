@@ -68,6 +68,7 @@ class ChannelSettings(NamedSnowflake):
 
 class GuildSettings(NamedSnowflake):
     enabled: bool = Field(True)
+    imagen: bool = Field(True)
     respond: ResponseMode = Field(ResponseMode.Mentioned)
     bot_action: BotMode = Field(BotMode.Siblings)
     channels: List[ChannelSettings] = Field(default_factory=list)
@@ -93,6 +94,11 @@ class GuildSettings(NamedSnowflake):
             return next(x.bot_action for x in self.channels if x.id == channel_id)
         return self.bot_action
 
+    def imagen_enabled(self, channel_id: int) -> bool:
+        if channel_id in [x.id for x in self.channels if x.imagen is not None]:
+            return next(x.imagen for x in self.channels if x.id == channel_id)
+        return self.imagen
+
 
 # configuration dataclasses
 class BotParameters(BaseModel):
@@ -115,6 +121,10 @@ class BotParameters(BaseModel):
     @property
     def guild_ids(self) -> List[int]:
         return [x.id for x in self.guilds]
+
+    @property
+    def sibling_ids(self) -> List[int]:
+        return [x.id for x in self.siblings]
 
     def get_guild_settings(self, guild_id: int) -> Optional[GuildSettings]:
         return next((x for x in self.guilds if x.id == guild_id), None)

@@ -60,15 +60,11 @@ take_pic_regexes = [re_take_pic, re_take_pic_alt]
 re_surrounded = re.compile(r"\*[^*]*?(\*|$)", flags=re.I + re.M)
 re_clean_filename = re.compile(r"[^a-zA-Z0-9_\- ]+")  # for removing non-alphanumeric characters
 re_single_dash = re.compile(r"-+")  # for removing multiple dashes
+re_fix_commas = re.compile(r",[,\s]*", re.I + re.M)
 
 re_image_description = re.compile(r"\[\s*image: ([^\]]+)\s*\]", re.I + re.M)
-re_send_image = re.compile(r"[\[(].?(?:sends|sending) a? ?([^)\]]+)[)\]]", re.I + re.M)
+re_send_image = re.compile(r"[\[(].?(?:send|sends|sending) a? ?([^)\]]+)[)\]]", re.I + re.M)
 send_pic_regexes = [re_image_description, re_send_image]
-
-re_send_pic = re.compile(
-    r"" + r"",
-    flags=re.I + re.M,
-)
 
 
 class Imagen:
@@ -123,14 +119,8 @@ class Imagen:
                         ret = await resp.json()
                         result: str = ret["results"][0]["text"]
                         for tag in self.lm_prompt.tags:
-                            result = result.replace(f"{tag}", "")
-                        result = (
-                            result.replace("closeup", "")
-                            .replace(", ,", "")
-                            .replace(",,", ",")
-                            .replace(" , ", "")
-                            .strip()
-                        )
+                            result = result.replace(f"{tag},", "").replace(f"{tag}", "").strip()
+                        result = re_fix_commas.sub(", ", result)
                         return result
                     else:
                         resp.raise_for_status()
@@ -212,6 +202,8 @@ class Imagen:
         req_string = req_string.rstrip("-")  # remove trailing dashes
 
         # submit the request and save the image
+        if self._lock.locked():
+            raise RuntimeError("Cannot submit request while another request is in progress")
         async with self._lock:  # one at a time, people
             async with aiohttp.ClientSession(base_url=self.sd_api_host) as session:
                 async with session.post(self.SD_API_PATH, json=request) as r:
