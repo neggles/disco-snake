@@ -9,8 +9,9 @@ from zoneinfo import ZoneInfo
 
 import Levenshtein as lev
 from disnake import Emoji, Guild, Member, Message, Role
+from sympy import use
 
-from ai.types import ListOfUsers
+from ai.types import ListOfUsers, LruDict
 from disco_snake.bot import DiscoSnake
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ re_spaces = re.compile(r"\s+")
 
 # capture mentions and emojis
 re_mention = re.compile(r"<@(\d+)>", re.I)
-re_emoji = re.compile(r"<:([^:]+):(\d+)>", re.I)
+re_emoji = re.compile(r"<a?:([^:]+):\d+>", re.I)
 
 
 def shorten_spaces(text: str) -> str:
@@ -47,6 +48,79 @@ def anti_spam(messages: Union[List[Message], Message], threshold=0.8) -> Tuple[L
 
     # Return filtered messages and number of removed messages
     return [msg for msg in messages if msg.id not in spam], len(spam)
+
+
+class MentionMixin:
+    """Mixin class for handling conversion between emojis/mentions and text
+    Uses a fun LRU dict to store the last 100 messages' mentions/emojis
+    for restoration, keyed by message ID.
+    """
+
+    bot: DiscoSnake
+    _mention_cache: LruDict
+    _emoji_cache: LruDict
+
+    def __init__(self, max_size: int = 100, *args, **kwargs):
+        self._mention_cache = LruDict(max_size)
+        self._emoji_cache = LruDict(max_size)
+
+    def stringify_mentions_emoji(
+        self,
+        text: str,
+        message: Message,
+    ) -> str:
+        text, mentions = _stringify_mentions(self.bot, text, message.guild)
+        text, emojis = _stringify_emoji(text)
+        self._mention_cache[message.id] = mentions
+        self._emoji_cache[message.id] = emojis
+        return text
+
+    def restore_mentions_emoji(self, text: str, message: Message) -> str:
+        text = _restore_mentions(text, self._mention_cache[message.id])
+        text = _restore_emoji(text, self._emoji_cache[message.id])
+        return text
+
+
+def _stringify_mentions(
+    bot: DiscoSnake, text: str, guild: Optional[Guild] = None
+) -> Tuple[str, Dict[str, str]]:
+    mentions = {}
+    for mention in re_mention.finditer(text):
+        user_mention = f"{mention.group(0)}"
+        user_id = int(mention.group(1))
+        user = bot.get_user(user_id) if guild is None else guild.get_member(user_id)
+        name_string = "@deleted-user" if user is None else f"@{user.display_name}"
+        # store mention in dict
+        mentions[name_string] = user_mention
+        # replace mention with display name
+        text = text.replace(user_mention, name_string)
+    return text, mentions
+
+
+def _restore_mentions(text: str, mentions: Dict[str, str]) -> str:
+    for name_string, user_mention in mentions.items():
+        if name_string == "@deleted-user":
+            continue  # skip deleted users
+        # restore mention from LRU dict
+        text = text.replace(name_string, user_mention)
+    return text
+
+
+def _stringify_emoji(text: str) -> Tuple[str, Dict[str, str]]:
+    emojis = {}
+    for match in re_emoji.finditer(text):
+        emoji_tag = f"{match.group(0)}"
+        emoji_name = f":{match.group(1)}:"
+        emojis[emoji_name] = emoji_tag
+        text = text.replace(emoji_tag, emoji_name)
+    return text, emojis
+
+
+def _restore_emoji(text: str, emojis: Dict[str, str]) -> str:
+    for emoji_name, emoji_tag in emojis.items():
+        # restore emoji from LRU dict
+        text = text.replace(emoji_name, emoji_tag)
+    return text
 
 
 def standardize_punctuation(text: str) -> str:

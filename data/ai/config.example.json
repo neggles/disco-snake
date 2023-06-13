@@ -28,7 +28,7 @@
   "params": {
     "conditional_response": false,
     "idle_messaging": false,
-    "idle_messaging_interval": 300,
+    "idle_interval": 300,
     "nicknames": [
       "chi-chan",
       "Chi-chan",

@@ -15,13 +15,13 @@ from disnake import (
 )
 from disnake.ext import commands
 from disnake.ui import Button, View
-from httpx import delete
 
 from db import DiscordUser, Session
 from disco_snake import checks
 from disco_snake.bot import DiscoSnake
 
 logger = logging.getLogger(__package__)
+logger.setLevel(logging.DEBUG)
 
 COG_UID = "privacy"
 

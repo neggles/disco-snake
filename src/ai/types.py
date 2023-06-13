@@ -1,27 +1,23 @@
-from collections import UserList
+from collections import OrderedDict, UserList
 from typing import List, TypeAlias, Union
 
 from disnake import DMChannel, GroupChannel, Member, TextChannel, Thread, User
 from PIL.Image import Image
 
-ListOfUsers = Union[List[Union[User, Member]], List[User], List[Member]]
+ListOfUsers: TypeAlias = Union[List[Union[User, Member]], List[User], List[Member]]
 
-MessageChannel = Union[TextChannel, DMChannel, GroupChannel, Thread]
+MessageChannel: TypeAlias = Union[TextChannel, DMChannel, GroupChannel, Thread]
 
 ImageOrBytes: TypeAlias = Union[Image, bytes]
 
 
-class RingBuffer(UserList):
-    def __init__(self, initlist=None, size_max=32):
-        self.max = size_max
-        super().__init__(initlist=initlist)
+class LruDict(OrderedDict):
+    def __init__(self, max_size=100, other=(), /, **kwds):
+        self.max_size = max_size
+        super().__init__(other, **kwds)
 
-    def append(self, x):
-        """Append an element to the end of the buffer."""
-        self.data.append(x)
-        if len(self.data) == self.max:
-            self.data.pop(0)
-
-    def push(self, x):
-        """Append an element to the end of the buffer."""
-        self.append(x)
+    def __setitem__(self, key, value, *args, **kwargs):
+        # Call the superclass method, then prune the dictionary if it's too big.
+        super().__setitem__(key, value, *args, **kwargs)
+        if len(self) > self.max_size:
+            self.popitem(last=False)

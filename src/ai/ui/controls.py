@@ -37,7 +37,7 @@ class AiStatusEmbed(Embed):
             self.add_field(name="Context Messages", value=cog.params.context_messages)
             self.add_field(name="Self-trigger", value=cog.params.conditional_response)
             self.add_field(name="Idle Messaging", value=cog.params.idle_messaging)
-            self.add_field(name="Idle Messaging Interval", value=cog.params.idle_messaging_interval)
+            self.add_field(name="Idle Messaging Interval", value=cog.params.idle_interval)
             self.add_field(name="Vision Enabled", value=(cog.eyes is not None))
             self.add_field(name="Vision Model", value=vision_model)
             self.add_field(name="Imagen Enabled", value=(cog.imagen is not None))
@@ -48,10 +48,12 @@ class AiStatusEmbed(Embed):
         self.add_field(name="Top K", value=gensettings.top_k)
         self.add_field(name="Typical P", value=gensettings.typical_p)
         self.add_field(name="Rep. Penalty", value=gensettings.repetition_penalty)
-        self.add_field(name="Min Length", value=gensettings.min_length)
-        self.add_field(name="Max Length", value=gensettings.max_new_tokens)
+        self.add_field(name="Eta Cutoff", value=gensettings.eta_cutoff)
+        self.add_field(name="Epsilon Cutoff", value=gensettings.epsilon_cutoff)
 
         if verbose is True:
+            self.add_field(name="Min Length", value=gensettings.min_length)
+            self.add_field(name="Max Length", value=gensettings.max_new_tokens)
             self.add_field(name="Encoder Rep. P", value=gensettings.encoder_repetition_penalty)
             self.add_field(name="No Repeat Ngram", value=gensettings.no_repeat_ngram_size)
             self.add_field(name="Penalty Alpha", value=gensettings.penalty_alpha)

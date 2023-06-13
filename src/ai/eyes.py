@@ -97,8 +97,8 @@ class DiscoEyes:
             size=attachment.size,
             url=attachment.url,
             proxy_url=attachment.proxy_url,
-            height=attachment.height,
-            width=attachment.width,
+            height=attachment.height or 0,
+            width=attachment.width or 0,
             captioned_with=self.config.modeltype,
             caption=await self._perceive_attachment(attachment),
             captioned_at=datetime.now(tz=self.timezone),
@@ -115,7 +115,12 @@ class DiscoEyes:
             logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
             return None
 
-        if max(attachment.width, attachment.height) > IMAGE_MAX_PX:
+        if attachment.width is None or attachment.height is None:
+            if attachment.size > IMAGE_MAX_BYTES:
+                logger.debug(f"got attachment larger than 20MB: {attachment.size}, skipping")
+                return None
+            data = requests_get(attachment.url).content
+        elif max(attachment.width or 0, attachment.height or 0) > IMAGE_MAX_PX:
             data = await self._attachment_thumbnail(attachment)
         else:
             data = await attachment.read()

@@ -104,7 +104,7 @@ class GuildSettings(NamedSnowflake):
 class BotParameters(BaseModel):
     conditional_response: bool
     idle_messaging: bool
-    idle_messaging_interval: int
+    idle_interval: int
     nicknames: List[str]
     context_size: int = 1024
     context_messages: int = 50

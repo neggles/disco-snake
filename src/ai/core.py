@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Set, Tuple, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -16,7 +16,6 @@ from disnake import (
     Embed,
     File,
     GroupChannel,
-    Guild,
     Member,
     Message,
     MessageCommandInteraction,
@@ -55,12 +54,9 @@ from ai.settings import (
     get_ai_settings,
 )
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
+from ai.types import LruDict
 from ai.ui import AiStatusEmbed
-from ai.utils import (
-    get_full_class_name,
-    get_lm_prompt_time,
-    member_in_any_role,
-)
+from ai.utils import MentionMixin, get_full_class_name, get_lm_prompt_time, member_in_any_role
 from ai.web import GradioUi
 from cogs.privacy import PrivacyEmbed, PrivacyView, get_policy_text
 from db import DiscordUser, Session
@@ -108,24 +104,32 @@ def re_match_lower(match: re.Match):
 
 
 async def autocomplete_params(ctx, string: str) -> list[str]:
-    return [param for param in Ai.SET_PARAMS if string.lower() in param.lower()]
+    return [param for param in Ai.SET_PARAMS.keys() if string.lower() in param.lower()]
 
 
-class Ai(commands.Cog, name=COG_UID):
-    SET_PARAMS: ClassVar[List[str]] = [
-        "Temperature",
-        "Top P",
-        "Top K",
-        "Typical P",
-        "Rep P",
-        "Min Length",
-        "Max Length",
-    ]
+class Ai(MentionMixin, commands.Cog, name=COG_UID):
+    SET_PARAMS: ClassVar[Dict[str, Tuple[str, Callable]]] = {
+        "Temperature": ("temperature", float),
+        "Top P": ("top_p", float),
+        "Top K": ("top_k", float),
+        "Typical P": ("typical_p", float),
+        "Rep P": ("repetition_penalty", float),
+        "Min Length": ("min_length", int),
+        "Max Length": ("max_new_tokens", int),
+        "Eta Cut": ("eta_cutoff", float),
+        "Epsilon Cut": ("epsilon_cutoff", float),
+    }
+
+    _mention_cache: LruDict
+    _emoji_cache: LruDict
 
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
         self.timezone = self.bot.timezone
         self.last_response = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+        # init the MentionMixin cache
+        super(MentionMixin, self).__init__()
 
         # Load config file
         self.config = get_ai_settings()
@@ -144,7 +148,7 @@ class Ai(commands.Cog, name=COG_UID):
         self.conditional_response: bool = self.params.conditional_response
         self.context_size: int = self.params.context_size
         self.context_messages: int = self.params.context_messages
-        self.idle_msg_sec: int = self.params.idle_messaging_interval
+        self.idle_interval: int = self.params.idle_interval
         self.idle_messaging: bool = self.params.idle_messaging
         self.logging_channel_id: int = self.params.logging_channel_id
         self.nicknames: List[str] = self.params.nicknames
@@ -375,7 +379,7 @@ class Ai(commands.Cog, name=COG_UID):
 
                 #     elif (
                 #         self.last_response
-                #         < (datetime.now(tz=self.timezone) - timedelta(seconds=(self.idle_msg_sec / 2)))
+                #         < (datetime.now(tz=self.timezone) - timedelta(seconds=(self.idle_interval / 2)))
                 #         and self.idle_messaging is True
                 #     ):
                 #         # prevent infinite loops if things go wrong
@@ -721,12 +725,11 @@ class Ai(commands.Cog, name=COG_UID):
                 # response = cut_trailing_sentence(response)
                 response = response.lstrip()
 
-                if isinstance(message.channel, (TextChannel, Thread)):
-                    # restore mentions and emojis to their original form
-                    response = self.restore_mentions_emoji(text=response, message=message)
+                # restore mentions and emojis to their original form
+                response = self.restore_mentions_emoji(text=response, message=message)
 
                 # trim hashes n shit
-                response = response.rstrip("\"' #}").lstrip("\"'")
+                response = response.rstrip("#}").lstrip("\"'")
 
                 if append is not None and len(append.strip()) > 0:
                     response = f"{response} < {append.strip()} >"
@@ -789,11 +792,11 @@ class Ai(commands.Cog, name=COG_UID):
                     return
 
                 idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
-                if idle_sec >= self.idle_msg_sec:
+                if idle_sec >= self.idle_interval:
                     if self.get_msg_content_clean(message) == "":
                         return
                     logger.debug(f"Running idle response to message {message.id}")
-                    # if it's been more than <idle_messaging_interval> sec, send a response
+                    # if it's been more than <idle_interval> sec, send a response
                     async with self.lm_lock:
                         conversation = await self.get_message_context(message)
                         await self.do_response(conversation, message)
@@ -1006,38 +1009,21 @@ class Ai(commands.Cog, name=COG_UID):
         embed.add_field(name="Parameter", value=f"{param}", inline=False)
 
         try:
-            match param:
-                case "Temperature":
-                    new_value = float(value)
-                    old_value = self.lm_gensettings.temperature
-                    self.provider_config.gensettings.temperature = new_value
-                case "Top P":
-                    new_value = float(value)
-                    old_value = self.lm_gensettings.top_p
-                    self.provider_config.gensettings.top_p = new_value
-                case "Top K":
-                    new_value = int(value)
-                    old_value = self.lm_gensettings.top_k
-                    self.provider_config.gensettings.top_k = new_value
-                case "Typical P":
-                    new_value = float(value)
-                    old_value = self.lm_gensettings.typical_p
-                    self.provider_config.gensettings.typical_p = new_value
-                case "Rep P":
-                    new_value = float(value)
-                    old_value = self.lm_gensettings.repetition_penalty
-                    self.provider_config.gensettings.repetition_penalty = new_value
-                case "Min Length":
-                    new_value = int(value)
-                    old_value = self.lm_gensettings.min_length
-                    self.provider_config.gensettings.min_length = new_value
-                case "Max Length":
-                    new_value = int(value)
-                    old_value = self.lm_gensettings.max_new_tokens
-                    self.provider_config.gensettings.max_new_tokens = new_value
-                case _:
-                    raise ValueError(f"Unknown parameter: {param}")
+            param_tuple = self.SET_PARAMS.get(param, None)
+            if param_tuple is None:
+                raise ValueError(f"Invalid parameter: {param}")
+            # unpack the tuple (id, class)
+            param_id, param_cls = param_tuple
+            if not hasattr(self.provider_config.gensettings, param_id):
+                raise ValueError(f"Unknown parameter: {param} (got {param_id}, {param_cls})")
 
+            # cast the value to the correct type using the class from the tuple
+            new_value = param_cls(value)
+            # save the old value and set the new one
+            old_value = getattr(self.provider_config.gensettings, param_id)
+            setattr(self.provider_config.gensettings, param_id, new_value)
+
+            # add the old and new values to the embed
             embed.add_field(name="Old Value", value=f"{old_value}")
             embed.add_field(name="New Value", value=f"{new_value}")
 
@@ -1051,61 +1037,8 @@ class Ai(commands.Cog, name=COG_UID):
                 embed.add_field(name="Error", value="An unknown error occurred", inline=False)
             embed.add_field(name="Exception", value=e, inline=False)
         finally:
+            # send the embed
             await ctx.send(embed=embed, ephemeral=True)
-
-    ## mention and emoji handling
-    def _stringify_mentions(self, text: str, guild: Optional[Guild] = None) -> Tuple[str, Dict[str, int]]:
-        mentions = {}
-        for mention in re_mention.finditer(text):
-            user_id = int(mention.group(1))
-            user = self.bot.get_user(user_id) if guild is None else guild.get_member(user_id)
-            name_string = "@deleted-user" if user is None else f"@{user.display_name}"
-            # store mention in dict
-            mentions[name_string] = user_id
-            # replace mention with display name
-            text = text.replace(f"<@{user_id}>", name_string)
-        return text, mentions
-
-    def _restore_mentions(self, text: str, mentions: Dict[str, int]) -> str:
-        for mention, user_id in mentions.items():
-            if mention == "@deleted-user":
-                continue
-            text = text.replace(mention, f"<@{user_id}>")
-        return text
-
-    def _stringify_emoji(self, text: str) -> Tuple[str, Dict[str, int]]:
-        emojis = {}
-        for match in re_emoji.finditer(text):
-            emoji_name = match.group(1)
-            emoji_id = int(match.group(2))
-            emojis[emoji_name] = emoji_id
-            text = text.replace(f"<:{emoji_name}:{emoji_id}>", f":{emoji_name}:")
-        return text, emojis
-
-    def _restore_emoji(self, text: str, emojis: Dict[str, int]) -> str:
-        for emoji_name, emoji_id in emojis.items():
-            text = text.replace(f":{emoji_name}:", f"<:{emoji_name}:{emoji_id}>")
-        return text
-
-    def stringify_mentions_emoji(
-        self,
-        text: str,
-        message: Message,
-    ) -> str:
-        text, mentions = self._stringify_mentions(text, message.guild)
-        text, emojis = self._stringify_emoji(text)
-        self._mention_cache[message.id] = mentions
-        if len(self._mention_cache.keys()) > 100:
-            _ = self._mention_cache.pop(next(iter(self._mention_cache.keys())))
-        self._emoji_cache[message.id] = emojis
-        if len(self._emoji_cache.keys()) > 100:
-            _ = self._emoji_cache.pop(next(iter(self._emoji_cache.keys())))
-        return text
-
-    def restore_mentions_emoji(self, text: str, message: Message) -> str:
-        text = self._restore_mentions(text, self._mention_cache[message.id])
-        text = self._restore_emoji(text, self._emoji_cache[message.id])
-        return text
 
 
 def setup(bot):
