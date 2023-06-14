@@ -73,7 +73,7 @@ ai_logger = logsnake.setup_logger(
     logfile=AI_LOG_DIR.joinpath(f"{COG_UID}.log"),
     fileLoglevel=logging.DEBUG,
     maxBytes=1 * (2**20),
-    backupCount=3,
+    backupCount=1,
     propagate=True,
 )
 logger = logging.getLogger(__name__)
@@ -582,7 +582,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         contextmgr.add_entry(conversation_entry)
 
         context = contextmgr.context(self.context_size)
-        return context.replace("\n\n", "\n").replace("\n\n", "\n")
+        return context.replace("\n\n", "\n").replace("\n\n", "\n").replace("\n\n", "\n")
 
     # actual response logic
     async def do_response(

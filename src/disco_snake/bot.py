@@ -338,7 +338,7 @@ class DiscoSnake(commands.Bot):
         logger.warn(f"Unhandled error in command {ctx}: {error}")
         raise error
 
-    @tasks.loop(minutes=1.0)
+    @tasks.loop(minutes=1.5)
     async def status_task(self) -> None:
         """
         Set up the bot's status task
@@ -352,7 +352,7 @@ class DiscoSnake(commands.Bot):
         logger.info("waiting for ready... just to be sure")
         await self.wait_until_ready()
 
-    @tasks.loop(minutes=1.0)
+    @tasks.loop(minutes=3.0)
     async def user_save_task(self) -> None:
         async with Session() as session:
             async with session.begin():
@@ -370,8 +370,9 @@ class DiscoSnake(commands.Bot):
     async def before_user_save_task(self) -> None:
         logger.info("waiting for ready... just to be sure")
         await self.wait_until_ready()
+        logger.debug("ready!")
 
-    @tasks.loop(minutes=1.0, count=1)
+    @tasks.loop(minutes=3.0, count=1)
     async def guild_save_task(self) -> None:
         for guild in self.guilds:
             self.save_guild_metadata(guild.id)
@@ -380,6 +381,7 @@ class DiscoSnake(commands.Bot):
     async def before_guild_save_task(self) -> None:
         logger.info("waiting for ready... just to be sure")
         await self.wait_until_ready()
+        logger.debug("ready!")
 
 
 def get_bot(config_path: Optional[Path] = None):
