@@ -117,5 +117,8 @@
             "strings": true
         }
     },
-    "docker.dockerComposeBuild": false
+    "docker.dockerComposeBuild": false,
+
+    // "remote.autoForwardPorts": true,
+    "remote.autoForwardPortsSource": "process"
 }
