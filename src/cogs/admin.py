@@ -10,18 +10,13 @@ from disnake import (
     DMChannel,
     Embed,
     GroupChannel,
-    Message,
-    MessageCommandInteraction,
-    ModalInteraction,
     Option,
     OptionType,
     StageChannel,
     TextChannel,
-    TextInputStyle,
     Thread,
 )
 from disnake.ext import commands
-from disnake.ui import Modal, TextInput
 
 from disco_snake import checks
 

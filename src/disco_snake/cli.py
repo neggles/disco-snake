@@ -48,7 +48,14 @@ logger = logsnake.setup_logger(
 install_pretty()
 install_traceback(show_locals=True)
 
-noisy_loggers = ["httpx", "disnake.gateway", "disnake.http", "disnake.client", "PIL.Image"]
+noisy_loggers = [
+    "httpx",
+    "disnake.gateway",
+    "disnake.http",
+    "disnake.client",
+    "PIL.Image",
+    "httpcore.http11",
+]
 
 
 def cb_shutdown(message: str, code: int):

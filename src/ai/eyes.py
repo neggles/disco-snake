@@ -169,11 +169,9 @@ class DiscoEyes:
         """
         logger.info(f"Saving caption for image {caption.id}")
         caption_str = caption.caption
-        async with Session() as session:
-            async with session.begin():
-                session.add(caption)
-                await session.commit()
-        logger.info("Caption saved successfully")
+        async with Session.begin() as session:
+            session.merge(caption)
+        logger.debug("Caption saved successfully")
         return caption_str
 
     async def db_get_caption(self, image_id: int) -> Optional[ImageCaption]:

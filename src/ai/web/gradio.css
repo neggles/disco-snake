@@ -1,6 +1,6 @@
 div.generating {
-    border-width:0 !important;
-    border-style:solid !important;
+    border-width: 0 !important;
+    border-style: solid !important;
 }
 
 div.tab_nav {
@@ -23,6 +23,9 @@ div.tab_nav > button {
 #button_col {
     align-items: flex-end;
 }
+#button_row {
+    justify-content: flex-end;
+}
 
 #refresh_btn {
     max-width: 40px;
@@ -37,10 +40,30 @@ div.tab_nav > button {
     max-height: 40px;
 }
 
-#lm_last_message, #lm_last_prompt, #lm_last_response {
-    overflow-y: auto !important;
+#lm_last_message > label > textarea,
+#lm_last_response > label > textarea,
+#img_last_request > label > textarea,
+#img_last_tags > label > textarea {
+    overflow-y: scroll !important;
 }
 
-#im_last_request, #im_last_tags {
-    overflow-y: auto !important;
+#lm_last_prompt.scroll-hide::-webkit-scrollbar,
+#img_last_tags.scroll-hide::-webkit-scrollbar {
+    display: unset !important;
+}
+
+#lm_last_prompt > label > textarea::-webkit-scrollbar,
+#img_last_tags > label > textarea::-webkit-scrollbar {
+    width: 10px;
+}
+#lm_last_prompt > label > textarea::-webkit-scrollbar-track,
+#img_last_tags > label > textarea::-webkit-scrollbar-track {
+    border-radius: 4px;
+    background-color: var(--input-background-fill);
+    border: 1px solid var(--input-border-color);
+}
+#lm_last_prompt > label > textarea::-webkit-scrollbar-thumb,
+#img_last_tags > label > textarea::-webkit-scrollbar-thumb {
+    border-radius: 4px;
+    background-color: var(--primary-500);
 }

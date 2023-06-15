@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from asyncio import Lock
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
@@ -18,7 +19,6 @@ from disnake import (
     GroupChannel,
     Member,
     Message,
-    MessageCommandInteraction,
     MessageInteraction,
     TextChannel,
     Thread,
@@ -38,7 +38,7 @@ from shimeji.util import (
     ContextEntry,
 )
 from sqlalchemy import select
-from sqlalchemy.orm import lazyload, load_only
+from sqlalchemy.orm import load_only
 from transformers import AutoTokenizer
 
 import logsnake
@@ -49,6 +49,7 @@ from ai.settings import (
     AI_LOG_DIR,
     AI_LOG_FORMAT,
     BotMode,
+    BotParameters,
     LMApiConfig,
     Prompt,
     get_ai_settings,
@@ -138,7 +139,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.provider_config: LMApiConfig = self.config.model_provider
 
         # Load config params up into top level properties
-        self.params = self.config.params
+        self.params: BotParameters = self.config.params
         self.prompt: Prompt = self.config.prompt
         self.prefix_user: str = self.prompt.prefix_user
         self.prefix_bot: str = self.prompt.prefix_bot
@@ -155,6 +156,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.debug: bool = self.params.debug
         self.max_retries = self.params.max_retries
         self.ctxbreak = self.params.ctxbreak
+
+        self.trigger_cache: OrderedDict = OrderedDict()
         self.lm_lock = Lock()  # used to stop multiple responses from happening at once
 
         self.guilds: List[int] = self.params.guilds
@@ -164,7 +167,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         # bot user IDs that we're allowed to see/hear
         self.siblings = self.params.siblings
-        self.sibling_ids = self.params.sibling_ids
+        self.sibling_ids: List[int] = self.params.sibling_ids
 
         # we will populate these later during async init
         self.model_provider: OobaModel = None
@@ -186,6 +189,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.debug_dir: Path = AI_LOG_DIR.joinpath("ai")
         self.debug_dir.mkdir(parents=True, exist_ok=True)
         self.debug_dir.joinpath("dm").mkdir(parents=True, exist_ok=True)
+        self._last_debug_log: Dict[str, Any] = {}
 
         # for the MentionMixin
         self._mention_cache: Dict[int, Any] = {}
@@ -301,18 +305,26 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.info(f"Logging channel: {self.logging_channel}")
         logger.info("Cog is ready.")
 
+    def last_trigger_was_bot(self, message: Message) -> bool:
+        """Check if the last message we responded to in this context was from a bot."""
+        cache_entry = self.trigger_cache.get(message.channel.id, False)
+        return cache_entry
+
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
-        if (message.author.bot is True) or (message.author == self.bot.user):
-            return
+        if message.author == self.bot.user:
+            return  # ignore messages from self
+        if message.author.bot is True:
+            if self.last_trigger_was_bot(message) is True:
+                return  # ignore messages from bots if the last message we responded to was from a bot
         if message.author.id in self.ignored_user_ids:
-            return
+            return  # ignore messages from users who have rejected the ToS
         if "```" in message.content:
-            return
+            return  # ignore messages with code blocks
         if message.content.strip() == ".":
-            return
+            return  # ignore messages with only a period
         if message.content.startswith("-") or message.content.startswith(", "):
-            return
+            return  # ignore messages that start with a dash or comma-space
 
         direct_message = isinstance(message.channel, (DMChannel, GroupChannel))
         guild_settings = self.params.get_guild_settings(message.guild.id)
@@ -340,61 +352,46 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 )
                 return
 
+        # Check if the user has accepted the ToS
+        tos_accepted = await self.user_accepted_tos(message.author)
+        if tos_accepted is False:
+            return  # ignore messages from users who have rejected the ToS
+        if message.author.bot is True:
+            tos_accepted = True  # ignore ToS check for bots
+
         # Now that we've filtered out messages we don't care about, let's get the message content
         message_content = self.get_msg_content_clean(message)
         if message_content == "":
             return  # ignore empty messages
 
-        # Check if we're mentioned and check if the user has accepted the ToS
-        mentioned = self.check_mention(message)
-        tos_send_request = False
-        tos_accepted = await self.user_accepted_tos(message.author)
-        if tos_accepted is False:
-            return  # ignore messages from users who have rejected the ToS
-        if tos_accepted is None:
-            tos_send_request = True  # send a ToS request if the user hasn't accepted or rejected yet
-
-        trigger = None  # the trigger that caused the bot to respond
-        conversation = None  # the conversation that the bot will respond to
+        trigger: Optional[str] = None  # response trigger reason (tfw no StrEnum in 3.10)
+        conversation: Optional[List[str]] = None  # message's conversation context
+        append = None  # optional masked message to append to the response
 
         try:
             async with self.lm_lock:
-                if mentioned:
+                if self.check_mention(message):
                     logger.debug(f"Mentioned in {message.channel}: {message_content}")
                     trigger = "mention"
 
-                elif direct_message and len(message_content) > 0:
+                elif direct_message:
                     logger.debug(f"DM from {message.author}: {message_content}")
                     trigger = "DM"
-
-                # elif message.channel.id in self.activity_channels:
-                #     if self.conditional_response is True:
-                #         conversation = await self.get_message_context(message)
-                #         conv_str = "\n".join(conversation)
-                #         if await self.model_provider.should_respond_async(
-                #             (f"{conv_str}"), self.name, f"\n{self.prefix_bot}"
-                #         ):
-                #             logger.debug(f"Model wants to respond to '{message_content}', responding...")
-                #             trigger = "conditional"
-
-                #     elif (
-                #         self.last_response
-                #         < (datetime.now(tz=self.timezone) - timedelta(seconds=(self.idle_interval / 2)))
-                #         and self.idle_messaging is True
-                #     ):
-                #         # prevent infinite loops if things go wrong
-                #         self.last_response = datetime.now(tz=self.timezone)
-                #         trigger = "activity"
 
                 if trigger is not None:
                     if conversation is None:
                         conversation = await self.get_message_context(message)
 
-                    if tos_send_request is True:
-                        await self.do_response(conversation, message, trigger, "Please check your DMs!")
+                    # save whether we're responding to a bot or not to prevent loops
+                    self.trigger_cache.update({message.channel.id: message.author.bot is True})
+
+                    # send ToS if it's not been accepted or rejected yet
+                    if tos_accepted is None:
+                        append = "Please check your DMs for a privacy notice!"
                         await self.check_send_tos(message)
-                    else:
-                        await self.do_response(conversation, message, trigger)
+
+                    # actually respond
+                    return await self.do_response(conversation, message, trigger, append=append)
 
         except Exception as e:
             logger.exception(e)

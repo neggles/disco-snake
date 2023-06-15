@@ -76,10 +76,9 @@ class Emojus(commands.Cog, name=COG_UID):
                         logger.debug(f"emoji {emoji.name} has not been saved, acquiring")
                         await emoji.save(emoji_path)
                         acquired += 1
-                logger.info(f"saved {acquired} new emoji from {guild.name} to {guild_dir}")
             except Exception:
                 logger.exception(f"failed to acquire emoji from {guild.name}")
-        logger.info("done acquiring emoji, sleeping for 1 hour")
+        logger.debug("done acquiring emoji, sleeping for 1 hour")
 
     @acquire_emoji_task.before_loop
     async def before_status_task(self) -> None:

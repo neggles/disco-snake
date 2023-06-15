@@ -6,7 +6,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Union
 
-from pandas import NA
 from pydantic import BaseModel, BaseSettings, Field
 from shimeji.model_provider import OobaGenRequest
 
@@ -26,7 +25,7 @@ IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ResponseMode(str, Enum):
-    """Bitflag field for response modes"""
+    """Config field for response modes"""
 
     NoRespond = "no"  # Completely ignore all messages from this channel
     Mentioned = "mentions"  # Only respond to messages from this channel with a mention
@@ -102,10 +101,10 @@ class GuildSettings(NamedSnowflake):
 
 # configuration dataclasses
 class BotParameters(BaseModel):
-    conditional_response: bool
-    idle_messaging: bool
-    idle_interval: int
-    nicknames: List[str]
+    conditional_response: bool = False
+    idle_messaging: bool = False
+    idle_interval: int = 300
+    nicknames: List[str] = Field([])
     context_size: int = 1024
     context_messages: int = 50
     logging_channel_id: Optional[int] = None
@@ -162,6 +161,7 @@ class GradioConfig(BaseModel):
     enable_queue: bool = True
     width: str = "100%"
     theme: Optional[str] = None
+    root_path: str = ""
 
 
 class LMApiConfig(BaseModel):
@@ -232,6 +232,7 @@ class ImagenApiParams(BaseModel):
             "steps": self.steps,
             "cfg_scale": self.cfg_scale,
             "seed": self.seed,
+            "seed_enable_extras": False,
             "width": width if width > 0 else self.default_width,
             "height": height if height > 0 else self.default_height,
             "batch_size": 1,

@@ -1,4 +1,4 @@
-from collections import OrderedDict, UserList
+from collections import OrderedDict
 from typing import List, TypeAlias, Union
 
 from disnake import DMChannel, GroupChannel, Member, TextChannel, Thread, User

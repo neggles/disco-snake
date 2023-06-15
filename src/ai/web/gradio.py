@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from functools import partial, partialmethod
 from pathlib import Path
@@ -61,9 +62,9 @@ class GradioUi:
         self.lm_last_response = ""
 
         # Last imagen trigger/prompt/image
-        self.im_last_request: str = ""
-        self.im_last_tags: str = ""
-        self.im_last_image: Optional[Path] = None
+        self.img_last_request: str = ""
+        self.img_last_tags: str = ""
+        self.img_last_image: Optional[Path] = None
         pass
 
     @property
@@ -76,9 +77,9 @@ class GradioUi:
         self.lm_last_response = response
 
     def imagen_update(self, lm_request: str, lm_tags: str, image: Path):
-        self.im_last_request = lm_request
-        self.im_last_tags = lm_tags
-        self.im_last_image = image
+        self.img_last_request = lm_request
+        self.img_last_tags = lm_tags
+        self.img_last_image = image
         pass
 
     def _create_components(self):
@@ -112,15 +113,31 @@ class GradioUi:
                 except Exception:
                     logger.exception("Failed to set parameter")
 
-            def get_self_attr(element):
+            def get_self_attr(element, *args, **kwargs):
                 try:
-                    target_id = element if isinstance(element, str) else element.elem_id
-                    if hasattr(self, target_id):
-                        return getattr(self, target_id)
-                    return element
+                    target_id = getattr(element, "elem_id", element)
+                    value = getattr(self, target_id, None)
                 except Exception as e:
                     logger.exception(f"Failed to get self attr {target_id}")
-                    return None
+                    raise f"Failed to get self attr {target_id}" from e
+                finally:
+                    return value
+
+            def get_ai_attr_json(element, *args, **kwargs):
+                try:
+                    target_id = getattr(element, "elem_id", element)
+                    value = getattr(self.cog, target_id, None)
+                    if value is None:
+                        value = {"error": f"Attribute {self.cog}.{target_id} is None"}
+                    if hasattr(value, "to_json"):
+                        value = value.to_json()
+                    if hasattr(value, "json"):
+                        value = value.json()
+                except Exception as e:
+                    logger.exception(f"Failed to get AI cog attr {target_id}")
+                    raise f"Failed to get AI cog attr {target_id}" from e
+                finally:
+                    return value
 
             # title bar
             with gr.Row().style(equal_height=True):
@@ -416,7 +433,7 @@ class GradioUi:
             # Prompt info and imagen info
             with gr.Tab(label="Status"):
                 with gr.Row(variant="panel").style(equal_height=True):
-                    with gr.Column():
+                    with gr.Column(elem_id="lm_messages"):
                         with gr.Box():
                             with gr.Column():
                                 gr.Markdown("### LM Messages")
@@ -448,34 +465,50 @@ class GradioUi:
                                     every=2.0,
                                 )
 
-                    with gr.Column():
+                    with gr.Column(elem_id="imagen_status"):
                         with gr.Box():
                             with gr.Column():
                                 gr.Markdown("### Imagen")
                                 with gr.Group():
                                     self.imagen_last_request = gr.Textbox(
-                                        value=partial(get_self_attr, "im_last_request"),
+                                        value=partial(get_self_attr, "img_last_request"),
                                         max_lines=10,
                                         interactive=True,
                                         label="Last input request",
-                                        elem_id="im_last_request",
+                                        elem_id="img_last_request",
                                         every=2.0,
                                     )
                                     self.imagen_last_image = gr.Image(
-                                        value=partial(get_self_attr, "im_last_image"),
+                                        value=partial(get_self_attr, "img_last_image"),
                                         interactive=False,
                                         label="Last image",
-                                        elem_id="im_last_image",
+                                        elem_id="img_last_image",
                                         every=2.0,
                                     ).style(height=640)
                                     self.imagen_last_tags = gr.Textbox(
-                                        value=partial(get_self_attr, "im_last_tags"),
+                                        value=partial(get_self_attr, "img_last_tags"),
                                         max_lines=10,
                                         interactive=True,
                                         label="Last output prompt",
-                                        elem_id="im_last_tags",
-                                        every=2.0,
+                                        elem_id="img_last_tags",
+                                        every=5,
                                     )
+
+                with gr.Row(variant="panel").style(equal_height=True):
+                    with gr.Column(elem_id="lm_debug"):
+                        self._ai_trigger_cache = gr.JSON(
+                            value=partial(get_ai_attr_json, "_last_debug_log"),
+                            label="Last debug log",
+                            elem_id="ai_last_debug_log",
+                            every=5,
+                        )
+                    with gr.Column(elem_id="lm_extras"):
+                        self._ai_trigger_cache = gr.JSON(
+                            value=partial(get_ai_attr_json, "trigger_cache"),
+                            label="Message trigger cache",
+                            elem_id="ai_trigger_cache",
+                            every=5,
+                        )
 
             # set up the reload func
             self.reload_btn.click(
@@ -484,9 +517,17 @@ class GradioUi:
                 outputs=self.dynamic_elements,
             )
 
+            self.blocks.load(
+                evt_reload,
+                inputs=[],
+                outputs=self.dynamic_elements,
+            )
+
     async def launch(self, **kwargs):
         if self.config.enabled:
             try:
+                gradio_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(gradio_loop)
                 logger.info("Launching Gradio UI")
                 logger.info("Creating components...")
                 self._create_components()
@@ -498,6 +539,8 @@ class GradioUi:
                     prevent_thread_lock=True,
                     show_error=True,
                     enable_queue=True,
+                    root_path=self.config.root_path,
+                    **kwargs,
                 )
                 logger.info("UI launched!")
             except Exception:
