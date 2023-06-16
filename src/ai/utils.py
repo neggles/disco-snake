@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 
 import Levenshtein as lev
 from disnake import Emoji, Guild, Member, Message, Role
-from sympy import use
 
 from ai.types import ListOfUsers, LruDict
 from disco_snake.bot import DiscoSnake
@@ -226,6 +225,26 @@ def get_lm_prompt_time(tz: Union[str, ZoneInfo] = ZoneInfo("Asia/Tokyo")) -> str
             raise ValueError(f"Unmapped timezone: {tz}")
         tz = TZ_MAP[tz]
     return datetime.now(tz=tz).strftime("%-I:%M %p")
+
+
+def get_date_suffixed(day: int, with_num: bool = True) -> str:
+    if 4 <= day <= 20 or 24 <= day <= 30:
+        suffix = "th"
+    else:
+        suffix = ["st", "nd", "rd"][day % 10 - 1]
+    return f"{day}{suffix}" if with_num else suffix
+
+
+def get_prompt_datetime(tz: Union[str, ZoneInfo] = ZoneInfo("Asia/Tokyo"), with_date: bool = False) -> str:
+    if not isinstance(tz, ZoneInfo):
+        if tz not in TZ_MAP.keys():
+            raise ValueError(f"Unmapped timezone: {tz}")
+        tz = TZ_MAP[tz]
+    now = datetime.now(tz=tz)
+    suffix_date = get_date_suffixed(now.day)
+
+    fmt_string = f"%-I:%M%p on %A, {suffix_date} %B %Y" if with_date else "%-I:%M %p"
+    return datetime.now(tz=tz).strftime(fmt_string)
 
 
 def any_in_text(strings: list[str], text: str) -> bool:

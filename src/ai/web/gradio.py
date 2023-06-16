@@ -517,11 +517,11 @@ class GradioUi:
                 outputs=self.dynamic_elements,
             )
 
-            self.blocks.load(
-                evt_reload,
-                inputs=[],
-                outputs=self.dynamic_elements,
-            )
+            # self.blocks.load(
+            #     evt_reload,
+            #     inputs=[],
+            #     outputs=self.dynamic_elements,
+            # )
 
     async def launch(self, **kwargs):
         if self.config.enabled:

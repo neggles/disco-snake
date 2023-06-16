@@ -57,7 +57,12 @@ from ai.settings import (
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
 from ai.types import LruDict
 from ai.ui import AiStatusEmbed
-from ai.utils import MentionMixin, get_full_class_name, get_lm_prompt_time, member_in_any_role
+from ai.utils import (
+    MentionMixin,
+    get_full_class_name,
+    get_prompt_datetime,
+    member_in_any_role,
+)
 from ai.web import GradioUi
 from cogs.privacy import PrivacyEmbed, PrivacyView, get_policy_text
 from db import DiscordUser, Session
@@ -441,7 +446,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         replace_tokens = {
             "bot_name": self.name,
             "location_context": location_context,
-            "current_time": get_lm_prompt_time(),
+            "current_time": get_prompt_datetime(with_date=self.prompt.with_date),
+            "time_type": "time and date" if self.prompt.with_date else "time",
         }
         for token, replacement in replace_tokens.items():
             prompt = prompt.replace(f"{{{token}}}", replacement)
@@ -950,13 +956,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         # build the LLM prompt for the image
         lm_trigger = self.imagen.strip_take_pic(message_content)
-        lm_prompt = self.imagen.get_lm_prompt(lm_trigger)
-        logger.info(f"LLM Prompt: {lm_prompt}")
+        lm_prompt, user_request = self.imagen.get_lm_prompt(lm_trigger)
+        logger.info(f"LLM Request: {user_request}")
 
         # get the LLM to create tags for the image
         lm_tags = await self.imagen.submit_lm_prompt(lm_prompt)
         lm_tags = lm_tags.strip('",').lower()
-        logger.info(f"LLM Tags: {lm_tags}")
+        logger.info(f"LLM Response: {lm_tags}")
 
         # build the SD API request
         sdapi_request = self.imagen.build_request(lm_tags, message_content)

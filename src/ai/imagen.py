@@ -108,7 +108,7 @@ class Imagen:
         prompt = self.lm_prompt.prompt(user_request)
         if len(prompt.strip()) == 0:
             prompt = self.lm_prompt.default_prompt
-        return prompt
+        return prompt, user_request
 
     async def submit_lm_prompt(self, prompt: Optional[str] = None) -> str:
         request = self.lm_prompt.get_request(prompt)

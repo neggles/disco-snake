@@ -70,6 +70,7 @@ class GuildSettings(NamedSnowflake):
     imagen: bool = Field(True)
     respond: ResponseMode = Field(ResponseMode.Mentioned)
     bot_action: BotMode = Field(BotMode.Siblings)
+    mention_role: Optional[int] = None
     channels: List[ChannelSettings] = Field(default_factory=list)
 
     def channel_enabled(self, channel_id: int) -> bool:
@@ -137,15 +138,17 @@ class PromptElement(BaseModel):
 
     @property
     def full(self) -> str:
-        if isinstance(self.prompt, list):
-            prompt = self.concat.join(self.prompt)
-        else:
-            prompt = self.prompt
-        return self.concat.join([self.prefix, prompt, self.suffix]).strip()
+        prompt = self.concat.join(self.prompt) if isinstance(self.prompt, list) else self.prompt
+        if self.prefix is not None and self.prefix != "":
+            prompt = self.concat.join([self.prefix, prompt])
+        if self.suffix is not None and self.suffix != "":
+            prompt = self.concat.join([prompt, self.suffix])
+        return prompt
 
 
 class Prompt(BaseModel):
     instruct: Optional[bool] = Field(True)
+    with_date: Optional[bool] = Field(False)
     character: PromptElement = Field(...)
     system: PromptElement = Field(...)
     model: PromptElement = Field(...)
