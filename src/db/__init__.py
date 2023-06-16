@@ -9,15 +9,17 @@ from db.engine import (
     get_sync_engine,
     sessionmaker,
 )
+from db.logs import LogMessage
 
 __all__ = [
     "Base",
     "DiscordUser",
     "ImageCaption",
+    "LogMessage",
     "Session",
     "SyncSession",
     "async_sessionmaker",
-    "sessionmaker",
     "get_engine",
     "get_sync_engine",
+    "sessionmaker",
 ]
