@@ -1,9 +1,8 @@
 import asyncio
 import logging
-from functools import partial, partialmethod
+from functools import partial
 from pathlib import Path
-from time import sleep
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import gradio as gr
 from gradio.themes.utils import colors
@@ -16,7 +15,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 gr_logger = logging.getLogger("gradio")
-gr_logger.setLevel(logging.DEBUG)
+gr_logger.setLevel(logging.INFO)
 
 
 class GradioUi:
@@ -76,10 +75,10 @@ class GradioUi:
         self.lm_last_message = message
         self.lm_last_response = response
 
-    def imagen_update(self, lm_request: str, lm_tags: str, image: Path):
+    def imagen_update(self, lm_request: str, lm_tags: str, image_path: Path):
         self.img_last_request = lm_request
         self.img_last_tags = lm_tags
-        self.img_last_image = image
+        self.img_last_image = image_path
         pass
 
     def _create_components(self):
@@ -444,7 +443,7 @@ class GradioUi:
                                     label="Message",
                                     info="Last message to trigger model generation.",
                                     elem_id="lm_last_message",
-                                    every=2.0,
+                                    every=4.0,
                                 )
                                 self.gr_last_response = gr.Textbox(
                                     value=partial(get_self_attr, "lm_last_response"),
@@ -453,7 +452,7 @@ class GradioUi:
                                     label="Response",
                                     info="Last response from the model.",
                                     elem_id="lm_last_response",
-                                    every=2.0,
+                                    every=4.0,
                                 )
                                 self.gr_last_prompt = gr.Textbox(
                                     value=partial(get_self_attr, "lm_last_prompt"),
@@ -462,7 +461,7 @@ class GradioUi:
                                     label="Prompt",
                                     info="Last prompt sent to the model.",
                                     elem_id="lm_last_prompt",
-                                    every=2.0,
+                                    every=4.0,
                                 )
 
                     with gr.Column(elem_id="imagen_status"):
@@ -476,14 +475,14 @@ class GradioUi:
                                         interactive=True,
                                         label="Last input request",
                                         elem_id="img_last_request",
-                                        every=2.0,
+                                        every=4.0,
                                     )
                                     self.imagen_last_image = gr.Image(
                                         value=partial(get_self_attr, "img_last_image"),
                                         interactive=False,
                                         label="Last image",
                                         elem_id="img_last_image",
-                                        every=2.0,
+                                        every=4.0,
                                     ).style(height=640)
                                     self.imagen_last_tags = gr.Textbox(
                                         value=partial(get_self_attr, "img_last_tags"),
@@ -491,7 +490,7 @@ class GradioUi:
                                         interactive=True,
                                         label="Last output prompt",
                                         elem_id="img_last_tags",
-                                        every=5,
+                                        every=4.0,
                                     )
 
                 with gr.Row(variant="panel").style(equal_height=True):
@@ -500,14 +499,14 @@ class GradioUi:
                             value=partial(get_ai_attr_json, "_last_debug_log"),
                             label="Last debug log",
                             elem_id="ai_last_debug_log",
-                            every=5,
+                            every=4.0,
                         )
                     with gr.Column(elem_id="lm_extras"):
                         self._ai_trigger_cache = gr.JSON(
                             value=partial(get_ai_attr_json, "trigger_cache"),
                             label="Message trigger cache",
                             elem_id="ai_trigger_cache",
-                            every=5,
+                            every=4.0,
                         )
 
             # set up the reload func
@@ -516,12 +515,6 @@ class GradioUi:
                 inputs=[],
                 outputs=self.dynamic_elements,
             )
-
-            # self.blocks.load(
-            #     evt_reload,
-            #     inputs=[],
-            #     outputs=self.dynamic_elements,
-            # )
 
     async def launch(self, **kwargs):
         if self.config.enabled:
