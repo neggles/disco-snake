@@ -7,7 +7,7 @@ from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
-from db.base import Base, BigIntPK, CreateTimestamp, InstanceMixin
+from db.base import Base, BigIntPK, CreateTimestamp
 
 
 class LogLevel(IntEnum):

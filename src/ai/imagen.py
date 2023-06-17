@@ -166,14 +166,25 @@ class Imagen:
             if "holding" in user_prompt:
                 format_tags = f"{format_tags}, holding"
 
-        if len(lm_tags) > 0:
-            split_tags = [x.strip() for x in lm_tags.split(",") if len(x) > 3]
-            lm_tags = [x for x in split_tags if x not in self.sd_prompt.banned_tags]
-            logger.debug(f"Removed {len(split_tags) - len(lm_tags)} tags from lm_tags, remaining: {lm_tags}")
-            lm_tags = ", ".join(lm_tags)
-            lm_tags = f"({lm_tags}:{self.sd_prompt.lm_weight})"
+        # base tag set
+        combined_tags = f"{time_tag}, {format_tags}"
 
-        combined_tags = f"{time_tag}, {format_tags}, {lm_tags}"
+        # filter out banned tags from the LM's generated tags
+        if len(lm_tags) > 0:
+            # split tags, strip whitespace, remove banned tags, rejoin
+            split_tags = [x.strip() for x in lm_tags.split(",") if len(x) > 3]
+            cleaned_tags = []
+            for tag in split_tags:
+                for banned_tag in self.sd_prompt.banned_tags:
+                    if re.search(banned_tag, tag, re.I):
+                        logger.debug(f"Removing banned tag {tag}")
+                        continue
+                cleaned_tags.append(tag)  # no match found, keep it
+
+            removed_count = len(split_tags) - len(cleaned_tags)
+            logger.debug(f"Removed {removed_count} tags from lm_tags, remaining: {cleaned_tags}")
+            cleaned_tags = ", ".join(cleaned_tags)
+            combined_tags = f"{combined_tags}, ({cleaned_tags}:{self.sd_prompt.lm_weight})"
 
         self.lm_last_response = combined_tags
         image_prompt = self.sd_prompt.prompt(combined_tags)

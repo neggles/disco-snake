@@ -101,22 +101,22 @@ class GuildSettings(NamedSnowflake):
 
     def channel_respond_mode(self, channel_id: int) -> ResponseMode:
         if channel_id in [x.id for x in self.channels if x.respond is not None]:
-            return next(x.respond for x in self.channels if x.id == channel_id)
+            return [x.respond for x in self.channels if x.id == channel_id].pop(0)
         return self.respond
 
     def channel_bot_mode(self, channel_id: int) -> BotMode:
         if channel_id in [x.id for x in self.channels if x.bot_action is not None]:
-            return next(x.bot_action for x in self.channels if x.id == channel_id)
+            return [x.bot_action for x in self.channels if x.id == channel_id].pop(0)
         return self.bot_action
 
     def channel_imagen(self, channel_id: int) -> bool:
         if channel_id in [x.id for x in self.channels if x.imagen is not None]:
-            return next(x.imagen for x in self.channels if x.id == channel_id)
+            return [x.imagen for x in self.channels if x.id == channel_id].pop(0)
         return self.imagen
 
     def channel_idle_mode(self, channel_id: int) -> Tuple[bool, int]:
         if channel_id in [x.id for x in self.channels if x.idle_enable is not None]:
-            return next((x.idle_enable, x.idle_interval) for x in self.channels if x.id == channel_id)
+            return [(x.idle_enable, x.idle_interval) for x in self.channels if x.id == channel_id].pop(0)
         return self.idle_enable, self.idle_interval
 
 
@@ -145,7 +145,7 @@ class BotParameters(BaseModel):
         return [x.id for x in self.siblings]
 
     def get_guild_settings(self, guild_id: int) -> Optional[GuildSettings]:
-        return next((x for x in self.guilds if x.id == guild_id), None)
+        return [x for x in self.guilds if x.id == guild_id].pop(0)
 
     def get_idle_channels(self) -> List[int]:
         return [

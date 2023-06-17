@@ -165,7 +165,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.prefix_bot: str = self.prompt.prefix_bot
         self.prefix_sep: str = self.prompt.prefix_sep
 
-        self.activity_channels: List[int] = self.params.activity_channels
+        self.idle_channels: List[int] = self.params.get_idle_channels()
         self.autoresponse: bool = self.params.autoresponse
         self.context_size: int = self.params.context_size
         self.context_messages: int = self.params.context_messages
@@ -183,10 +183,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.dm_user_ids: List[int] = [x.id for x in self.params.dm_users]
         self.dm_user_ids.extend(self.bot.config.admin_ids)
         self.ignored_user_ids: Set[int] = {}
-
-        # bot user IDs that we're allowed to see/hear
-        self.siblings = self.params.siblings
-        self.sibling_ids: List[int] = self.params.sibling_ids
 
         # we will populate these later during async init
         self.model_provider: OobaModel = None
@@ -222,6 +218,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     @property
     def lm_gensettings(self) -> OobaGenRequest:
         return self.provider_config.gensettings
+
+    @property
+    def siblings(self):
+        return self.params.siblings
+
+    @property
+    def sibling_ids(self):
+        return self.params.sibling_ids
 
     @tasks.loop(seconds=60)
     async def update_ignored(self):
@@ -303,7 +307,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         logger.debug("DMs are enabled for the following users:")
         for user_id in self.dm_user_ids:
-            logger.debug(f" - {user_id}")
+            logger.debug(f" - {user_id=}")
+
+        logger.debug("Known sibling bots:")
+        for sibling in self.siblings:
+            logger.debug(f" - {sibling.id=} {sibling.name=}")
 
         if not self.update_ignored.is_running():
             logger.debug("Starting update_ignored task...")
@@ -501,8 +509,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             elif msg.author.bot is True:  # bots who aren't us
                 if bot_mode == BotMode.Strip:
                     continue  # skip all other bot messages if we're in strip mode
-                if bot_mode == BotMode.Siblings and (msg.author.id not in self.sibling_ids):
-                    continue  # skip non-sibling bot messages
+                elif bot_mode == BotMode.Siblings:
+                    if msg.author.id not in self.sibling_ids:
+                        continue  # skip non-sibling bot messages
+                else:
+                    pass  # don't skip other bot messages
 
             # set up author name
             author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
@@ -810,7 +821,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     async def idle_loop(self) -> None:
         if self.idle_enable is True:
             # get last message in a random priority channel
-            channel = self.bot.get_channel(random_choice(self.activity_channels))
+            channel = self.bot.get_channel(random_choice(self.idle_channels))
             if isinstance(channel, (TextChannel, DMChannel, GroupChannel)):
                 messages = await channel.history(limit=1).flatten()
                 message: Message = messages.pop()
@@ -959,6 +970,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if file_age >= (3600 * 24):
                 logger.debug(f"Archiving debug log {file.name}")
                 file = file.rename(file.parent / "archive" / file.name)
+
+    @log_archive_loop.before_loop
+    async def before_archive_loop(self):
+        logger.info("Archive loop waiting for bot to be ready")
+        await self.bot.wait_until_ready()
+        self.debug_dir.joinpath("archive").mkdir(exist_ok=True, parents=True)
+        logger.info("Archive loop running!")
 
     # Image generation stuff
     async def take_pic(self, message: Union[Message, str]) -> Optional[Tuple[File, dict]]:
