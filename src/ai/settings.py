@@ -4,12 +4,12 @@ from copy import deepcopy
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from pydantic import BaseModel, BaseSettings, Field
 from shimeji.model_provider import OobaGenRequest
 
-from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, per_config_name
+from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, __version__, per_config_name
 from disco_snake.settings import JsonConfig
 
 AI_DATA_DIR = PACKAGE_ROOT.parent.joinpath("data", "ai")
@@ -25,15 +25,18 @@ IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ResponseMode(str, Enum):
-    """Config field for response modes"""
+    """Configures how the bot will trigger responses in a channel/server"""
 
     NoRespond = "no"  # Completely ignore all messages from this channel
     Mentioned = "mentions"  # Only respond to messages from this channel with a mention
     IdleAuto = "idleauto"  # enable idle messaging
     FullAuto = "fullauto"  # Respond to mentions and allow auto-triggering
+    Unlimited = "unlimited"  # Respond to mentions and auto-trigger with no cooldown. Use with caution.
 
 
 class BotMode(str, Enum):
+    """Configures how the bot will handle other bots in a channel/server"""
+
     Strip = "strip"  # Ignore all other bots entirely, strip them from the context
     Ignore = "ignore"  # Won't be triggered by bot messages but can still see them
     Siblings = "siblings"  # Will strip all bots except for listed siblings from the context
@@ -41,12 +44,16 @@ class BotMode(str, Enum):
 
 
 class NamedSnowflake(BaseModel):
+    """A reference to a Discord object, with name and note for config file clarity"""
+
     id: int = Field(...)
     name: str = Field("")  # not actually used, just here so it can be in config
     note: Optional[str] = Field(None)
 
 
 class PermissionList(BaseModel):
+    """A list of users and roles used for permission gating"""
+
     users: List[NamedSnowflake] = Field([])
     roles: List[NamedSnowflake] = Field([])
 
@@ -60,18 +67,26 @@ class PermissionList(BaseModel):
 
 
 class ChannelSettings(NamedSnowflake):
+    """Settings for a specific channel in a guild. Overrides guild settings."""
+
     respond: Optional[ResponseMode] = Field(None)
     bot_action: Optional[BotMode] = Field(None)
-    imagen: Optional[bool] = Field(True)
+    imagen: Optional[bool] = True
+    idle_enable: bool = False
+    idle_interval: int = Field(300)
 
 
 class GuildSettings(NamedSnowflake):
-    enabled: bool = Field(True)
-    imagen: bool = Field(True)
+    """Settings for a specific guild."""
+
+    enabled: bool = True
+    imagen: bool = True
     respond: ResponseMode = Field(ResponseMode.Mentioned)
     bot_action: BotMode = Field(BotMode.Siblings)
     mention_role: Optional[int] = None
-    channels: List[ChannelSettings] = Field(default_factory=list)
+    idle_enable: bool = False
+    idle_interval: int = Field(300)
+    channels: List[ChannelSettings] = Field([])
 
     def channel_enabled(self, channel_id: int) -> bool:
         """
@@ -94,22 +109,25 @@ class GuildSettings(NamedSnowflake):
             return next(x.bot_action for x in self.channels if x.id == channel_id)
         return self.bot_action
 
-    def imagen_enabled(self, channel_id: int) -> bool:
+    def channel_imagen(self, channel_id: int) -> bool:
         if channel_id in [x.id for x in self.channels if x.imagen is not None]:
             return next(x.imagen for x in self.channels if x.id == channel_id)
         return self.imagen
 
+    def channel_idle_mode(self, channel_id: int) -> Tuple[bool, int]:
+        if channel_id in [x.id for x in self.channels if x.idle_enable is not None]:
+            return next((x.idle_enable, x.idle_interval) for x in self.channels if x.id == channel_id)
+        return self.idle_enable, self.idle_interval
+
 
 # configuration dataclasses
 class BotParameters(BaseModel):
-    conditional_response: bool = False
-    idle_messaging: bool = False
-    idle_interval: int = 300
+    autoresponse: bool = False
+    idle_enable: bool = False
     nicknames: List[str] = Field([])
     context_size: int = 1024
     context_messages: int = 50
     logging_channel_id: Optional[int] = None
-    activity_channels: List[int] = Field([])
     debug: bool = False
     memory_enable: bool = False
     max_retries: int = 3
@@ -129,12 +147,21 @@ class BotParameters(BaseModel):
     def get_guild_settings(self, guild_id: int) -> Optional[GuildSettings]:
         return next((x for x in self.guilds if x.id == guild_id), None)
 
+    def get_idle_channels(self) -> List[int]:
+        return [
+            channel
+            for guild in self.guilds
+            if guild.idle_enable
+            for channel in guild.channels
+            if channel.idle_enable
+        ]
+
 
 class PromptElement(BaseModel):
     prefix: str = Field(...)
     prompt: Union[str, List[str]] = Field(...)
     suffix: str = Field(...)
-    concat: str = Field("\n")
+    concat: str = "\n"
 
     @property
     def full(self) -> str:
@@ -147,14 +174,14 @@ class PromptElement(BaseModel):
 
 
 class Prompt(BaseModel):
-    instruct: Optional[bool] = Field(True)
-    with_date: Optional[bool] = Field(False)
+    instruct: Optional[bool] = True
+    with_date: Optional[bool] = False
     character: PromptElement = Field(...)
     system: PromptElement = Field(...)
     model: PromptElement = Field(...)
-    prefix_bot: str = Field("\n")
-    prefix_user: str = Field("\n")
-    prefix_sep: str = Field("\n")
+    prefix_bot: str = "\n"
+    prefix_user: str = "\n"
+    prefix_sep: str = "\n"
 
 
 class GradioConfig(BaseModel):
@@ -167,13 +194,21 @@ class GradioConfig(BaseModel):
     root_path: str = ""
 
 
+class WebuiConfig(BaseModel):
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 7850
+    secret: str = Field(...)
+    title: Optional[str] = Field(None, exclude=True)  # n.b. this is set dynamically, not in config
+
+
 class LMApiConfig(BaseModel):
     endpoint: str = Field(...)
-    provider: str = Field("ooba")
+    provider: str = "ooba"
     modeltype: str = Field(...)
     gensettings: OobaGenRequest = Field(...)
-    username: Optional[str] = Field(None)
-    password: Optional[str] = Field(None)
+    username: Optional[str] = None
+    password: Optional[str] = None
 
 
 class VisionConfig(BaseModel):

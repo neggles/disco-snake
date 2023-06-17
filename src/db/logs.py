@@ -7,7 +7,7 @@ from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
-from db.base import Base, BigIntPK, CreateTimestamp, Timestamp, UpdateTimestamp
+from db.base import Base, BigIntPK, CreateTimestamp, InstanceMixin
 
 
 class LogLevel(IntEnum):
@@ -23,13 +23,14 @@ class LogLevel(IntEnum):
 
 class LogMessage(Base):
     __tablename__ = "logs"
+    __mapper_args__ = {"eager_defaults": True}
 
     id: Mapped[BigIntPK]
-    app_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, index=True)
-    app_name: Mapped[str] = mapped_column(sa.String, nullable=False)
+    appid: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, index=True)
+    instance: Mapped[str] = mapped_column(sa.String, nullable=False)
+    timestamp: Mapped[CreateTimestamp]
     logger: Mapped[str] = mapped_column(sa.String, nullable=False)
     level: Mapped[LogLevel] = mapped_column(sa.Enum(LogLevel), nullable=False)
     message: Mapped[str] = mapped_column(sa.String, nullable=False)
-    timestamp: Mapped[CreateTimestamp]
     trace: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
     record: Mapped[Optional[dict]] = mapped_column(pg.JSONB, nullable=True)

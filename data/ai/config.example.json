@@ -26,9 +26,8 @@
     "theme": null
   },
   "params": {
-    "conditional_response": false,
-    "idle_messaging": false,
-    "idle_interval": 300,
+    "autoresponse": false,
+    "idle_enable": false,
     "nicknames": [
       "chi-chan",
       "Chi-chan",

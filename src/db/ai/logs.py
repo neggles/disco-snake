@@ -5,26 +5,17 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.orm import Mapped, mapped_column
 
-from db.base import Base
+from db.base import Base, BigIntPK, CreateTimestamp, Timestamp, UpdateTimestamp
 
 
-class MessageLog(Base):
-    __tablename__ = "image_captions"
+class AiResponseLog(Base):
+    __tablename__ = "ai_message_logs"
     __mapper_args__ = {"eager_defaults": True}
 
-    id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
-    filename: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(sa.String(length=1024))
-    size: Mapped[int] = mapped_column(sa.Integer, nullable=False)
-    url: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    proxy_url: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
-    height: Mapped[int] = mapped_column(sa.Integer, nullable=False)
-    width: Mapped[int] = mapped_column(sa.Integer, nullable=False)
-
-    caption: Mapped[str] = mapped_column(sa.String(length=512))
-    captioned_at: Mapped[datetime] = mapped_column(
-        pg.TIMESTAMP(timezone=True, precision=2),
-        nullable=False,
-        server_default=sa.func.current_timestamp(),
-    )
-    captioned_with: Mapped[str] = mapped_column(sa.String(length=256))
+    id: Mapped[BigIntPK]
+    app_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, index=True)
+    app: Mapped[str] = mapped_column(sa.String, nullable=False)
+    timestamp: Mapped[CreateTimestamp]
+    message: Mapped[Optional[dict]] = mapped_column(pg.JSONB, nullable=True)
+    parameters: Mapped[Optional[dict]] = mapped_column(pg.JSONB, nullable=True)
+    context: Mapped[Optional[dict]] = mapped_column(pg.JSONB, nullable=True)

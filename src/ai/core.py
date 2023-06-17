@@ -20,14 +20,16 @@ from disnake import (
     Member,
     Message,
     MessageInteraction,
+    OptionChoice,
     TextChannel,
     Thread,
     User,
 )
 from disnake.ext import commands, tasks
 from Levenshtein import distance as lev_distance
+from pydantic import BaseModel
 from shimeji import ChatBot
-from shimeji.model_provider import OobaModel
+from shimeji.model_provider import OobaGenRequest, OobaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
 from shimeji.util import (
@@ -109,23 +111,36 @@ def re_match_lower(match: re.Match):
     return match.group(1).lower()
 
 
-async def autocomplete_params(ctx, string: str) -> list[str]:
-    return [param for param in Ai.SET_PARAMS.keys() if string.lower() in param.lower()]
+class AiParam(BaseModel):
+    name: str
+    id: str
+    kind: Callable
+
+
+settable_params: List[AiParam] = [
+    AiParam(name="Temperature", id="temperature", kind=float),
+    AiParam(name="Top P", id="top_p", kind=float),
+    AiParam(name="Top K", id="top_k", kind=float),
+    AiParam(name="Typical P", id="typical_p", kind=float),
+    AiParam(name="Rep P", id="repetition_penalty", kind=float),
+    AiParam(name="Min Length", id="min_length", kind=int),
+    AiParam(name="Max Length", id="max_new_tokens", kind=int),
+    AiParam(name="Eta Cut", id="eta_cutoff", kind=float),
+    AiParam(name="Epsilon Cut", id="epsilon_cutoff", kind=float),
+]
+
+set_choices = [OptionChoice(name=param.name, value=param.id) for param in settable_params]
+
+
+def available_params(ctx: ApplicationCommandInteraction) -> list[str]:
+    return [param.name for param in settable_params]
+
+
+def convert_param(ctx: ApplicationCommandInteraction, input: str) -> AiParam:
+    return next(iter([param for param in settable_params if param.name == input or param.id == input]))
 
 
 class Ai(MentionMixin, commands.Cog, name=COG_UID):
-    SET_PARAMS: ClassVar[Dict[str, Tuple[str, Callable]]] = {
-        "Temperature": ("temperature", float),
-        "Top P": ("top_p", float),
-        "Top K": ("top_k", float),
-        "Typical P": ("typical_p", float),
-        "Rep P": ("repetition_penalty", float),
-        "Min Length": ("min_length", int),
-        "Max Length": ("max_new_tokens", int),
-        "Eta Cut": ("eta_cutoff", float),
-        "Epsilon Cut": ("epsilon_cutoff", float),
-    }
-
     _mention_cache: LruDict
     _emoji_cache: LruDict
 
@@ -151,11 +166,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.prefix_sep: str = self.prompt.prefix_sep
 
         self.activity_channels: List[int] = self.params.activity_channels
-        self.conditional_response: bool = self.params.conditional_response
+        self.autoresponse: bool = self.params.autoresponse
         self.context_size: int = self.params.context_size
         self.context_messages: int = self.params.context_messages
-        self.idle_interval: int = self.params.idle_interval
-        self.idle_messaging: bool = self.params.idle_messaging
+        self.idle_enable: bool = self.params.idle_enable
         self.logging_channel_id: int = self.params.logging_channel_id
         self.nicknames: List[str] = self.params.nicknames
         self.debug: bool = self.params.debug
@@ -206,7 +220,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return self.config.name
 
     @property
-    def lm_gensettings(self):
+    def lm_gensettings(self) -> OobaGenRequest:
         return self.provider_config.gensettings
 
     @tasks.loop(seconds=60)
@@ -296,7 +310,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             self.update_ignored.start()
 
         logger.info("AI engine initialized... probably?")
-        if self.idle_messaging is True:
+        if self.idle_enable is True:
             logger.info("Starting idle messaging loop")
             self.idle_loop.start()
         if not self.log_archive_loop.is_running():
@@ -608,17 +622,25 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             )
             msg_trigger = trigger.lower() if trigger is not None else "unknown"
 
+            # build debug data
+            debug_data["id"] = message.id
+            debug_data["app_id"] = self.bot.user.id
+            debug_data["app"] = self.name.lower()
             debug_data["message"] = {
                 "id": message.id,
-                "author": f"{message.author}",
-                "author_name": f"{author_name}",
-                "guild": f"{message.guild}" if message.guild is not None else "DM",
-                "channel": message.channel.name if not isinstance(message.channel, DMChannel) else "DM",
                 "timestamp": msg_timestamp,
+                "guild_id": message.guild.id or None,
+                "guild": message.guild.name if message.guild is not None else "DM",
+                "author_id": message.author.id,
+                "author": f"{message.author}",
+                "channel_id": message.channel.id or None,
+                "channel": message.channel.name if not isinstance(message.channel, DMChannel) else "DM",
+                "author_name": f"{author_name}",
                 "trigger": msg_trigger,
                 "content": message.content,
-                "conversation": conversation,
             }
+            # make conversation be a top level key
+            debug_data["conversation"] = conversation
 
             try:
                 debug_data["gensettings"] = self.provider_config.gensettings.dict()
@@ -773,9 +795,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 logger.exception(e)
             finally:
                 if self.debug:
-                    dump_file = f"msg-{message.id}-{msg_timestamp}.json"
+                    dump_file = f"msg-{self.name.lower()}-{message.id}-{msg_timestamp}.json"
                     if debug_data.get("trigger", None) == "DM":
                         dump_file = self.debug_dir.joinpath("dm", dump_file)
+                        dump_file.parent.mkdir(parents=True, exist_ok=True)
                     else:
                         dump_file = self.debug_dir.joinpath(dump_file)
                     with dump_file.open("w", encoding="utf-8") as f:
@@ -785,7 +808,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     # Idle loop stuff
     @tasks.loop(seconds=21)
     async def idle_loop(self) -> None:
-        if self.idle_messaging is True:
+        if self.idle_enable is True:
             # get last message in a random priority channel
             channel = self.bot.get_channel(random_choice(self.activity_channels))
             if isinstance(channel, (TextChannel, DMChannel, GroupChannel)):
@@ -804,6 +827,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         conversation = await self.get_message_context(message)
                         await self.do_response(conversation, message)
         else:
+            self.idle_loop.stop()
             return
 
     @idle_loop.before_loop
@@ -1003,32 +1027,29 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     async def set_parameter(
         self,
         ctx: ApplicationCommandInteraction,
-        param: str = commands.Param(..., autocomplete=autocomplete_params),
+        param: AiParam = commands.Param(
+            description="Parameter", choices=set_choices, converter=convert_param
+        ),
         value: str = commands.Param(...),
     ) -> None:
         await ctx.response.defer(ephemeral=True)
         embed = Embed(title="Set Parameter", description="Success!", color=Colour.green())
         embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.display_avatar.url)
-        embed.add_field(name="Parameter", value=f"{param}", inline=False)
+        embed.add_field(name="Parameter", value=f"{param.name}", inline=False)
 
         try:
-            param_tuple = self.SET_PARAMS.get(param, None)
-            if param_tuple is None:
-                raise ValueError(f"Invalid parameter: {param}")
-            # unpack the tuple (id, class)
-            param_id, param_cls = param_tuple
-            if not hasattr(self.provider_config.gensettings, param_id):
-                raise ValueError(f"Unknown parameter: {param} (got {param_id}, {param_cls})")
+            if not hasattr(self.provider_config.gensettings, param.id):
+                raise ValueError(f"Unknown parameter: {param} (got {param.id}, {param.kind})")
 
             # cast the value to the correct type using the class from the tuple
-            new_value = param_cls(value)
+            new_value = param.kind(value)
             # save the old value and set the new one
-            old_value = getattr(self.provider_config.gensettings, param_id)
-            setattr(self.provider_config.gensettings, param_id, new_value)
+            old_value = getattr(self.provider_config.gensettings, param.id)
+            setattr(self.provider_config.gensettings, param.id, new_value)
 
             # add the old and new values to the embed
-            embed.add_field(name="Old Value", value=f"{old_value}")
-            embed.add_field(name="New Value", value=f"{new_value}")
+            embed.add_field(name="Old", value=f"{old_value}")
+            embed.add_field(name="New", value=f"{new_value}")
 
         except Exception as e:
             logger.exception(e)
