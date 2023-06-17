@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import aiohttp
+from numpy import isin
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 from ai.settings import (
     IMAGES_DIR,
@@ -32,12 +34,16 @@ logger = logging.getLogger(__name__)
 
 # Just using hardcoded options for now
 IMAGE_SIZE_OPTS = [
+    (512, 768),
+    (576, 768),
+    (640, 768),
     (544, 768),
     (544, 960),
     (576, 640),
     (576, 768),
     (576, 896),
     (600, 864),
+    (640, 640),
     (640, 768),
     (640, 800),
     (640, 832),
@@ -89,6 +95,7 @@ class Imagen:
 
         self.lm_last_request: str = ""
         self.lm_last_response: str = ""
+        self._last_request: str = ""  # same as above but for internal use
 
         logger.info("Initialized Imagen.")
 
@@ -105,6 +112,7 @@ class Imagen:
 
         user_request = user_request.strip("?.!")
         self.lm_last_request = user_request
+        self._last_request = user_request
         prompt = self.lm_prompt.prompt(user_request)
         if len(prompt.strip()) == 0:
             prompt = self.lm_prompt.default_prompt
@@ -216,21 +224,38 @@ class Imagen:
                         if response["images"] is None or len(response["images"]) == 0:
                             raise ValueError("No image data returned from Imagen API", args=response)
 
+                        # glue the LLM prompt onto the response
+                        response["llm_prompt"] = self._last_request
+
                         # load and decode the image
                         image: Image.Image = Image.open(BytesIO(b64decode(response["images"][0])))
                         response.pop("images")  # don't need this anymore
+                        image.format = "PNG"  # unsure why this is necessary but whatever
 
-                        # glue the JSON string onto the PNG
-                        image.format = "PNG"
-                        image.info.update({"parameters": response["info"]})
-                        # then decode it for logging purposes
-                        response["info"] = json.loads(response["info"])
+                        # decode the info dict and attach it to the response
+                        info_dict = json.loads(response.pop("info"))
+
+                        # get the pnginfo string and glue the LLM prompt onto it
+                        infotext = info_dict.pop("infotexts", None)
+                        if infotext is not None:
+                            infotext = infotext[0] if isinstance(infotext, list) else infotext
+                            infotext = f'{infotext}, LLM prompt: "{self._last_request}"'
+                        else:
+                            infotext = f'LLM prompt: "{self._last_request}"'
+
+                        # reattach the infotext to the info dict, reattach info to the response
+                        info_dict.update({"infotexts": [infotext]})
+                        response["info"] = info_dict
+
+                        # make a pnginfo object for attaching to the image
+                        pnginfo = PngInfo()
+                        pnginfo.add_text("parameters", infotext)
 
                         # work out the path to save the image to, then save it and the job info
                         imagefile_path = IMAGES_DIR.joinpath(
                             f'{response["info"]["job_timestamp"]}_{response["info"]["seed"]}_{req_string}.png'
                         )
-                        image.save(imagefile_path, format="PNG")
+                        image.save(imagefile_path, format="PNG", pnginfo=pnginfo)
 
                         # save the job info
                         imagefile_path.with_suffix(".json").write_text(
