@@ -167,7 +167,7 @@ class Imagen:
                 format_tags = f"{format_tags}, holding"
 
         # base tag set
-        combined_tags = f"{time_tag}, {format_tags}"
+        combined_tags = f"{time_tag}, {format_tags}" if len(format_tags) > 0 else f"{time_tag}"
 
         # filter out banned tags from the LM's generated tags
         if len(lm_tags) > 0:
@@ -175,12 +175,14 @@ class Imagen:
             split_tags = [x.strip() for x in lm_tags.split(",") if len(x) > 3]
             cleaned_tags = []
             for tag in split_tags:
-                for banned_tag in self.sd_prompt.banned_tags:
-                    if re.search(banned_tag, tag, re.I):
-                        logger.debug(f"Removing banned tag {tag}")
-                        continue
-                cleaned_tags.append(tag)  # no match found, keep it
+                is_clean = True
+                if any([re.search(x, tag, re.I) for x in self.sd_prompt.banned_tags]):
+                    logger.debug(f"Removing banned tag {tag}")
+                    continue
+                if is_clean:
+                    cleaned_tags.append(tag)
 
+            cleaned_tags = list(set(cleaned_tags))  # remove duplicates
             removed_count = len(split_tags) - len(cleaned_tags)
             logger.debug(f"Removed {removed_count} tags from lm_tags, remaining: {cleaned_tags}")
             cleaned_tags = ", ".join(cleaned_tags)
