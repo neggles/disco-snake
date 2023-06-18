@@ -254,7 +254,7 @@ class Imagen:
                             infotext = infotext[0] if isinstance(infotext, list) else infotext
                             infotext = f'{infotext}, LLM prompt: "{self._last_request}"'
                         else:
-                            infotext = f'LLM prompt: "{self._last_request}"'
+                            infotext = f"LLM prompt: {self._last_request}"
 
                         # reattach the infotext to the info dict, reattach info to the response
                         info_dict.update({"infotexts": [infotext]})
