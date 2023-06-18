@@ -3,7 +3,11 @@ version: "3.8"
 services:
   db:
     container_name: disco-db
-    image: postgres:15.3-bullseye
+    image: ghcr.io/neggles/disco-snake/pgvector:15.3-bullseye
+    build:
+        context: ./docker/db
+        dockerfile: Dockerfile
+        target: pgvector
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${PG_USER:-postgres}
