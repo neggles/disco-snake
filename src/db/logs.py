@@ -1,10 +1,8 @@
-from datetime import datetime
 from enum import IntEnum
 from typing import Optional
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
-from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.base import Base, BigIntPK, CreateTimestamp
@@ -26,7 +24,7 @@ class LogMessage(Base):
     __mapper_args__ = {"eager_defaults": True}
 
     id: Mapped[BigIntPK]
-    appid: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, index=True)
+    app_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, index=True)
     instance: Mapped[str] = mapped_column(sa.String, nullable=False)
     timestamp: Mapped[CreateTimestamp]
     logger: Mapped[str] = mapped_column(sa.String, nullable=False)

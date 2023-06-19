@@ -45,7 +45,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.current_timestamp(),
         ),
-        sa.Column("tos_accepted", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("tos_accepted", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("tos_accepted_at", pg.TIMESTAMP(timezone=True, precision=2), nullable=True),
     )
     op.create_unique_constraint(None, "users", ["username", "discriminator"])

@@ -14,7 +14,7 @@ class AiResponseLog(Base):
 
     id: Mapped[BigIntPK]
     app_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, index=True)
-    app: Mapped[str] = mapped_column(sa.String, nullable=False)
+    instance: Mapped[str] = mapped_column(sa.String, nullable=False)
     timestamp: Mapped[CreateTimestamp]
     message: Mapped[Optional[dict]] = mapped_column(pg.JSONB, nullable=True)
     parameters: Mapped[Optional[dict]] = mapped_column(pg.JSONB, nullable=True)

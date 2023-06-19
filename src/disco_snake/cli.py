@@ -55,6 +55,7 @@ noisy_loggers = [
     "disnake.client",
     "PIL.Image",
     "httpcore.http11",
+    "markdown_it",
 ]
 
 

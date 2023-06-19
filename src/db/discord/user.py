@@ -1,27 +1,24 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Annotated, Optional
+from enum import Enum
+from typing import TYPE_CHECKING, Annotated, Dict, List, Optional
 
 import disnake
 import sqlalchemy as sa
-from disnake.ext import commands
 from sqlalchemy.dialects import postgresql as pg
+from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym_for
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm.collections import attribute_keyed_dict
 
 from db.base import Base, CreateTimestamp, Timestamp, UpdateTimestamp
+from db.discord import DiscordName, DiscordSnowflake
 
-## Annotated types for Discord objects
-DiscordSnowflake = Annotated[
-    int,  # Discord "snowflake" (object ID)
-    mapped_column(sa.BigInteger, unique=True),
-]
+if TYPE_CHECKING:
+    from disnake.ext import commands
 
-DiscordName = Annotated[
-    str,  # Discord Username string
-    mapped_column(
-        sa.String(length=64),  # Discord caps at 32, but we'll allow for 64 just in case
-    ),
-]
+    # from db.discord.guild import DiscordGuild, GuildMemberAssociation
 
 
 class DiscordUser(Base):
@@ -53,10 +50,21 @@ class DiscordUser(Base):
     tos_rejected: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
     tos_timestamp: Mapped[Timestamp]
 
+    # guild_member_associations: Mapped[Dict[int, GuildMemberAssociation]] = relationship(
+    #     back_populates="member",
+    #     collection_class=attribute_keyed_dict("guild_id"),
+    #     cascade="all, delete-orphan",
+    # )
+    # guilds: AssociationProxy[Dict[int, DiscordGuild]] = association_proxy(
+    #     "guild_member_associations",
+    #     "guild",
+    #     creator=lambda guild: GuildMemberAssociation(guild=guild),
+    # )
+
     @hybrid_property
     def name(self) -> str:
         if self.discriminator == 0:
-            return self.username
+            return self.username.rstrip("#0")
         return f"{self.username}#{self.discriminator}"
 
     @name.setter

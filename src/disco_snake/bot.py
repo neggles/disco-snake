@@ -162,7 +162,7 @@ class DiscoSnake(commands.Bot):
         with guild_data_path.open("w", encoding="utf-8") as f:
             json.dump(guild_data, f, skipkeys=True, indent=2, default=str)
 
-    def available_cogs(self) -> list[str]:
+    def available_cogs(self) -> List[str]:
         cogs = [
             p.stem
             for p in self.cogdir_path.iterdir()

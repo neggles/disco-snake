@@ -101,22 +101,22 @@ class GuildSettings(NamedSnowflake):
 
     def channel_respond_mode(self, channel_id: int) -> ResponseMode:
         if channel_id in [x.id for x in self.channels if x.respond is not None]:
-            return [x.respond for x in self.channels if x.id == channel_id].pop(0)
+            return next(iter([x.respond for x in self.channels if x.id == channel_id]))
         return self.respond
 
     def channel_bot_mode(self, channel_id: int) -> BotMode:
         if channel_id in [x.id for x in self.channels if x.bot_action is not None]:
-            return [x.bot_action for x in self.channels if x.id == channel_id].pop(0)
+            return next(iter([x.bot_action for x in self.channels if x.id == channel_id]))
         return self.bot_action
 
     def channel_imagen(self, channel_id: int) -> bool:
         if channel_id in [x.id for x in self.channels if x.imagen is not None]:
-            return [x.imagen for x in self.channels if x.id == channel_id].pop(0)
+            return next(iter([x.imagen for x in self.channels if x.id == channel_id]))
         return self.imagen
 
     def channel_idle_mode(self, channel_id: int) -> Tuple[bool, int]:
         if channel_id in [x.id for x in self.channels if x.idle_enable is not None]:
-            return [(x.idle_enable, x.idle_interval) for x in self.channels if x.id == channel_id].pop(0)
+            return next(iter([(x.idle_enable, x.idle_interval) for x in self.channels if x.id == channel_id]))
         return self.idle_enable, self.idle_interval
 
 
@@ -145,7 +145,7 @@ class BotParameters(BaseModel):
         return [x.id for x in self.siblings]
 
     def get_guild_settings(self, guild_id: int) -> Optional[GuildSettings]:
-        return [x for x in self.guilds if x.id == guild_id].pop(0)
+        return next(iter([x for x in self.guilds if x.id == guild_id]), None)
 
     def get_idle_channels(self) -> List[int]:
         return [
@@ -158,17 +158,17 @@ class BotParameters(BaseModel):
 
 
 class PromptElement(BaseModel):
-    prefix: str = Field(...)
+    prefix: str = Field(None)
     prompt: Union[str, List[str]] = Field(...)
-    suffix: str = Field(...)
-    concat: str = "\n"
+    suffix: str = Field(None)
+    concat: str = Field(" ")
 
     @property
     def full(self) -> str:
         prompt = self.concat.join(self.prompt) if isinstance(self.prompt, list) else self.prompt
-        if self.prefix is not None and self.prefix != "":
+        if self.prefix is not None and len(self.prefix) > 0:
             prompt = self.concat.join([self.prefix, prompt])
-        if self.suffix is not None and self.suffix != "":
+        if self.suffix is not None and len(self.suffix) > 0:
             prompt = self.concat.join([prompt, self.suffix])
         return prompt
 

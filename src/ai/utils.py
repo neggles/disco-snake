@@ -247,7 +247,7 @@ def get_prompt_datetime(tz: Union[str, ZoneInfo] = ZoneInfo("Asia/Tokyo"), with_
     return datetime.now(tz=tz).strftime(fmt_string)
 
 
-def any_in_text(strings: list[str], text: str) -> bool:
+def any_in_text(strings: List[str], text: str) -> bool:
     """Returns True if any of the strings are in the text"""
     return any([s in text for s in strings])
 

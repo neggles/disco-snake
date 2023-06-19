@@ -164,7 +164,7 @@ class Imagen:
                 format_tags = ", she is with "
 
             if "holding" in user_prompt:
-                format_tags = f"{format_tags}, holding"
+                format_tags = f"{format_tags}, holding" if len(format_tags) > 0 else "holding"
 
         # base tag set
         combined_tags = f"{time_tag}, {format_tags}" if len(format_tags) > 0 else f"{time_tag}"

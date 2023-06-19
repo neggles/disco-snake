@@ -132,7 +132,7 @@ settable_params: List[AiParam] = [
 set_choices = [OptionChoice(name=param.name, value=param.id) for param in settable_params]
 
 
-def available_params(ctx: ApplicationCommandInteraction) -> list[str]:
+def available_params(ctx: ApplicationCommandInteraction) -> List[str]:
     return [param.name for param in settable_params]
 
 
@@ -233,7 +233,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         async with Session.begin() as session:
             query = (
                 select(DiscordUser)
-                .options(load_only("id", "tos_accepted", "tos_rejected", raiseload=True))
+                .options(
+                    load_only(
+                        DiscordUser.id,
+                        DiscordUser.tos_accepted,
+                        DiscordUser.tos_rejected,
+                        raiseload=True,
+                    )
+                )
                 .filter(DiscordUser.tos_rejected is True)
             )
             result = await session.scalars(query)
@@ -339,7 +346,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
-        if message.author == self.bot.user:
+        if message.author.id == self.bot.user.id:
             return  # ignore messages from self
         if message.author.bot is True:
             if self.last_trigger_was_bot(message) is True:
@@ -367,16 +374,17 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         if not direct_message:
             if guild_settings is None:
+                # logger.debug(f"Got message in unknown guild {message.guild=}")
                 return  # ignore messages from guilds that don't have settings
             if guild_settings.enabled is False:
+                # logger.debug(f"Got message in disabled guild {message.guild=}")
                 return  # ignore messages from guilds that have the bot disabled
             if guild_settings.channel_enabled(message.channel.id) is False:
+                # logger.debug(f"Got message in disabled channel {message.channel=}")
                 return  # ignore messages from channels that have the bot disabled
             elif message.channel.permissions_for(message.guild.me).send_messages is False:
                 # channel is enabled but we don't have permission to respond
-                logger.warn(
-                    f"Got message in enabled channel {message.channel} but don't have permission to respond"
-                )
+                logger.warn(f"Got message in {message.channel} but don't have permission to respond.")
                 return
 
         # Check if the user has accepted the ToS
