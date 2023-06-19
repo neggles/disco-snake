@@ -26,11 +26,6 @@ logger = logsnake.setup_logger(
 )
 
 
-async def aiter(iterable):
-    for i in iterable:
-        yield i
-
-
 class Emojus(commands.Cog, name=COG_UID):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
