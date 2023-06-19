@@ -212,10 +212,12 @@ class LMApiConfig(BaseModel):
 
 
 class VisionConfig(BaseModel):
-    enabled: bool = False
-    modeltype: str = "clip"
-    api_host: str = "http://localhost:7862"
-    api_token: Optional[str] = None
+    enabled: bool = False  # whether to caption images or not
+    modeltype: str = "blip"  # blip, instructblip, blip2, git, etc
+    api_host: str = "http://localhost:7862"  # host for vision api
+    api_token: Optional[str] = None  # bearer token for api
+    background: bool = False  # whether to caption images proactively in the background
+    channel_ttl: int = 90  # monitor channel for this many seconds after last response
 
 
 class AiSettings(BaseSettings):

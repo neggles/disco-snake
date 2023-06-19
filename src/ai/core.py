@@ -42,6 +42,7 @@ from shimeji.util import (
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
 from transformers import AutoTokenizer
+from watchgod import watch
 
 import logsnake
 from ai.eyes import DiscoEyes
@@ -53,6 +54,7 @@ from ai.settings import (
     BotMode,
     BotParameters,
     LMApiConfig,
+    NamedSnowflake,
     Prompt,
     get_ai_settings,
 )
@@ -100,6 +102,9 @@ re_detect_url = re.compile(
     r"[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)",
     re.M + re.I,
 )
+
+# find consecutive (at least 2) optionally with spaces in between (blank lines)
+re_consecutive_newline = re.compile(r"(\n[\s\n]*\n\s*)", re.M + re.I)
 
 # capture mentions and emojis
 re_mention = re.compile(r"<@(\d+)>", re.I)
@@ -176,7 +181,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.max_retries = self.params.max_retries
         self.ctxbreak = self.params.ctxbreak
 
-        self.trigger_cache: OrderedDict = OrderedDict()
+        self.trigger_cache: LruDict = LruDict()
         self.lm_lock = Lock()  # used to stop multiple responses from happening at once
 
         self.guilds: List[int] = self.params.guilds
@@ -195,6 +200,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         # selfietron
         self.imagen = Imagen(cog=self)
+
+        # image caption engine
         self.eyes = DiscoEyes(cog=self)
 
         # gradio ui
@@ -220,58 +227,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return self.provider_config.gensettings
 
     @property
-    def siblings(self):
+    def siblings(self) -> List[NamedSnowflake]:
         return self.params.siblings
 
     @property
-    def sibling_ids(self):
+    def sibling_ids(self) -> List[int]:
         return self.params.sibling_ids
-
-    @tasks.loop(seconds=60)
-    async def update_ignored(self):
-        """Check the database for users who have rejected the ToS and get a list of their IDs for message filtering"""
-        async with Session.begin() as session:
-            query = (
-                select(DiscordUser)
-                .options(
-                    load_only(
-                        DiscordUser.id,
-                        DiscordUser.tos_accepted,
-                        DiscordUser.tos_rejected,
-                        raiseload=True,
-                    )
-                )
-                .filter(DiscordUser.tos_rejected is True)
-            )
-            result = await session.scalars(query)
-            users = result.all()
-        self.ignored_user_ids.update([x.id for x in users])
-
-    async def user_accepted_tos(self, user: Union[User, Member, int]) -> Optional[bool]:
-        """Checks if a user has accepted the ToS, rejected, or not completed the process.
-        Returns True if accepted, False if rejected, None if not completed.
-        """
-        user_id = user.id if isinstance(user, (User, Member)) else user
-        async with Session.begin() as session:
-            user: DiscordUser = await session.get(DiscordUser, user_id)
-            if user.tos_rejected is True:
-                return False
-            if user.tos_accepted is True:
-                return True
-            if user is None:
-                logger.debug(f"User {user_id} has not completed the ToS process.")
-                return None
-
-    async def tos_accepted_users(self) -> Set[int]:
-        async with Session.begin() as session:
-            query = (
-                select(DiscordUser)
-                .options(load_only("id", "tos_accepted", "tos_rejected", raiseload=True))
-                .filter(DiscordUser.tos_accepted is True)
-            )
-            result = await session.scalars(query)
-            users = result.all()
-        return {x.id for x in users}
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -320,17 +281,32 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         for sibling in self.siblings:
             logger.debug(f" - {sibling.id=} {sibling.name=}")
 
+        if self.eyes is not None:
+            logger.info("Starting DiscoEyes...")
+            await self.eyes.start()
+
         if not self.update_ignored.is_running():
             logger.debug("Starting update_ignored task...")
             self.update_ignored.start()
 
-        logger.info("AI engine initialized... probably?")
         if self.idle_enable is True:
             logger.info("Starting idle messaging loop")
             self.idle_loop.start()
+
         if not self.log_archive_loop.is_running():
             logger.info("Starting log archive loop")
             self.log_archive_loop.start()
+
+        logger.info("AI engine initialized... probably? yolo!")
+
+    def cog_unload(self) -> None:
+        if self.eyes is not None:
+            logger.info("Shutting down DiscoEyes...")
+            self.eyes.shutdown()
+
+        if self.webui is not None:
+            logger.info("Shutting down WebUI...")
+            self.webui.shutdown()
 
     @commands.Cog.listener("on_ready")
     async def on_ready(self):
@@ -426,7 +402,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         await self.check_send_tos(message)
 
                     # actually respond
-                    return await self.do_response(conversation, message, trigger, append=append)
+                    await self.do_response(conversation, message, trigger, append=append)
+                    return
 
         except Exception as e:
             logger.exception(e)
@@ -524,13 +501,16 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     pass  # don't skip other bot messages
 
             # set up author name
-            author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
+            if msg.author.id == self.bot.user.id:
+                author_name = f"{self.prefix_user}{self.prefix_sep}{self.name}:"
+            else:
+                author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
 
             if len(msg.embeds) > 0:
                 for embed in msg.embeds:
                     if embed.type == "image":
                         try:
-                            caption = await self.eyes.perceive_url(embed.thumbnail.url)
+                            caption = await self.eyes.perceive_url(embed.thumbnail.url, msg.id)
                             if caption is not None:
                                 chain.append(f"{author_name} [image: {caption}]")
                         except Exception as e:
@@ -618,7 +598,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         contextmgr.add_entry(conversation_entry)
 
         context = contextmgr.context(self.context_size)
-        return context.replace("\n\n", "\n").replace("\n\n", "\n").replace("\n\n", "\n")
+        return re_consecutive_newline.sub("\n", context)  # yeet all consecutive newlines (empty lines)
 
     # actual response logic
     async def do_response(
@@ -668,36 +648,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
             # Build context
             context = await self.process_context(conversation, message)
-
-            # war crime for alpaca, needs more newlines
-            # context_lines = context.splitlines()
-            # new_lines = []
-            # first = True
-            # for line in context_lines:
-            #     if line.startswith("### "):
-            #         _, content = line.split(":", 1)
-            #         if line.startswith(self.prefix_bot) and line != self.prefix_bot:
-            #             if first is True:
-            #                 # strip empty newline at end of prompt
-            #                 new_lines = new_lines[:-1]
-            #                 # add response without extra newline
-            #                 new_lines.append(f"{self.prefix_bot}{self.prefix_sep}{content.strip()}")
-            #                 first = False
-            #                 continue
-            #             else:
-            #                 # newline then response
-            #                 new_lines.append(f"{self.prefix_bot}{self.prefix_sep}{content.strip()}")
-            #                 continue
-            #         elif line.startswith(self.prefix_user) and line != self.prefix_user:
-            #             if first is True:
-            #                 new_lines.append(f"{self.prefix_user}{self.prefix_sep}{content.strip()}")
-            #                 first = False
-            #                 continue
-            #             else:
-            #                 new_lines.append(f"{self.prefix_user}{self.prefix_sep}{content.strip()}")
-            #                 continue
-            #     new_lines.append(line)
-            # context = "\n".join(new_lines).replace("\n\n\n", "\n\n")
             context = context.rstrip()
             debug_data["context"] = context.splitlines()
 
@@ -763,16 +713,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     response = response.splitlines()[0]
 
                 # replace "<USER>" with user mention, same for "<BOT>"
-                response = self.fixup_bot_user_tokens(response, message)
-
+                response = self.fixup_bot_user_tokens(response, message).lstrip()
                 # Clean response - trim left whitespace and fix emojis and pings
-                # response = cut_trailing_sentence(response)
-                response = response.lstrip()
-
-                # restore mentions and emojis to their original form
                 response = self.restore_mentions_emoji(text=response, message=message)
-
-                # trim hashes n shit
                 response = response.rstrip("#}").lstrip("\"'")
 
                 if append is not None and len(append.strip()) > 0:
@@ -800,8 +743,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     await message.channel.send(response)
                     logger.info(f"Response: {response}")
 
-                    self.last_response = datetime.now(timezone.utc)
+                self.last_response = datetime.now(timezone.utc)
 
+                # update timestamp for this channel in the image caption engine
+                if self.eyes.enabled:
+                    self.eyes.watch(message.channel.id)
+
+                # update webui state if it's enabled
                 if self.webui is not None:
                     logger.debug("Updating webui")
                     self.webui.lm_update(
@@ -824,7 +772,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         json.dump(debug_data, f, indent=4, skipkeys=True, default=str, ensure_ascii=False)
                     logger.debug(f"Dumped message debug data to {dump_file.name}")
 
-    # Idle loop stuff
+    # Idle loop, broken rn, need to factor on_message logic out into functions or smth
     @tasks.loop(seconds=21)
     async def idle_loop(self) -> None:
         if self.idle_enable is True:
@@ -837,7 +785,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     return
 
                 idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
-                if idle_sec >= self.idle_interval:
+                if idle_sec >= 2**31:
                     if self.get_msg_content_clean(message) == "":
                         return
                     logger.debug(f"Running idle response to message {message.id}")
@@ -857,6 +805,52 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.info("Idle loop running!")
 
     ## Helper functions
+    # Check and refresh the list of users who rejected the ToS
+    @tasks.loop(seconds=60)
+    async def update_ignored(self):
+        """Check the database for users who have rejected the ToS and get a list of their IDs for message filtering"""
+        async with Session.begin() as session:
+            query = (
+                select(DiscordUser)
+                .options(
+                    load_only(
+                        DiscordUser.id, DiscordUser.tos_accepted, DiscordUser.tos_rejected, raiseload=True
+                    )
+                )
+                .filter(DiscordUser.tos_rejected is True)
+            )
+            result = await session.scalars(query)
+            users = result.all()
+        self.ignored_user_ids.update([x.id for x in users])
+
+    # Check if a user has accepted the ToS
+    async def user_accepted_tos(self, user: Union[User, Member, int]) -> Optional[bool]:
+        """Checks if a user has accepted the ToS, rejected, or not completed the process.
+        Returns True if accepted, False if rejected, None if not completed.
+        """
+        user_id = user.id if isinstance(user, (User, Member)) else user
+        async with Session.begin() as session:
+            user: DiscordUser = await session.get(DiscordUser, user_id)
+            if user.tos_rejected is True:
+                return False
+            if user.tos_accepted is True:
+                return True
+            if user is None:
+                logger.debug(f"User {user_id} has not completed the ToS process.")
+                return None
+
+    # get a list of users who have accepted the ToS
+    async def tos_accepted_users(self) -> Set[int]:
+        async with Session.begin() as session:
+            query = (
+                select(DiscordUser)
+                .options(load_only("id", "tos_accepted", "tos_rejected", raiseload=True))
+                .filter(DiscordUser.tos_accepted is True)
+            )
+            result = await session.scalars(query)
+            users = result.all()
+        return {x.id for x in users}
+
     # check if the person triggering the bot has agreed to ToS or not and send it if not
     async def check_send_tos(self, message: Message) -> bool:
         logger.debug(f"Checking ToS for {message.author} ({message.author.id})")
@@ -985,6 +979,40 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         await self.bot.wait_until_ready()
         self.debug_dir.joinpath("archive").mkdir(exist_ok=True, parents=True)
         logger.info("Archive loop running!")
+
+    # listener to background caption images
+    @commands.Cog.listener("on_message")
+    async def background_caption(self, message: Message):
+        if self.config.vision.background is not True:
+            # logger.debug("Background captioning disabled")
+            return
+        if not message.attachments and not message.embeds:
+            pass  # no attachments or embeds
+
+        # check if we're watching this channel
+        if not self.eyes.watching(message.channel, False):
+            return  # not watching this channel (no recent activity)
+
+        for embed in message.embeds:
+            if embed.type == "image":
+                try:
+                    logger.debug(f"Captioning embed from {message.id=}")
+                    caption = await self.eyes.perceive_url(embed.thumbnail.url, message.id)
+                    logger.info(f"Success: {message.id=}, {caption=}")
+                except Exception:
+                    logger.exception(f"Error processing image {embed.thumbnail.url}")
+            else:
+                continue
+            break  # only caption one image per embed. limitations of how i key the DB :/
+
+        for attachment in message.attachments:
+            if attachment.content_type.startswith("image"):
+                try:
+                    logger.debug(f"Captioning attachment {attachment.id=} from {message.id=}")
+                    caption = await self.eyes.perceive_attachment(attachment)
+                    logger.info(f"Success: {attachment.id=}: {caption=}")
+                except Exception:
+                    logger.exception(f"Error processing image {attachment.url}")
 
     # Image generation stuff
     async def take_pic(self, message: Union[Message, str]) -> Optional[Tuple[File, dict]]:

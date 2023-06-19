@@ -1,17 +1,20 @@
+import asyncio
 import logging
 from base64 import b64encode
 from datetime import datetime
 from io import BytesIO
-from typing import TYPE_CHECKING, Optional
+from time import monotonic
+from typing import TYPE_CHECKING, Any, Optional
+from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSession
-from async_lru import alru_cache
 from disnake import Attachment, Embed
 from PIL import Image
+from regex import R
 from requests import get as requests_get
 
 from ai.settings import VisionConfig
-from ai.types import ImageOrBytes
+from ai.types import ImageOrBytes, MessageChannel, TimestampStore
 from db import ImageCaption, Session
 
 if TYPE_CHECKING:
@@ -27,11 +30,43 @@ IMAGE_FORMATS = ["PNG", "WEBP", "JPEG", "GIF"]
 
 
 class DiscoEyes:
-    API_PATH = "/api/v1/caption"
+    api_client_PATH = "/api/v1/caption"
 
     def __init__(self, cog: "Ai") -> None:
+        self.cog: "Ai" = cog
         self.config: VisionConfig = cog.config.vision
-        self.timezone = cog.bot.timezone
+        self.timezone: ZoneInfo = cog.bot.timezone
+        self.web_client: ClientSession = None
+        self.api_client: ClientSession = None
+        self.db_client: Session = None
+
+        # this tracks which channels we've recently responded in, so the caption engine can
+        # proactively caption images in those channels without waiting for a prompt
+        self.attention: TimestampStore = None
+
+    async def start(self) -> None:
+        self.web_client: ClientSession = ClientSession(
+            loop=self.cog.bot.loop,
+        )
+        self.api_client = ClientSession(
+            loop=self.cog.bot.loop,
+            base_url=self.api_host,
+            headers={"Authorization": f"Bearer {self.api_token}"},
+        )
+        self.db_client: Session = Session()
+        self.attention = TimestampStore(ttl=self.config.channel_ttl)
+
+    def shutdown(self) -> None:
+        logger.info("Closing web and API clients...")
+        close_tasks = [
+            asyncio.ensure_future(self.web_client.close()),
+            asyncio.ensure_future(self.api_client.close()),
+        ]
+        asyncio.get_event_loop().run_until_complete(asyncio.gather(*close_tasks))
+
+    @property
+    async def enabled(self) -> bool:
+        return self.config.enabled
 
     @property
     def api_host(self) -> str:
@@ -41,7 +76,7 @@ class DiscoEyes:
     def api_token(self) -> Optional[str]:
         return self.config.api_token
 
-    async def _perceive(self, image: ImageOrBytes) -> str:
+    async def submit_request(self, image: ImageOrBytes) -> str:
         logger.info("Processing image")
         if not isinstance(image, Image.Image):
             image = Image.open(BytesIO(image), formats=IMAGE_FORMATS)
@@ -52,44 +87,48 @@ class DiscoEyes:
         image.save(buf, format="PNG")
 
         payload = {"image": b64encode(buf.getvalue()).decode()}
-        async with ClientSession(
-            base_url=self.api_host,
-            headers={"Authorization": f"Bearer {self.api_token}"},
-        ) as session:
-            async with session.post(self.API_PATH, json=payload) as resp:
-                data = await resp.json()
-                resp.raise_for_status()
-                caption = data["caption"]
-                if len(caption) > 1000:
-                    caption = caption[:1000] + "..."
-                if len(caption) <= 8:
-                    logger.warning(f"Received caption: {caption}")
-                    raise ValueError("Received caption is too short")
-                logger.info(f"Received caption: {caption}")
-                return caption
+        async with self.api_client.post(self.api_client_PATH, json=payload) as resp:
+            resp.raise_for_status()
+            data = await resp.json(encoding="utf-8")
+            caption = data["caption"]
 
-    @alru_cache(maxsize=128)
-    async def perceive_url(self, url: str) -> Optional[str]:
-        async with ClientSession() as session:
-            async with session.get(url) as resp:
-                resp.raise_for_status()
-                data = await resp.read()
-                caption = await self._perceive(data)
-                return caption
+        if len(caption) <= 8:
+            raise ValueError(f"Received caption is too short: {caption=}")
+        elif len(caption) > 320:
+            caption = caption[:320] + "..."
+        logger.info(f"Received caption: {caption}")
+        return caption
 
-    # Returns the caption for an image attachment from the DB if it exists, otherwise
-    # submits the image to the API for captioning and saves the result to the DB.
+    async def perceive_url(self, url: str, id: Optional[int] = None) -> Optional[str]:
+        if id is not None:
+            image_caption = await self.db_client_get_caption(id)
+            if image_caption is not None:
+                return image_caption.caption
+
+        async with self.web_client.get(url) as resp:
+            resp.raise_for_status()
+            data = await resp.read()
+            caption = await self.submit_request(data)
+            return caption
+
+    # Returns the caption for an image attachment from the db_client if it exists, otherwise
+    # submits the image to the api_client for captioning and saves the result to the db_client.
     async def perceive_attachment(self, attachment: Attachment) -> str:
         if not attachment.content_type.startswith("image/"):
             logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
             return None
-        image_caption = await self.db_get_caption(attachment.id)
+        image_caption = await self.db_client_get_caption(attachment.id)
         if image_caption is not None:
             return image_caption.caption
 
         logger.info(f"Captioning image {attachment.id}")
         attachment_dict = attachment.to_dict()
         _ = attachment_dict.pop("content_type")  # don't need this
+
+        caption_text = await self._submit_attachment(attachment)
+        if caption_text is None:
+            raise ValueError("Failed to caption image attachment")
+
         image_caption = ImageCaption(
             id=attachment.id,
             filename=attachment.filename,
@@ -100,14 +139,14 @@ class DiscoEyes:
             height=attachment.height or 0,
             width=attachment.width or 0,
             captioned_with=self.config.modeltype,
-            caption=await self._perceive_attachment(attachment),
+            caption=caption_text,
             captioned_at=datetime.now(tz=self.timezone),
         )
-        await self.db_save_caption(image_caption)
+        await self.db_client_save_caption(image_caption)
         return image_caption.caption
 
-    # Submits the image to the API for captioning
-    async def _perceive_attachment(self, attachment: Attachment) -> Optional[str]:
+    # Submits the image to the api_client for captioning
+    async def _submit_attachment(self, attachment: Attachment) -> Optional[str]:
         if attachment.size > IMAGE_MAX_BYTES:
             logger.debug(f"got attachment larger than 20MB: {attachment.size}, skipping")
             return None
@@ -115,18 +154,19 @@ class DiscoEyes:
             logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
             return None
 
+        max_edge = max(attachment.width or 0, attachment.height or 0)
         if attachment.width is None or attachment.height is None:
             if attachment.size > IMAGE_MAX_BYTES:
                 logger.debug(f"got attachment larger than 20MB: {attachment.size}, skipping")
                 return None
             data = requests_get(attachment.url).content
-        elif max(attachment.width or 0, attachment.height or 0) > IMAGE_MAX_PX:
-            data = await self._attachment_thumbnail(attachment)
+        elif max_edge > IMAGE_MAX_PX or max_edge == 0:
+            data = await self._get_thumbnail(attachment)
         else:
             data = await attachment.read()
-        return await self._perceive(data)
+        return await self.submit_request(data)
 
-    async def _attachment_thumbnail(self, attachment: Attachment) -> Optional[Image.Image]:
+    async def _get_thumbnail(self, attachment: Attachment) -> Optional[Image.Image]:
         if not attachment.content_type.startswith("image/"):
             logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
             return None
@@ -149,18 +189,17 @@ class DiscoEyes:
         scaled_url = f"{image_url}?width={width}&height={height}"
         # fetch image
         logger.debug(f"Fetching scaled image from {image_url}")
-        async with ClientSession() as session:
-            async with session.get(scaled_url) as resp:
-                resp.raise_for_status()
-                data = await resp.read()
-                image = Image.open(BytesIO(data), formats=IMAGE_FORMATS)
-                return image
+        async with self.web_client.get(scaled_url) as resp:
+            resp.raise_for_status()
+            data = await resp.read()
+            image = Image.open(BytesIO(data), formats=IMAGE_FORMATS)
+            return image
 
-    async def db_save_caption(self, caption: ImageCaption) -> str:
+    async def db_client_save_caption(self, caption: ImageCaption) -> str:
         """Save a caption to the database.
 
         Returns the same object that was passed in, allowing for
-        chaining of calls e.g. `return await db.save_caption(caption)`
+        chaining of calls e.g. `return await db_client.save_caption(caption)`
 
         :param caption: The caption to save.
         :type caption: ImageCaption
@@ -174,7 +213,14 @@ class DiscoEyes:
         logger.debug("Caption saved successfully")
         return caption_str
 
-    async def db_get_caption(self, image_id: int) -> Optional[ImageCaption]:
-        async with Session() as session:
-            async with session.begin():
-                return await session.get(ImageCaption, image_id)
+    async def db_client_get_caption(self, image_id: int) -> Optional[ImageCaption]:
+        async with Session.begin() as session:
+            caption_obj = session.get(ImageCaption, image_id)
+            if caption_obj is None:
+                return None
+
+    def watch(self, channel: MessageChannel):
+        self.attention.refresh(channel.id)
+
+    def watching(self, channel: MessageChannel) -> bool:
+        return self.attention.active(channel.id)

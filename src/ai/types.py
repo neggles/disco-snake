@@ -1,7 +1,9 @@
 from collections import OrderedDict
 from datetime import datetime
-from typing import List, Optional, TypeAlias, Union
+from time import monotonic
+from typing import Any, List, Optional, TypeAlias, Union
 
+from cachetools import TTLCache
 from disnake import DMChannel, GroupChannel, Member, TextChannel, Thread, User
 from PIL.Image import Image
 from pydantic import BaseModel, Field
@@ -11,6 +13,18 @@ ListOfUsers: TypeAlias = Union[List[Union[User, Member]], List[User], List[Membe
 MessageChannel: TypeAlias = Union[TextChannel, DMChannel, GroupChannel, Thread]
 
 ImageOrBytes: TypeAlias = Union[Image, bytes]
+
+
+class TimestampStore(TTLCache):
+    def __init__(self, maxsize=128, ttl=90) -> None:
+        super().__init__(maxsize, ttl, timer=monotonic)
+
+    def refresh(self, key: Any) -> None:
+        # update the timestamp for a key
+        self[key] = True
+
+    def active(self, key: Any) -> bool:
+        return self.get(key, False)
 
 
 class LruDict(OrderedDict):

@@ -516,7 +516,7 @@ class GradioUi:
                 outputs=self.dynamic_elements,
             )
 
-    async def launch(self, **kwargs):
+    async def launch(self, **kwargs) -> None:
         if self.config.enabled:
             try:
                 gradio_loop = asyncio.new_event_loop()
@@ -540,3 +540,8 @@ class GradioUi:
                 logger.exception("Failed to launch UI")
         else:
             logger.info("UI disabled, skipping launch")
+
+    def shutdown(self) -> None:
+        logger.info("Shutting down UI...")
+        self.blocks.close()
+        logger.info("UI shutdown!")
