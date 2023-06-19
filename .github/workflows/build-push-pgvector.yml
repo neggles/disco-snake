@@ -31,8 +31,6 @@ concurrency:
 env:
   IMAGE_REGISTRY: ghcr.io
   IMAGE_NAME: pgvector
-
-  PGVECTOR_REF: "v0.4.4"
   IMAGE_PLATFORMS: "linux/amd64"
 
 jobs:
@@ -47,8 +45,15 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        pg_base: ["15.3-bullseye"]
-        pg_vector: ["v0.4.4"]
+        include:
+          - pg_base: "15.3"
+            pg_suffix: "bullseye"
+            pg_vector: "v0.4.4"
+
+    env:
+      PGVECTOR_REF: ${{ matrix.pg_vector }}
+      PG_BASE: ${{ matrix.pg_base }}
+      PG_SUFFIX: ${{ matrix.pg_suffix }}
 
     steps:
       - name: Checkout
@@ -67,17 +72,15 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          flavour: |
-            latest=${{ is_default_branch }}
+          flavor: |
+            latest=${{ github.ref == 'refs/heads/main' }}
           images: |
             ${{ env.IMAGE_REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ matrix.pg_base }},enable={{is_default_branch}}
+            type=raw,value=${{ matrix.pg_base }},enable={{ is_default_branch }}
             type=ref,event=branch
             type=ref,event=tag
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha
 
       - name: Login to GHCR
@@ -97,7 +100,5 @@ jobs:
             ${{ steps.meta.outputs.bake-file }}
           push: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || inputs.force-push }}
           set: |
-            *.args.PG_VERSION=${{ matrix.pg_base }}
-            *.args.PGVECTOR_REF=${{ matrix.pg_vector }}
             *.cache-from=type=gha
             *.cache-to=type=gha,mode=min
