@@ -18,4 +18,3 @@ honestly just don't, this code is a mess
 ### Licensing
 
 GNU AGPLv3 for my own code, mixed for other code. see [LICENSE.md](./LICENSE.md)
-
