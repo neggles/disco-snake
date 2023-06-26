@@ -323,11 +323,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         # done
         logger.info("Cog is ready.")
 
-    def last_trigger_was_bot(self, message: Message) -> bool:
-        """Check if the last message we responded to in this context was from a bot."""
-        cache_entry = self.trigger_cache.get(message.channel.id, False)
-        return cache_entry
-
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
         if message.author.id == self.bot.user.id:
@@ -481,7 +476,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         # magic tag to break context chain to get bot out of librarian mode
         for idx, message in enumerate(messages):
-            if self.is_ctxbreak_msg(message):
+            if self.check_ctxbreak(message):
                 logger.debug("Found context break tag, breaking context chain")
                 messages = messages[0 : idx + 1]
                 break
@@ -972,7 +967,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return False
 
     # check if a given message is a context break message
-    def is_ctxbreak_msg(self, message: Message) -> bool:
+    def check_ctxbreak(self, message: Message) -> bool:
         content = message.content.lower()
         if not content.startswith("<ctxbreak>"):
             return False  # not a context break message
@@ -983,6 +978,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if member_in_any_role(message.author, self.ctxbreak.role_ids):
             return True  # ctxbreak role havers can always break context
         return False  # otherwise, no
+
+    # check if the last message we responded to in this context was from a bot
+    def last_trigger_was_bot(self, message: Message) -> bool:
+        """Check if the last message we responded to in this context was from a bot."""
+        cache_entry = self.trigger_cache.get(message.channel.id, False)
+        return cache_entry
 
     # deal with fake nitro bullshit
     def handle_stupid_fucking_embed(self, message: Message) -> Optional[str]:
