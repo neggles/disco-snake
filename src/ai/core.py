@@ -41,6 +41,7 @@ from shimeji.util import (
     ContextEntry,
 )
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import load_only
 from transformers import AutoTokenizer
 
@@ -70,6 +71,7 @@ from ai.utils import (
 from ai.web import GradioUi
 from cogs.privacy import PrivacyEmbed, PrivacyView, get_policy_text
 from db import DiscordUser, Session
+from db.ai import AiResponseLog
 from disco_snake import checks
 from disco_snake.bot import DiscoSnake
 
@@ -198,12 +200,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.tokenizer: PreTrainedTokenizerBase = None
         self.bad_words: List[str] = self.config.bad_words
 
+        # database client (async init)
+        self.db_client: async_sessionmaker = Session
+
         # selfietron
         self.imagen = Imagen(cog=self)
-
         # image caption engine
         self.eyes = DiscoEyes(cog=self)
-
         # gradio ui
         self.webui = GradioUi(cog=self, config=self.config.gradio)
 
@@ -642,7 +645,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             # build debug data
             debug_data["id"] = message.id
             debug_data["app_id"] = self.bot.user.id
-            debug_data["app"] = self.name.lower()
+            debug_data["instance"] = self.name.title()
             debug_data["message"] = {
                 "id": message.id,
                 "timestamp": msg_timestamp,
@@ -660,7 +663,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             debug_data["conversation"] = conversation
 
             try:
-                debug_data["gensettings"] = self.provider_config.gensettings.dict()
+                debug_data["parameters"] = self.provider_config.gensettings.dict()
             except Exception as e:
                 logger.exception("Failed to get gensettings")
 
@@ -789,6 +792,17 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     with dump_file.open("w", encoding="utf-8") as f:
                         json.dump(debug_data, f, indent=4, skipkeys=True, default=str, ensure_ascii=False)
                     logger.debug(f"Dumped message debug data to {dump_file.name}")
+        await self.log_response(debug_data)
+
+    async def log_response(self, debug_data: dict) -> None:
+        debug_data["timestamp"] = datetime.now(tz=self.bot.timezone)
+        try:
+            log_entry = AiResponseLog(**debug_data)
+            async with self.db_client.begin() as session:
+                session.add(log_entry)
+            logger.debug(f"Logged response to database: {log_entry.id}")
+        except Exception:
+            logger.exception("Failed to log response to database, continuing anyway")
 
     # Idle loop, broken rn, need to factor on_message logic out into functions or smth
     @tasks.loop(seconds=21)
@@ -830,11 +844,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         async with Session.begin() as session:
             query = (
                 select(DiscordUser)
-                .options(
-                    load_only(
-                        DiscordUser.id, DiscordUser.tos_accepted, DiscordUser.tos_rejected, raiseload=True
-                    )
-                )
+                .options(load_only(DiscordUser.id, DiscordUser.tos_accepted, DiscordUser.tos_rejected))
                 .filter(DiscordUser.tos_rejected is True)
             )
             result = await session.scalars(query)
@@ -998,7 +1008,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         else:
             return None
 
-    # Loop to archive debug logs
+    ## Loop to archive debug logs
     @tasks.loop(hours=1)
     async def log_archive_loop(self) -> None:
         """
@@ -1017,7 +1027,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.debug_dir.joinpath("archive").mkdir(exist_ok=True, parents=True)
         logger.info("Archive loop running!")
 
-    # listener to background caption images
+    ## listener to background caption images
     @commands.Cog.listener("on_message")
     async def background_caption(self, message: Message):
         if self.config.vision.background is not True:
@@ -1053,7 +1063,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 except Exception:
                     logger.exception(f"Error processing image {attachment.url}")
 
-    # Image generation stuff
+    ## Image generation stuff
     async def take_pic(self, message: Union[Message, str]) -> Optional[Tuple[File, dict]]:
         """
         hold up, let me take a selfie
@@ -1100,7 +1110,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.exception(e)
             raise e
 
-    # UI stuff
+    ## UI stuff
     @commands.slash_command(name="ai", description="AI Management")
     @checks.not_blacklisted()
     async def ai_group(self, ctx: ApplicationCommandInteraction):

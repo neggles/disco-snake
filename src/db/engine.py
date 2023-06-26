@@ -47,7 +47,7 @@ class PydanticType(TypeDecorator):
 
 def json_serializer(obj: Any, *args, **kwargs) -> str:
     _, _ = kwargs.pop("default", None), kwargs.pop("ensure_ascii", None)
-    return json.dumps(*args, default=pydantic_encoder, ensure_ascii=False, **kwargs)
+    return json.dumps(obj, *args, default=pydantic_encoder, ensure_ascii=False, **kwargs)
 
 
 @lru_cache(maxsize=1)
@@ -70,6 +70,6 @@ def get_engine() -> AsyncEngine:
     )
 
 
-Session = async_sessionmaker(get_engine(), expire_on_commit=False)
+Session: async_sessionmaker = async_sessionmaker(get_engine(), expire_on_commit=False)
 
-SyncSession = sessionmaker(get_sync_engine(), expire_on_commit=False)
+SyncSession: sessionmaker = sessionmaker(get_sync_engine(), expire_on_commit=False)

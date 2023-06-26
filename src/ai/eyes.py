@@ -4,12 +4,13 @@ import re
 from base64 import b64encode
 from datetime import datetime
 from io import BytesIO
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from zoneinfo import ZoneInfo
 
 from aiohttp import ClientError, ClientSession
 from disnake import Attachment
 from PIL import Image
+from pydantic import BaseModel, Field
 from requests import get as requests_get
 from sqlalchemy import select
 
@@ -32,6 +33,19 @@ re_image_of = re.compile(
     r"(?:This|the)\s+(?:is an image of|image is of)\s+(.+)",
     re.I + re.M,
 )
+
+
+class InfoResponse(BaseModel):
+    model_name: str = Field(...)
+    model_type: str = Field(...)
+    uptime: str = Field(...)
+    memory_stats: dict = Field(...)
+
+
+class CaptionResponse(BaseModel):
+    caption: str = Field(...)
+    info: Optional[InfoResponse] = Field(None)
+    error: Optional[str] = Field(None)
 
 
 class DiscoEyes:
@@ -59,6 +73,9 @@ class DiscoEyes:
         self.db_client: Session = Session()
         self.attention = TimestampStore(ttl=self.config.channel_ttl)
 
+        self._api_info: InfoResponse = None
+        await self._fetch_api_info()
+
     def shutdown(self) -> None:
         logger.info("Closing web and API clients...")
         close_tasks = [
@@ -73,13 +90,26 @@ class DiscoEyes:
 
     @property
     def api_host(self) -> str:
-        return self.config.api_host
+        return self.config.host
 
     @property
     def api_token(self) -> Optional[str]:
-        return self.config.api_token
+        return self.config.token
 
-    async def submit_request(self, image: ImageOrBytes) -> str:
+    @property
+    def api_info(self) -> InfoResponse:
+        if self._api_info is None:
+            raise RuntimeError("API info not yet available")
+        return self._api_info
+
+    async def _fetch_api_info(self) -> None:
+        async with self.api_client.get("/api/v1/info") as resp:
+            resp.raise_for_status()
+            data = await resp.json(encoding="utf-8")
+        self._api_info = InfoResponse.parse_obj(data)
+        logger.debug(f"Received API info: {self._api_info}")
+
+    async def submit_request(self, image: ImageOrBytes, return_obj: bool = False) -> str:
         logger.info("Processing image")
         if not isinstance(image, Image.Image):
             image = Image.open(BytesIO(image), formats=IMAGE_FORMATS)
@@ -93,18 +123,20 @@ class DiscoEyes:
         async with self.api_client.post(self.config.route, json=payload) as resp:
             resp.raise_for_status()
             data = await resp.json(encoding="utf-8")
-            # logger.debug(json.dumps(data, indent=2))
-            caption = data["caption"]
+        response = CaptionResponse.parse_obj(data)
 
         # Strip out "This is an image of" etc. from the caption
-        caption = re_image_of.sub(r"\1", caption).rstrip(".")
+        caption = re_image_of.sub(r"\1", response.caption).rstrip(".")
 
         if len(caption) <= 8:
             raise ValueError(f"Received caption is too short: {caption=}")
         elif len(caption) > 320:
             caption = caption[:320] + "..."
+
+        # update the object with the stripped caption
+        response.caption = caption
         logger.info(f"Received caption: {caption}")
-        return caption
+        return response if return_obj else caption
 
     async def perceive_url(self, url: str, id: Optional[int] = None) -> Optional[str]:
         if id is not None:
@@ -150,7 +182,7 @@ class DiscoEyes:
             proxy_url=attachment.proxy_url,
             height=attachment.height or 0,
             width=attachment.width or 0,
-            captioned_with=self.config.modeltype,
+            captioned_with=f"{self.api_info.model_type} {self.api_info.model_name}",
             caption=caption_text,
             captioned_at=datetime.now(tz=self.timezone),
         )
@@ -158,7 +190,7 @@ class DiscoEyes:
         return image_caption.caption
 
     # Submits the image to the api_client for captioning
-    async def _submit_attachment(self, attachment: Attachment) -> Optional[str]:
+    async def _submit_attachment(self, attachment: Attachment) -> Optional[str | dict[str, Any]]:
         if attachment.size > IMAGE_MAX_BYTES:
             logger.debug(f"got attachment larger than 20MB: {attachment.size}, skipping")
             return None

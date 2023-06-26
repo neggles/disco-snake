@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 import sqlalchemy as sa
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -10,17 +10,17 @@ from db.base import Base, BigIntPK, CreateTimestamp
 
 
 class AiMessageInfo(BaseModel):
-    id: int
-    timestamp: datetime
-    guild_id: int
-    guild: str | dict[str, Any]
-    author_id: int
-    author: str | dict[str, Any]
-    channel_id: int
-    channel: str | dict[str, Any]
-    author_name: str
-    trigger: str
-    content: str
+    id: int = Field(...)
+    timestamp: datetime = Field(datetime.now())
+    guild_id: int = Field(...)
+    guild: str | dict[str, Any] = Field(...)
+    author_id: int = Field(...)
+    author: str | dict[str, Any] = Field(...)
+    channel_id: int = Field(...)
+    channel: str | dict[str, Any] = Field(...)
+    author_name: str = Field(...)
+    trigger: str = Field(...)
+    content: str = Field(...)
 
 
 class AiResponseLog(Base):
@@ -42,7 +42,7 @@ class AiResponseLog(Base):
     def from_old_format(cls, log_obj: dict) -> "AiResponseLog":
         return cls(
             app_id=log_obj["app_id"],
-            instance=log_obj["instance"],
+            instance=log_obj["app"],
             timestamp=datetime.fromisoformat(log_obj["timestamp"]),
             message=AiMessageInfo.parse_obj(log_obj["message"]),
             conversation=log_obj["conversation"],
