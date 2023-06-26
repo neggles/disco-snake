@@ -43,7 +43,7 @@ class ChatBot:
 
         if push_chain:
             self.conversation_chain.append(text)
-        if self.conversation_chain:
+        if len(self.conversation_chain) > 1:
             text = "\n".join(self.conversation_chain)
 
         if self.preprocessors:
@@ -65,7 +65,7 @@ class ChatBot:
 
         if push_chain:
             self.conversation_chain.append(text)
-        if self.conversation_chain:
+        if len(self.conversation_chain) > 1:
             text = "\n".join(self.conversation_chain)
 
         if self.preprocessors:
@@ -85,7 +85,7 @@ class ChatBot:
 
         if push_chain:
             self.conversation_chain.append(text)
-        if self.conversation_chain:
+        if len(self.conversation_chain) > 1:
             text = "\n".join(self.conversation_chain)
 
         if self.preprocessors:
@@ -114,7 +114,7 @@ class ChatBot:
 
         if push_chain:
             self.conversation_chain.append(text)
-        if self.conversation_chain:
+        if len(self.conversation_chain) > 1:
             text = "\n".join(self.conversation_chain)
 
         if self.preprocessors:

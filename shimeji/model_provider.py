@@ -1,5 +1,6 @@
 import copy
 import json
+import logging
 from os import PathLike
 from typing import Any, List, Optional, Union
 
@@ -8,6 +9,8 @@ import requests
 from pydantic import BaseModel, Field
 
 from .tokenizers import GPT2, AutoTokenizer, Llama
+
+logger = logging.getLogger(__name__)
 
 
 class ModelGenArgs(BaseModel):
@@ -95,6 +98,8 @@ class OobaGenRequest(BaseModel):
     repetition_penalty: float = 1.1
     encoder_repetition_penalty: float = 1.0
     top_k: int = 40
+    top_a: float = 0.0
+    tfs: float = 1.0
     min_length: int = 0
     no_repeat_ngram_size: int = 0
     num_beams: int = 1
@@ -973,7 +978,7 @@ class OobaModel(ModelProvider):
         """
 
         args: OobaGenRequest = copy.deepcopy(self.default_args)
-        args.prompt = context
+        args.prompt = f"{context}{prefix}"
         args.temperature = 0.25
         args.top_p = 0.9
         args.top_k = 40
@@ -982,6 +987,7 @@ class OobaModel(ModelProvider):
         args.max_new_tokens = 24
         args.min_length = 0
         response = self.generate(args)
+        logger.debug(f"Response: {response.strip()}")
         if response.strip().startswith((name, prefix + name, prefix + " " + name)):
             return True
         else:
@@ -998,15 +1004,17 @@ class OobaModel(ModelProvider):
         """
 
         args: OobaGenRequest = copy.deepcopy(self.default_args)
-        args.prompt = context
+        args.prompt = f"{context}{prefix}"
         args.temperature = 0.25
-        args.top_p = 0.9
-        args.top_k = 40
-        args.repetition_penalty = 1.0
+        args.top_p = 1.0
+        args.top_k = 1
+        args.num_beams = 3
+        args.repetition_penalty = 1.2
         args.do_sample = True
-        args.max_new_tokens = 24
+        args.max_new_tokens = 10
         args.min_length = 0
         response = await self.generate_async(args)
+        logger.debug(f"Response: {response.strip()}")
         if response.strip().startswith((name, prefix + name, prefix + ": " + name)):
             return True
         else:
