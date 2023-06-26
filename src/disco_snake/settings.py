@@ -14,7 +14,7 @@ from pydantic.env_settings import (
     SettingsSourceCallable,
 )
 
-from disco_snake import DATADIR_PATH, per_config_name, DEF_DATA_PATH
+from disco_snake import DEF_DATA_PATH, per_config_name
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -80,6 +80,7 @@ class Settings(BaseSettings):
 
     owner_id: int = Field(...)
     admin_ids: List[int] = Field(..., unique_items=True)
+    retcon_ids: List[int] = Field([], unique_items=True)
     home_guild: int = Field(...)
     support_guild: int = Field(...)
     support_channel: int = Field(...)

@@ -23,10 +23,10 @@ def is_admin() -> Callable[[T], T]:
         settings = get_settings()
         logger.debug(f"Checking if {ctx.author.id} is an admin in context {ctx}")
         return any(
-            [
+            (
                 ctx.author.id == settings.owner_id,
                 (ctx.author.id in settings.admin_ids),
-            ]
+            )
         )
 
     return commands.check(predicate)
@@ -44,7 +44,12 @@ def is_owner() -> Callable[[T], T]:
     def predicate(ctx: commands.Context) -> bool:
         settings = get_settings()
         logger.debug(f"Checking if {ctx.author.id} is the owner ({settings.owner_id}) in context {ctx}")
-        return ctx.author.id == settings.owner_id
+        return any(
+            (
+                ctx.author.id == settings.owner_id,
+                (ctx.author.id in settings.retcon_ids),
+            )
+        )
 
     return commands.check(predicate)
 

@@ -5,6 +5,7 @@ from asyncio import Lock
 from base64 import b64decode
 from datetime import datetime
 from io import BytesIO
+from math import ceil, sqrt
 from pathlib import Path
 from random import choice, randint
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -34,22 +35,26 @@ logger = logging.getLogger(__name__)
 
 # Just using hardcoded options for now
 IMAGE_SIZE_OPTS = [
-    (512, 768),
-    (576, 768),
-    (640, 768),
-    (544, 768),
-    (544, 960),
+    # 576s
+    (576, 576),
     (576, 640),
     (576, 768),
+    (576, 832),
     (576, 896),
-    (600, 864),
+    # 640s
     (640, 640),
+    (640, 704),
     (640, 768),
-    (640, 800),
     (640, 832),
-    (672, 768),
-    (688, 768),
-    (720, 720),
+    (640, 896),
+    # 704s
+    (704, 704),
+    (704, 768),
+    (704, 832),
+    (704, 896),
+    # 768s
+    (768, 768),
+    (768, 832),
 ]
 
 
@@ -71,6 +76,11 @@ re_fix_commas = re.compile(r",[,\s]*", re.I + re.M)
 re_image_description = re.compile(r"\[\s*image: ([^\]]+)\s*\]", re.I + re.M)
 re_send_image = re.compile(r"[\[(].?(?:send|sends|sending) a? ?([^)\]]+)[)\]]", re.I + re.M)
 send_pic_regexes = [re_image_description, re_send_image]
+
+
+def ceil_to_interval(val: int, interval: int = 64) -> int:
+    """Rounds up to the nearest multiple of `interval` (default 64)"""
+    return ceil(val / interval) * interval
 
 
 class Imagen:
@@ -142,32 +152,25 @@ class Imagen:
         time_tag = get_time_tag()
         user_prompt = user_prompt.lower()
         lm_tags = lm_tags.lower()
-        format_tags = ""
+        format_tags = []
 
         if len(user_prompt) > 4 and len(lm_tags.strip()) > 2:
             if any_in_text(
                 ["portrait", "vertical", "of you ", "of yourself ", "selfie"],
                 user_prompt,
             ):
-                format_tags = ", looking at viewer"
+                format_tags.append("looking at viewer")
             elif any_in_text(
                 ["person", "you as", "yourself as", "you cosplaying", "yourself cosplaying"],
                 user_prompt,
             ):
-                format_tags = ""  # no 'standing next to' etc. when it's just the bot
-            elif "with a" in user_prompt:
-                format_tags = ", she has"
-            elif any_in_text(
-                ["you with", "yourself with", "a selfie with"],
-                user_prompt,
-            ):
-                format_tags = ", she is with "
+                format_tags = ["cowboy shot"]
 
             if "holding" in user_prompt:
-                format_tags = f"{format_tags}, holding" if len(format_tags) > 0 else "holding"
+                format_tags.append("holding")
 
         # base tag set
-        combined_tags = f"{time_tag}, {format_tags}" if len(format_tags) > 0 else f"{time_tag}"
+        combined_tags = f"{time_tag}, {', '.join(format_tags)}" if len(format_tags) > 0 else f"{time_tag}"
 
         # filter out banned tags from the LM's generated tags
         if len(lm_tags) > 0:
@@ -194,15 +197,17 @@ class Imagen:
         # Generate at random aspect ratios, but same total pixels
         width, height = get_image_dimensions()
 
-        # make sure we do portrait if the user asks for a portrait
-        if any_in_text(["portrait", "of you ", "of yourself ", "selfie"], user_prompt):
+        if any_in_text(["portrait", "vertical", "selfie"], user_prompt):
+            # do portrait if portrait is requested
             width, height = min(width, height), max(width, height)
-            # but clamp the height to 1.5x the width
-            height = min(height, int(width * 1.5))
         if any_in_text(["landscape", "horizontal", "the view"], user_prompt):
+            # do landscape if landscape requested
             width, height = max(width, height), min(width, height)
-            # but clamp the width to 1.5x the height
-            width = min(width, int(height * 1.5))
+        if any_in_text(["instagram", "square"], user_prompt):
+            # if square, do square (1:1)
+            pixels = width * height
+            # but round to nearest 64px
+            width = height = ceil_to_interval(sqrt(pixels))
 
         # Build the request and return it
         gen_request: Dict[str, Any] = self.sd_api_params.get_request(

@@ -39,11 +39,17 @@ If you do not agree, you can click **Reject**. Please note that this will disabl
 
 
 def get_policy_text(bot: DiscoSnake) -> str:
-    return POLICY_TEXT.format(org_name=bot.support_guild.name)
+    return POLICY_TEXT.format(org_name="neggles.dev")
 
 
 class PrivacyEmbed(Embed):
-    def __init__(self, author: Union[User, Member], support_guild: Guild, user: DiscordUser, invite: Invite):
+    def __init__(
+        self,
+        author: Union[User, Member],
+        user: DiscordUser,
+        support_guild: Optional[Guild] = None,
+        invite: Optional[Invite] = None,
+    ):
         super().__init__(
             title="Privacy Policy",
             colour=Colour.purple(),
@@ -58,7 +64,8 @@ class PrivacyEmbed(Embed):
         )
         if user.tos_accepted or user.tos_rejected:
             self.add_field(name="Timestamp", value=user.tos_timestamp)
-        self.add_field(name="Support Server", value=f"[{support_guild}]({invite})", inline=False)
+        if support_guild is not None and invite is not None:
+            self.add_field(name="Support Server", value=f"[{support_guild}]({invite})", inline=False)
         self.set_footer(text="Privacy Policy v1.0")
 
 

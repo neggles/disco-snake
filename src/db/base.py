@@ -4,12 +4,12 @@ from typing import Annotated, Optional
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import DeclarativeBase, mapped_column
+from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass, mapped_column
 
 
 # declarative base class
-class Base(AsyncAttrs, DeclarativeBase):
-    pass
+class Base(AsyncAttrs, DeclarativeBase, MappedAsDataclass):
+    """Base class for declarative models."""
 
 
 # BigInteger primary key

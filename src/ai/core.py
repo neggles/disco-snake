@@ -21,6 +21,7 @@ from disnake import (
     Message,
     MessageInteraction,
     OptionChoice,
+    PartialMessage,
     TextChannel,
     Thread,
     User,
@@ -42,7 +43,6 @@ from shimeji.util import (
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
 from transformers import AutoTokenizer
-from watchgod import watch
 
 import logsnake
 from ai.eyes import DiscoEyes
@@ -185,7 +185,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.lm_lock = Lock()  # used to stop multiple responses from happening at once
 
         self.guilds: List[int] = self.params.guilds
-        self.dm_user_ids: List[int] = [x.id for x in self.params.dm_users]
+        self.dm_user_ids: List[int] = self.params.dm_user_ids
         self.dm_user_ids.extend(self.bot.config.admin_ids)
         self.ignored_user_ids: Set[int] = {}
 
@@ -273,9 +273,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.info("Starting WebUI (if enabled)...")
         await self.webui.launch()
 
-        logger.debug("DMs are enabled for the following users:")
-        for user_id in self.dm_user_ids:
-            logger.debug(f" - {user_id=}")
+        # logger.debug("DMs are enabled for the following users IDs:")
+        # logger.debug(", ".join([str(x) for x in self.dm_user_ids]))
 
         logger.debug("Known sibling bots:")
         for sibling in self.siblings:
@@ -313,6 +312,15 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if self.logging_channel is None and self.logging_channel_id is not None:
             self.logging_channel = self.bot.get_channel(self.logging_channel_id)
             logger.info(f"Logging channel: {self.logging_channel}")
+
+        logger.debug("DMs are enabled for the following users:")
+        for user_id in self.dm_user_ids:
+            try:
+                user_obj = self.bot.get_user(user_id)
+                logger.debug(f"  - {user_obj} ({user_id})")
+            except Exception:
+                logger.exception(f"Failed to get user object for {user_id}")
+        # done
         logger.info("Cog is ready.")
 
     def last_trigger_was_bot(self, message: Message) -> bool:
@@ -336,21 +344,21 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if message.content.startswith("-") or message.content.startswith(", "):
             return  # ignore messages that start with a dash or comma-space
 
-        direct_message = isinstance(message.channel, (DMChannel, GroupChannel))
-        guild_settings = self.params.get_guild_settings(message.guild.id)
+        direct_message = isinstance(message.channel, DMChannel)
+        guild_settings = self.params.get_guild_settings(message.guild.id) if message.guild else None
 
         # Ignore messages from unapproved users in DMs/groups
-        if direct_message:
+        if direct_message is True:
             if message.author.id not in self.dm_user_ids:
                 logger.debug(f"DM from {message.author} (ID {message.author.id}) ignored")
                 return
-        # Ignore threads and messages with no guild (e.g. system messages)
-        elif isinstance(message.channel, Thread) or message.guild is None:
+        # Ignore threads, group DMs, and messages with no guild (e.g. system messages)
+        elif isinstance(message.channel, (Thread, GroupChannel)) or message.guild is None:
             return
 
         if not direct_message:
             if guild_settings is None:
-                # logger.debug(f"Got message in unknown guild {message.guild=}")
+                logger.debug(f"Got message in unknown guild {message.guild=}")
                 return  # ignore messages from guilds that don't have settings
             if guild_settings.enabled is False:
                 # logger.debug(f"Got message in disabled guild {message.guild=}")
@@ -360,7 +368,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 return  # ignore messages from channels that have the bot disabled
             elif message.channel.permissions_for(message.guild.me).send_messages is False:
                 # channel is enabled but we don't have permission to respond
-                logger.warn(f"Got message in {message.channel} but don't have permission to respond.")
+                logger.info(f"Got message in {message.channel} but don't have permission to respond.")
                 return
 
         # Check if the user has accepted the ToS
@@ -381,15 +389,16 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         try:
             async with self.lm_lock:
-                if self.check_mention(message):
-                    logger.debug(f"Mentioned in {message.channel}: {message_content}")
-                    trigger = "mention"
-
-                elif direct_message:
+                if direct_message:
                     logger.debug(f"DM from {message.author}: {message_content}")
                     trigger = "DM"
 
+                elif self.check_mention(message):
+                    logger.debug(f"Mentioned in {message.channel}: {message_content}")
+                    trigger = "mention"
+
                 if trigger is not None:
+                    await message.channel.trigger_typing()
                     if conversation is None:
                         conversation = await self.get_message_context(message)
 
@@ -477,7 +486,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 messages = messages[0 : idx + 1]
                 break
 
-        bot_mode = self.params.get_guild_settings(message.guild.id).channel_bot_mode(message.channel.id)
+        if message.guild:
+            bot_mode = self.params.get_guild_settings(message.guild.id).channel_bot_mode(message.channel.id)
+        else:
+            bot_mode = BotMode.Siblings
 
         chain = []
         for msg in reversed(messages):
@@ -507,6 +519,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
 
             if len(msg.embeds) > 0:
+                nitro_bs = self.handle_stupid_fucking_embed(message)
+                if nitro_bs is not None:
+                    chain.append(f"{author_name} {nitro_bs}")
+                    continue
                 for embed in msg.embeds:
                     if embed.type == "image":
                         try:
@@ -562,6 +578,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     "\n".join(post_instruct).replace(self.prefix_user, "").lstrip(),
                 ]
             )
+            # conversation = "\n".join(
+            #     [
+            #         "\n".join(conversation),
+            #         "\n" + self.prompt.model.full.rstrip(),
+            #     ]
+            # )
+
         else:
             conversation = "\n".join(conversation)
 
@@ -628,8 +651,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             debug_data["message"] = {
                 "id": message.id,
                 "timestamp": msg_timestamp,
-                "guild_id": message.guild.id or None,
-                "guild": message.guild.name if message.guild is not None else "DM",
+                "guild_id": message.guild.id if message.guild else None,
+                "guild": message.guild.name if message.guild else "DM",
                 "author_id": message.author.id,
                 "author": f"{message.author}",
                 "channel_id": message.channel.id or None,
@@ -687,7 +710,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
                 # see if there's an image description in the response
                 description, response = self.imagen.find_image_desc(response)
-                if description is not None:
+                if description is not None and "loading error" not in description.lower():
                     # there is, so we should reply with the image
                     logger.info("i'm feeling creative, let's make an image...")
                     try:
@@ -747,7 +770,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
                 # update timestamp for this channel in the image caption engine
                 if self.eyes.enabled:
-                    self.eyes.watch(message.channel.id)
+                    self.eyes.watch(message.channel)
 
                 # update webui state if it's enabled
                 if self.webui is not None:
@@ -961,6 +984,19 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             return True  # ctxbreak role havers can always break context
         return False  # otherwise, no
 
+    # deal with fake nitro bullshit
+    def handle_stupid_fucking_embed(self, message: Message) -> Optional[str]:
+        """Check if a message is a stupid fucking spec-beaking fake nitro emote embed
+        Returns the emote name if it is, otherwise returns None.
+        """
+        if message.content.startswith("https://cdn.discordapp.com/emojis/"):
+            logger.debug("Found a stupid fake nitro emote")
+            name = message.content.split("name=", 1)[-1]
+            name = name.split("&", 1)[0]
+            return f":{name}:"
+        else:
+            return None
+
     # Loop to archive debug logs
     @tasks.loop(hours=1)
     async def log_archive_loop(self) -> None:
@@ -996,6 +1032,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         for embed in message.embeds:
             if embed.type == "image":
                 try:
+                    if embed.thumbnail.height < 100 or embed.thumbnail.width < 100:
+                        continue  # too small to caption, probably an emoji, just skip it
                     logger.debug(f"Captioning embed from {message.id=}")
                     caption = await self.eyes.perceive_url(embed.thumbnail.url, message.id)
                     logger.info(f"Success: {message.id=}, {caption=}")

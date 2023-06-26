@@ -4,7 +4,7 @@ from copy import deepcopy
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, BaseSettings, Field
 from shimeji.model_provider import OobaGenRequest
@@ -51,11 +51,31 @@ class NamedSnowflake(BaseModel):
     note: Optional[str] = Field(None)
 
 
+class SnowflakeList(BaseModel):
+    __root__: list[NamedSnowflake] = []
+
+    def __iter__(self) -> Iterator[NamedSnowflake]:
+        return iter(self.__root__)
+
+    def __getitem__(self, key) -> NamedSnowflake:
+        return self.__root__[key]
+
+    @property
+    def ids(self) -> List[int]:
+        return [x.id for x in self.__root__]
+
+    def get_id(self, id: int) -> Optional[NamedSnowflake]:
+        for item in self.__root__:
+            if item.id == id:
+                return item
+        return None
+
+
 class PermissionList(BaseModel):
     """A list of users and roles used for permission gating"""
 
-    users: List[NamedSnowflake] = Field([])
-    roles: List[NamedSnowflake] = Field([])
+    users: SnowflakeList = Field([])
+    roles: SnowflakeList = Field([])
 
     @property
     def user_ids(self) -> List[int]:
@@ -100,24 +120,39 @@ class GuildSettings(NamedSnowflake):
         return self.respond != ResponseMode.NoRespond  # guild default
 
     def channel_respond_mode(self, channel_id: int) -> ResponseMode:
-        if channel_id in [x.id for x in self.channels if x.respond is not None]:
-            return next(iter([x.respond for x in self.channels if x.id == channel_id]))
-        return self.respond
+        return next((x.respond for x in self.channels if x.id == channel_id), self.respond)
 
     def channel_bot_mode(self, channel_id: int) -> BotMode:
-        if channel_id in [x.id for x in self.channels if x.bot_action is not None]:
-            return next(iter([x.bot_action for x in self.channels if x.id == channel_id]))
-        return self.bot_action
+        return next((x.bot_action for x in self.channels if x.id == channel_id), self.bot_action)
 
     def channel_imagen(self, channel_id: int) -> bool:
-        if channel_id in [x.id for x in self.channels if x.imagen is not None]:
-            return next(iter([x.imagen for x in self.channels if x.id == channel_id]))
-        return self.imagen
+        return next((x.imagen for x in self.channels if x.id == channel_id), self.imagen)
 
     def channel_idle_mode(self, channel_id: int) -> Tuple[bool, int]:
-        if channel_id in [x.id for x in self.channels if x.idle_enable is not None]:
-            return next(iter([(x.idle_enable, x.idle_interval) for x in self.channels if x.id == channel_id]))
-        return self.idle_enable, self.idle_interval
+        return next(
+            ((x.idle_enable, x.idle_interval) for x in self.channels if x.id == channel_id),
+            (self.idle_enable, self.idle_interval),
+        )
+
+
+class GuildSettingsList(BaseModel):
+    __root__: list[GuildSettings]
+
+    def __iter__(self) -> Iterator[GuildSettings]:
+        return iter(self.__root__)
+
+    def __getitem__(self, key) -> GuildSettings:
+        return self.__root__[key]
+
+    @property
+    def guild_ids(self) -> List[int]:
+        return [x.id for x in self]
+
+    def get_id(self, guild_id: int) -> Optional[GuildSettings]:
+        for guild in self.__root__:
+            if guild.id == guild_id:
+                return guild
+        return None
 
 
 # configuration dataclasses
@@ -132,20 +167,24 @@ class BotParameters(BaseModel):
     memory_enable: bool = False
     max_retries: int = 3
     ctxbreak: PermissionList = Field(default_factory=PermissionList)
-    guilds: List[GuildSettings] = Field([])
-    dm_users: List[NamedSnowflake] = Field([])
-    siblings: List[NamedSnowflake] = Field([])
+    guilds: GuildSettingsList = Field(default_factory=GuildSettingsList)
+    dm_users: SnowflakeList = Field(default_factory=SnowflakeList)
+    siblings: SnowflakeList = Field(default_factory=SnowflakeList)
 
     @property
     def guild_ids(self) -> List[int]:
-        return [x.id for x in self.guilds]
+        return self.guilds.guild_ids
 
     @property
     def sibling_ids(self) -> List[int]:
-        return [x.id for x in self.siblings]
+        return self.siblings.ids
+
+    @property
+    def dm_user_ids(self) -> List[int]:
+        return self.dm_users.ids
 
     def get_guild_settings(self, guild_id: int) -> Optional[GuildSettings]:
-        return next(iter([x for x in self.guilds if x.id == guild_id]), None)
+        return self.guilds.get_id(guild_id)
 
     def get_idle_channels(self) -> List[int]:
         return [
@@ -191,7 +230,7 @@ class GradioConfig(BaseModel):
     enable_queue: bool = True
     width: str = "100%"
     theme: Optional[str] = None
-    root_path: str = ""
+    root_path: Optional[str] = None
 
 
 class WebuiConfig(BaseModel):
@@ -213,9 +252,9 @@ class LMApiConfig(BaseModel):
 
 class VisionConfig(BaseModel):
     enabled: bool = False  # whether to caption images or not
-    modeltype: str = "blip"  # blip, instructblip, blip2, git, etc
-    api_host: str = "http://localhost:7862"  # host for vision api
-    api_token: Optional[str] = None  # bearer token for api
+    host: str = "http://localhost:7862"  # host for vision api
+    route: str = "/api/v1/caption"  # route for vision api
+    token: Optional[str] = None  # bearer token for api
     background: bool = False  # whether to caption images proactively in the background
     channel_ttl: int = 90  # monitor channel for this many seconds after last response
 
@@ -273,6 +312,8 @@ class ImagenApiParams(BaseModel):
             "cfg_scale": self.cfg_scale,
             "seed": self.seed,
             "seed_enable_extras": False,
+            "seed_resize_from_h": 0,
+            "seed_resize_from_w": 0,
             "width": width if width > 0 else self.default_width,
             "height": height if height > 0 else self.default_height,
             "batch_size": 1,

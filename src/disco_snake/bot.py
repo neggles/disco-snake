@@ -96,10 +96,17 @@ class DiscoSnake(commands.Bot):
             channel = self.support_guild.rules_channel or self.support_guild.text_channels[0]
         return channel
 
-    async def support_invite(self) -> Invite:
-        return await self.support_channel.create_invite(
-            reason="Support Invite", max_uses=1, max_age=1800, unique=True
-        )
+    async def support_invite(self) -> Optional[Invite]:
+        if self.support_channel is None:
+            return None
+        try:
+            invite = await self.support_channel.create_invite(
+                reason="Support Invite", max_uses=1, max_age=1800, unique=True
+            )
+        except Exception:
+            logger.error("Failed to create support invite", exc_info=True)
+            invite = None
+        return invite
 
     async def do(self, func, *args, **kwargs):
         funcname = getattr(func, "__name__", None)

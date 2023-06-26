@@ -1,21 +1,21 @@
 import asyncio
 import logging
+import re
 from base64 import b64encode
 from datetime import datetime
 from io import BytesIO
-from time import monotonic
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 from zoneinfo import ZoneInfo
 
 from aiohttp import ClientSession
-from disnake import Attachment, Embed
+from disnake import Attachment
 from PIL import Image
-from regex import R
 from requests import get as requests_get
+from sqlalchemy import select
 
 from ai.settings import VisionConfig
 from ai.types import ImageOrBytes, MessageChannel, TimestampStore
-from db import ImageCaption, Session
+from db import ImageCaption, Session, SyncSession
 
 if TYPE_CHECKING:
     from ai import Ai
@@ -28,10 +28,13 @@ IMAGE_MAX_BYTES = 20 * (2**20)
 IMAGE_MAX_PX = 768
 IMAGE_FORMATS = ["PNG", "WEBP", "JPEG", "GIF"]
 
+re_image_of = re.compile(
+    r"(?:This|the)\s+(?:is an image of|image is of)\s+(.+)",
+    re.I + re.M,
+)
+
 
 class DiscoEyes:
-    api_client_PATH = "/api/v1/caption"
-
     def __init__(self, cog: "Ai") -> None:
         self.cog: "Ai" = cog
         self.config: VisionConfig = cog.config.vision
@@ -87,10 +90,14 @@ class DiscoEyes:
         image.save(buf, format="PNG")
 
         payload = {"image": b64encode(buf.getvalue()).decode()}
-        async with self.api_client.post(self.api_client_PATH, json=payload) as resp:
+        async with self.api_client.post(self.config.route, json=payload) as resp:
             resp.raise_for_status()
             data = await resp.json(encoding="utf-8")
+            # logger.debug(json.dumps(data, indent=2))
             caption = data["caption"]
+
+        # Strip out "This is an image of" etc. from the caption
+        caption = re_image_of.sub(r"\1", caption).rstrip(".")
 
         if len(caption) <= 8:
             raise ValueError(f"Received caption is too short: {caption=}")
@@ -209,15 +216,15 @@ class DiscoEyes:
         logger.info(f"Saving caption for image {caption.id}")
         caption_str = caption.caption
         async with Session.begin() as session:
-            session.merge(caption)
+            await session.merge(caption)
+            await session.commit()
         logger.debug("Caption saved successfully")
         return caption_str
 
     async def db_client_get_caption(self, image_id: int) -> Optional[ImageCaption]:
-        async with Session.begin() as session:
-            caption_obj = session.get(ImageCaption, image_id)
-            if caption_obj is None:
-                return None
+        with SyncSession() as session:
+            caption = session.scalar(select(ImageCaption).where(ImageCaption.id == image_id).limit(1))
+        return caption
 
     def watch(self, channel: MessageChannel):
         self.attention.refresh(channel.id)

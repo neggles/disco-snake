@@ -95,10 +95,14 @@
     }
   },
   "vision": {
-    "enabled": false,
-    "api_host": "http://localhost:7862",
-    "api_token": "Wog0xcDdKdRuVHB3aO4RLJ0m"
+    "enabled": true,
+    "host": "http://localhost:7862",
+    "route": "/api/v1/caption",
+    "token": "1qaz2wsx3edc4rfv",
+    "background": true,
+    "channel_ttl": 60
   },
+
   "bad_words": [
     "~",
     " ~",
