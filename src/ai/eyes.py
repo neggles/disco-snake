@@ -7,7 +7,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Optional
 from zoneinfo import ZoneInfo
 
-from aiohttp import ClientSession
+from aiohttp import ClientError, ClientSession
 from disnake import Attachment
 from PIL import Image
 from requests import get as requests_get
@@ -132,9 +132,14 @@ class DiscoEyes:
         attachment_dict = attachment.to_dict()
         _ = attachment_dict.pop("content_type")  # don't need this
 
-        caption_text = await self._submit_attachment(attachment)
-        if caption_text is None:
-            raise ValueError("Failed to caption image attachment")
+        try:
+            caption_text = await self._submit_attachment(attachment)
+        except ClientError as e:
+            logger.error(f"Failed to caption image attachment: {e}")
+            caption_text = None
+        finally:
+            if caption_text is None:
+                raise ValueError("Failed to caption image attachment")
 
         image_caption = ImageCaption(
             id=attachment.id,
