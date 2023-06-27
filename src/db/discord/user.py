@@ -135,6 +135,7 @@ class DiscordUser(Base):
         user = await bot.fetch_user(self.id)
         if user is None:
             raise ValueError(f"User {self.id} not found on Discord")
+        return user
 
 
 ## coming back to these later
