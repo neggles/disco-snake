@@ -4,7 +4,6 @@ from logging.config import fileConfig
 from alembic import context
 from alembic.environment import EnvironmentContext
 from alembic.script import ScriptDirectory
-from rich import inspect
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -12,46 +11,47 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from db.base import Base
 from disco_snake.settings import BotSettings, get_settings
 
-## Custom: Load bot config object
+# acquire alembic.ini value dict
+config = context.config
+
+# Set up `logging` module with settings from alembic.ini
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Retrieve the SQLAlchemy ORM declarative base object
+target_metadata = Base.metadata
+
+# Try to load the bot config object from the application code
 try:
     bot_settings: BotSettings = get_settings()
 except Exception as e:
     bot_settings = None
 
-## Get X args
+# retrieve -x arguments from the command line
 x_args = context.get_x_argument(as_dictionary=True)
 
-# this is the Alembic Config object, which provides access to the values within the .ini file in use.
-config = context.config
-
-# Interpret the config file for Python logging. This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = Base.metadata
-
-## Custom: If bot config object is loaded, use it to set the db_uri, otherwise use the .ini
+# pull db_uri from bot config file, if available
 if bot_settings is not None:
     pg_uri = bot_settings.db_uri
+
+    # optional port override from command line
     x_port = x_args.get("port", None)
     if x_port is not None:
-        print(f"Using x_port: {x_port}")
+        print(f"DB port overriden: -x port={x_port}")
         pg_uri = pg_uri.replace(pg_uri.port, x_port)
-    print(f"Using bot config db_uri: {pg_uri}")
+
     config.set_main_option("sqlalchemy.url", pg_uri)
+    print(f"Using db_uri from bot config: {pg_uri}")
+else:
+    print(f"Using db_uri from alembic.ini: {config.get_main_option('sqlalchemy.url')}")
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
+    """Run migrations in offline mode (no database connection).
 
-    This configures the context with just a URL and not an Engine, though an Engine is acceptable
-    here as well. By skipping the Engine creation we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the script output.
-
+    This assumes an empty database and generates SQL statements for the entire migration chain.
     """
+
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -59,6 +59,8 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         process_revision_directives=process_revision_directives,
+        compare_server_default=True,
+        compare_type=True,
     )
 
     with context.begin_transaction():
@@ -66,17 +68,20 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    """Actually do the migrations, finally."""
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_server_default=True,
+        compare_type=True,
+    )
 
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_async_migrations() -> None:
-    """
-    In this scenario we need to create an Engine and associate a connection with the context.
-
-    """
+    """Run migrations asynchronously in online mode."""
 
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
@@ -91,8 +96,7 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-
+    """Run migrations synchronously in online mode (used by the alembic CLI)"""
     asyncio.run(run_async_migrations())
 
 
