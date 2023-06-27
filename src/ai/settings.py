@@ -262,11 +262,12 @@ class VisionConfig(BaseModel):
 class AiSettings(BaseSettings):
     name: str
     prompt: Prompt
-    gradio: GradioConfig
     params: BotParameters
     model_provider: LMApiConfig
-    bad_words: List[str] = Field([])
+    gradio: GradioConfig
     vision: Optional[VisionConfig] = None
+    strip: List[str] = Field([])
+    bad_words: List[str] = Field([])
 
     class Config(JsonConfig):
         json_config_path = AI_DATA_DIR.joinpath("config.json")

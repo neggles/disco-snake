@@ -10,11 +10,11 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from db.base import Base
-from disco_snake.settings import Settings, get_settings
+from disco_snake.settings import BotSettings, get_settings
 
 ## Custom: Load bot config object
 try:
-    bot_settings: Settings = get_settings()
+    bot_settings: BotSettings = get_settings()
 except Exception as e:
     bot_settings = None
 

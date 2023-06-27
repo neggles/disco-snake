@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.types import TypeDecorator
 
-from disco_snake.settings import Settings, get_settings
+from disco_snake.settings import BotSettings, get_settings
 
 
 class PydanticType(TypeDecorator):
@@ -52,7 +52,7 @@ def json_serializer(obj: Any, *args, **kwargs) -> str:
 
 @lru_cache(maxsize=1)
 def get_sync_engine() -> Engine:
-    settings: Settings = get_settings()
+    settings: BotSettings = get_settings()
     return create_engine(
         url=settings.db_uri,
         echo=settings.debug,
@@ -62,7 +62,7 @@ def get_sync_engine() -> Engine:
 
 @lru_cache(maxsize=1)
 def get_engine() -> AsyncEngine:
-    settings: Settings = get_settings()
+    settings: BotSettings = get_settings()
     return create_async_engine(
         url=settings.db_uri,
         echo=settings.debug,
