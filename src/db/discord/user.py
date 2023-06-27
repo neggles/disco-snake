@@ -46,8 +46,8 @@ class DiscordUser(Base):
     first_seen: Mapped[CreateTimestamp]
     last_updated: Mapped[UpdateTimestamp]
 
-    tos_accepted: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
-    tos_rejected: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
+    tos_accepted: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false(), index=True)
+    tos_rejected: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false(), index=True)
     tos_timestamp: Mapped[Timestamp]
 
     # guild_member_associations: Mapped[Dict[int, GuildMemberAssociation]] = relationship(
