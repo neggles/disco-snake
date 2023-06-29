@@ -33,8 +33,8 @@ class AiResponseLog(Base):
     timestamp: Mapped[CreateTimestamp]
     message: Mapped[Optional[AiMessageInfo]] = mapped_column(pg.JSONB, nullable=True)
     parameters: Mapped[Optional[dict[str, Any]]] = mapped_column(pg.JSONB, nullable=True)
-    conversation: Mapped[Optional[list]] = mapped_column(pg.JSONB, nullable=True)
-    context: Mapped[Optional[list]] = mapped_column(pg.JSONB, nullable=True)
+    conversation: Mapped[Optional[list[str]]] = mapped_column(pg.ARRAY(sa.String), nullable=True)
+    context: Mapped[Optional[list[str]]] = mapped_column(pg.ARRAY(sa.String), nullable=True)
     response: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
     response_raw: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
 

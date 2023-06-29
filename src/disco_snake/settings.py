@@ -34,9 +34,9 @@ class JsonSettingsSource:
         if self.json_config_path is None:
             pass  # no json config provided
         elif self.json_config_path.exists() and self.json_config_path.is_file():
-            logger.info(f"Loading {classname} config from path: {self.json_config_path}")
+            logger.info(f"{classname}: loading config from path: {self.json_config_path}")
             return json.loads(self.json_config_path.read_text(encoding=encoding))
-        logger.warning(f"No {classname} config found at {self.json_config_path}")
+        logger.warning(f"{classname}: config at {self.json_config_path} not found or not a file")
         return {}
 
     def __repr__(self) -> str:
