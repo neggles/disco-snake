@@ -1,14 +1,14 @@
+# ruff: noqa: E712
 import asyncio
 import json
 import logging
 import re
 from asyncio import Lock
-from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -21,7 +21,6 @@ from disnake import (
     Message,
     MessageInteraction,
     OptionChoice,
-    PartialMessage,
     TextChannel,
     Thread,
     User,
@@ -41,7 +40,6 @@ from shimeji.util import (
     ContextEntry,
 )
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import load_only
 from transformers import AutoTokenizer
 
@@ -70,9 +68,10 @@ from ai.utils import (
 )
 from ai.web import GradioUi
 from cogs.privacy import PrivacyEmbed, PrivacyView, get_policy_text
-from db import DiscordUser, Session
+from db import DiscordUser, Session, SessionType
 from db.ai import AiResponseLog
 from disco_snake import checks
+from disco_snake.blacklist import Blacklist
 from disco_snake.bot import DiscoSnake
 
 COG_UID = "ai"
@@ -189,7 +188,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.guilds: List[int] = self.params.guilds
         self.dm_user_ids: List[int] = self.params.dm_user_ids
         self.dm_user_ids.extend(self.bot.config.admin_ids)
-        self.ignored_user_ids: Set[int] = {}
+        self.tos_reject_ids: Set[int] = set()
 
         # we will populate these later during async init
         self.model_provider: OobaModel = None
@@ -201,7 +200,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.bad_words: List[str] = self.config.bad_words
 
         # database client (async init)
-        self.db_client: async_sessionmaker = Session
+        self.db_client: SessionType = Session
+        self.blacklist: Blacklist = Blacklist()
 
         # selfietron
         self.imagen = Imagen(cog=self)
@@ -276,9 +276,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.info("Starting WebUI (if enabled)...")
         await self.webui.launch()
 
-        # logger.debug("DMs are enabled for the following users IDs:")
-        # logger.debug(", ".join([str(x) for x in self.dm_user_ids]))
-
         logger.debug("Known sibling bots:")
         for sibling in self.siblings:
             logger.debug(f" - {sibling.id=} {sibling.name=}")
@@ -330,17 +327,19 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     async def on_message(self, message: Message):
         if message.author.id == self.bot.user.id:
             return  # ignore messages from self
+        if message.author.id in self.blacklist:
+            return  # ignore messages from blacklisted users
+        if message.author.id in self.tos_reject_ids:
+            return  # ignore messages from users who have rejected the ToS
         if message.author.bot is True:
             if self.last_trigger_was_bot(message) is True:
                 return  # ignore messages from bots if the last message we responded to was from a bot
-        if message.author.id in self.ignored_user_ids:
-            return  # ignore messages from users who have rejected the ToS
-        if "```" in message.content:
-            return  # ignore messages with code blocks
-        if message.content.strip() == ".":
-            return  # ignore messages with only a period
         if message.content.startswith("-") or message.content.startswith(", "):
             return  # ignore messages that start with a dash or comma-space
+        if message.content.strip() == ".":
+            return  # ignore messages with only a period
+        if "```" in message.content:
+            return  # ignore messages with code blocks
 
         direct_message = isinstance(message.channel, DMChannel)
         guild_settings = self.params.get_guild_settings(message.guild.id) if message.guild else None
@@ -491,7 +490,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         chain = []
         for msg in reversed(messages):
-            if msg.author.id in self.ignored_user_ids:
+            if msg.author.id in self.tos_reject_ids:
                 continue  # skip users who rejected the privacy policy
             if msg.content is not None:
                 if msg.content.startswith("-") or msg.content.startswith(", "):
@@ -844,12 +843,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         async with self.db_client.begin() as session:
             query = (
                 select(DiscordUser)
-                .options(load_only(DiscordUser.id, DiscordUser.tos_accepted, DiscordUser.tos_rejected))
-                .filter(DiscordUser.tos_rejected is True)
+                .where(DiscordUser.tos_rejected == True)
+                .with_only_columns(DiscordUser.id, DiscordUser.tos_accepted, DiscordUser.tos_rejected)
             )
-            result = await session.scalars(query)
-            users = result.all()
-        self.ignored_user_ids.update([x.id for x in users])
+            results = await session.scalars(query)
+            users: list[DiscordUser] = results.all()
+        self.tos_reject_ids = set([x.id for x in users])
 
     # Check if a user has accepted the ToS
     async def user_accepted_tos(self, user: Union[User, Member, int]) -> Optional[bool]:
@@ -859,13 +858,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         user_id = user.id if isinstance(user, (User, Member)) else user
         async with self.db_client.begin() as session:
             user: DiscordUser = await session.get(DiscordUser, user_id)
-            if user.tos_rejected is True:
-                return False
-            if user.tos_accepted is True:
-                return True
             if user is None:
                 logger.debug(f"User {user_id} has not completed the ToS process.")
                 return None
+            elif user.tos_rejected is True:
+                return False
+            elif user.tos_accepted is True:
+                return True
 
     # get a list of users who have accepted the ToS
     async def tos_accepted_users(self) -> Set[int]:

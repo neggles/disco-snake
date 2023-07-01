@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from ai.settings import VisionConfig
 from ai.types import ImageOrBytes, MessageChannel, TimestampStore
-from db import ImageCaption, Session, SyncSession
+from db import ImageCaption, Session, SessionType
 
 if TYPE_CHECKING:
     from ai import Ai
@@ -55,7 +55,7 @@ class DiscoEyes:
         self.timezone: ZoneInfo = cog.bot.timezone
         self.web_client: ClientSession = None
         self.api_client: ClientSession = None
-        self.db_client: Session = None
+        self.db_client: SessionType = None
 
         # this tracks which channels we've recently responded in, so the caption engine can
         # proactively caption images in those channels without waiting for a prompt
@@ -70,7 +70,7 @@ class DiscoEyes:
             base_url=self.api_host,
             headers={"Authorization": f"Bearer {self.api_token}"},
         )
-        self.db_client: Session = Session()
+        self.db_client = Session
         self.attention = TimestampStore(ttl=self.config.channel_ttl)
 
         self._api_info: InfoResponse = None
@@ -243,7 +243,7 @@ class DiscoEyes:
         """Save a caption to the database.
 
         Returns the same object that was passed in, allowing for
-        chaining of calls e.g. `return await db_client.save_caption(caption)`
+        chaining of calls e.g. `return await self.db_client_save_caption(caption)`
 
         :param caption: The caption to save.
         :type caption: ImageCaption
@@ -252,15 +252,14 @@ class DiscoEyes:
         """
         logger.info(f"Saving caption for image {caption.id}")
         caption_str = caption.caption
-        async with Session.begin() as session:
+        async with self.db_client.begin() as session:
             await session.merge(caption)
-            await session.commit()
         logger.debug("Caption saved successfully")
         return caption_str
 
     async def db_client_get_caption(self, image_id: int) -> Optional[ImageCaption]:
-        with SyncSession() as session:
-            caption = session.scalar(select(ImageCaption).where(ImageCaption.id == image_id).limit(1))
+        async with self.db_client.begin() as session:
+            caption = await session.get(ImageCaption, id=image_id)
         return caption
 
     def watch(self, channel: MessageChannel):

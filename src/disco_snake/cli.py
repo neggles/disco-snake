@@ -21,7 +21,7 @@ from disco_snake import (
     per_config_name,
 )
 from disco_snake.bot import DiscoSnake
-from helpers.misc import parse_log_level
+from helpers import parse_log_level
 
 MBYTE = 2**20
 

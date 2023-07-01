@@ -16,7 +16,7 @@ from disnake import (
 from disnake.ext import commands
 from disnake.ui import Button, View
 
-from db import DiscordUser, Session
+from db import DiscordUser, Session, SessionType
 from disco_snake import checks
 from disco_snake.bot import DiscoSnake
 
@@ -155,6 +155,7 @@ class PrivacyView(View):
 class Privacy(commands.Cog, name=COG_UID):
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
+        self.db_client: SessionType = Session
 
     @commands.slash_command(
         name="privacy",
@@ -166,7 +167,7 @@ class Privacy(commands.Cog, name=COG_UID):
         await ctx.response.defer(ephemeral=True)
         logger.debug(f"Received privacy command for user {ctx.author} ({ctx.author.id})")
         try:
-            async with Session() as session:
+            async with self.db_client() as session:
                 user: DiscordUser = await session.get(DiscordUser, ctx.author.id)
                 if user is None:
                     async with session.begin():

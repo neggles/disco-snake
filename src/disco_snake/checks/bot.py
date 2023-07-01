@@ -3,11 +3,13 @@ from typing import Callable, TypeVar
 
 from disnake.ext import commands
 
+from disco_snake.blacklist import Blacklist
 from disco_snake.settings import get_settings
 
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+blacklist = Blacklist()
 
 
 def is_admin() -> Callable[[T], T]:
@@ -64,7 +66,10 @@ def not_blacklisted() -> Callable[[T], T]:
     """
 
     def predicate(ctx: commands.Context) -> bool:
-        # return ctx.author.id in settings.blacklist.user_ids
-        return True
+        logger.debug(f"Checking if {ctx.author.id} is blacklisted in context {ctx}")
+        if ctx.author.id in blacklist:
+            logger.info(f"Blocking blacklisted user {ctx.author} in context {ctx}")
+            return False
+        return True  # blacklist broken, don't block
 
     return commands.check(predicate)

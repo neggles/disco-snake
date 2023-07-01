@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -29,15 +28,13 @@ from disnake import (
 )
 from disnake.ext import commands, tasks
 from humanize import naturaldelta as fuzzydelta
-from regex import F
-from sqlalchemy import select
 
 import exceptions
 from db import DiscordUser, Session
 from disco_snake import COGDIR_PATH, DATADIR_PATH
 from disco_snake.embeds import CooldownEmbed, MissingPermissionsEmbed, MissingRequiredArgumentEmbed
 from disco_snake.settings import get_settings
-from helpers.misc import get_package_root
+from helpers import get_package_root
 
 PACKAGE_ROOT = get_package_root()
 
@@ -389,16 +386,3 @@ class DiscoSnake(commands.Bot):
         logger.info("waiting for ready... just to be sure")
         await self.wait_until_ready()
         logger.debug("ready!")
-
-
-def get_bot(config_path: Optional[Path] = None):
-    """
-    Get the bot instance
-    :param config_path: The path to the config file
-    :return: The bot instance
-    """
-    if config_path is None:
-        config_path = Path("config.json")
-    with open(config_path, "r") as f:
-        config = json.load(f)
-    return DiscoSnake(config_path)

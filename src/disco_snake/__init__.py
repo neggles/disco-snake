@@ -13,7 +13,7 @@ from pathlib import Path
 from sys import argv
 from typing import Optional
 
-from helpers.misc import get_package_root
+from helpers import get_package_root
 
 LOG_FORMAT = "%(color)s[%(levelname)1.1s %(asctime)s][%(name)s][%(module)s:%(funcName)s:%(lineno)d]%(end_color)s %(message)s"
 

@@ -1,13 +1,16 @@
 import json
 from functools import lru_cache
-from typing import Any
+from typing import Any, Type, TypeAlias
 
 from pydantic import BaseModel, parse_obj_as
 from pydantic.json import pydantic_encoder
 from sqlalchemy import JSON, Engine, create_engine
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import (
+    Session as DbSession,
+    sessionmaker,
+)
 from sqlalchemy.types import TypeDecorator
 
 from disco_snake.settings import BotSettings, get_settings
@@ -75,6 +78,8 @@ def get_engine() -> AsyncEngine:
     )
 
 
-Session: async_sessionmaker = async_sessionmaker(get_engine(), expire_on_commit=False)
+Session: async_sessionmaker[AsyncSession] = async_sessionmaker(get_engine(), expire_on_commit=False)
+SessionType: TypeAlias = async_sessionmaker[AsyncSession]
 
-SyncSession: sessionmaker = sessionmaker(get_sync_engine(), expire_on_commit=False)
+SyncSession: sessionmaker[DbSession] = sessionmaker(get_sync_engine(), expire_on_commit=False)
+SyncSessionType: TypeAlias = sessionmaker[DbSession]

@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 from sqlalchemy.orm.collections import attribute_keyed_dict
 
 from db.base import Base, CreateTimestamp, Timestamp, UpdateTimestamp
@@ -19,6 +19,16 @@ if TYPE_CHECKING:
     from disnake.ext import commands
 
     # from db.discord.guild import DiscordGuild, GuildMemberAssociation
+
+
+class BlacklistEntry(Base):
+    __tablename__ = "user_blacklist"
+    __table_args__ = (sa.PrimaryKeyConstraint("user_id"),)
+
+    user_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    user: Mapped["DiscordUser"] = relationship()
+    reason: Mapped[str] = mapped_column(sa.String(length=256), nullable=False)
+    timestamp: Mapped[CreateTimestamp]
 
 
 class DiscordUser(Base):
@@ -49,6 +59,10 @@ class DiscordUser(Base):
     tos_accepted: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false(), index=True)
     tos_rejected: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false(), index=True)
     tos_timestamp: Mapped[Timestamp]
+
+    blacklisted: Mapped[bool] = column_property(
+        sa.select(BlacklistEntry.user_id).where(BlacklistEntry.user_id == id).exists()
+    )
 
     # guild_member_associations: Mapped[Dict[int, GuildMemberAssociation]] = relationship(
     #     back_populates="member",
