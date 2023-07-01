@@ -1,11 +1,11 @@
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, BaseSettings, Field, validator
 
-from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
+from disco_snake import DATADIR_PATH
 from disco_snake.settings import JsonConfig
 
 logging.basicConfig(level=logging.INFO)
