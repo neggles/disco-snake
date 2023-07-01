@@ -29,6 +29,7 @@ known-first-party = [
     "exceptions",
     "helpers",
     "logsnake",
+    "multisnake",
 ]
 known-third-party = ["alembic", "disnake"]
 
