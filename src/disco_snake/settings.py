@@ -34,7 +34,7 @@ class JsonSettingsSource:
         if self.json_config_path is None:
             pass  # no json config provided
         elif self.json_config_path.exists() and self.json_config_path.is_file():
-            logger.info(f"{classname}: loading config from path: {self.json_config_path}")
+            logger.debug(f"{classname}: loading config from path: {self.json_config_path}")
             return json.loads(self.json_config_path.read_text(encoding=encoding))
         logger.warning(f"{classname}: config at {self.json_config_path} not found or not a file")
         return {}
@@ -64,7 +64,7 @@ class JsonMultiSettingsSource:
         merged_config = dict()  # create an empty dict to merge configs into
         for idx, path in enumerate(self.json_config_path):
             if path.exists() and path.is_file():  # check if the path exists and is a file
-                logger.info(f"{classname}: loading config #{idx+1} from {path}")
+                logger.debug(f"{classname}: loading config #{idx+1} from {path}")
                 merged_config.update(json.loads(path.read_text(encoding=encoding)))
                 logger.debug(f"{classname}: config state #{idx+1}: {merged_config}")
             else:

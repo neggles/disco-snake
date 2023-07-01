@@ -1,13 +1,10 @@
 import logging
-from asyncio import sleep
-from typing import Any, Coroutine, Union
 
-import disnake
 from disnake import Emoji, Guild
 from disnake.ext import commands, tasks
 
 import logsnake
-from disco_snake import DATADIR_PATH, LOG_FORMAT, LOGDIR_PATH
+from disco_snake import LOG_FORMAT, LOGDIR_PATH, DATADIR_PATH
 from disco_snake.bot import DiscoSnake
 
 COG_UID = "emojus"

@@ -13,7 +13,7 @@ from disnake.ui import Modal, TextInput
 
 from disco_snake import checks
 
-logger = logging.getLogger(__package__)
+logger = logging.getLogger(__name__)
 
 
 class EditMessageModal(Modal):

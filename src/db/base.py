@@ -8,7 +8,7 @@ from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass, mapped_column
 
 
 # declarative base class
-class Base(AsyncAttrs, DeclarativeBase, MappedAsDataclass):
+class Base(AsyncAttrs, DeclarativeBase):
     """Base class for declarative models."""
 
 
@@ -28,6 +28,7 @@ Timestamp = Annotated[
     mapped_column(
         pg.TIMESTAMP(timezone=True, precision=2),
         nullable=True,
+        default=None,
     ),
 ]
 
@@ -39,6 +40,7 @@ CreateTimestamp = Annotated[
         index=True,
         nullable=False,
         server_default=sa.func.current_timestamp(),
+        default=None,
     ),
 ]
 
@@ -52,5 +54,6 @@ UpdateTimestamp = Annotated[
         onupdate=sa.func.current_timestamp(),
         server_default=sa.func.current_timestamp(),
         server_onupdate=sa.FetchedValue(),
+        default=None,
     ),
 ]

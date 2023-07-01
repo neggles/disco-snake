@@ -20,7 +20,7 @@ from db import DiscordUser, Session
 from disco_snake import checks
 from disco_snake.bot import DiscoSnake
 
-logger = logging.getLogger(__package__)
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 COG_UID = "privacy"
@@ -166,14 +166,13 @@ class Privacy(commands.Cog, name=COG_UID):
         await ctx.response.defer(ephemeral=True)
         logger.debug(f"Received privacy command for user {ctx.author} ({ctx.author.id})")
         try:
-            async with Session.begin() as session:
+            async with Session() as session:
                 user: DiscordUser = await session.get(DiscordUser, ctx.author.id)
                 if user is None:
-                    user = DiscordUser.from_discord(ctx.author)
-                    await session.add(user)
-                    await session.commit()
+                    async with session.begin():
+                        user = DiscordUser.from_discord(ctx.author)
+                        await session.add(user)
                     user = await session.get(DiscordUser, ctx.author.id)
-
             invite = await self.bot.support_invite()
             embed = PrivacyEmbed(
                 author=ctx.author,

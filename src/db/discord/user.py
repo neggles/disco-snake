@@ -36,12 +36,12 @@ class DiscordUser(Base):
     bot: Mapped[bool] = mapped_column(sa.Boolean)
     system: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
 
-    email: Mapped[Optional[str]] = mapped_column(sa.String(length=256))
-    verified: Mapped[Optional[bool]] = mapped_column(sa.Boolean)
+    email: Mapped[Optional[str]] = mapped_column(sa.String(length=256), default=None)
+    verified: Mapped[Optional[bool]] = mapped_column(sa.Boolean, default=None)
 
-    flags: Mapped[Optional[int]] = mapped_column(sa.Integer)
-    premium_type: Mapped[Optional[int]] = mapped_column(sa.Integer)
-    public_flags: Mapped[Optional[int]] = mapped_column(sa.Integer)
+    flags: Mapped[Optional[int]] = mapped_column(sa.Integer, default=None)
+    premium_type: Mapped[Optional[int]] = mapped_column(sa.Integer, default=None)
+    public_flags: Mapped[Optional[int]] = mapped_column(sa.Integer, default=None)
 
     first_seen: Mapped[CreateTimestamp]
     last_updated: Mapped[UpdateTimestamp]

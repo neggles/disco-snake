@@ -1,5 +1,5 @@
 from random import choice as random_choice
-from typing import List, Union
+from typing import Union
 
 from disnake import Colour, Embed, File, Member, User
 from disnake.ext.commands import (
@@ -60,7 +60,8 @@ class MissingPermissionsEmbed(Embed):
             description="you didn't say the magic word!",
             color=0xE02B2B,
         )
-        self.set_image(file=File(DENIED_GIF_PATH, filename=DENIED_GIF_PATH.name))
+        if DENIED_GIF_PATH.exists() and DENIED_GIF_PATH.is_file():
+            self.set_image(file=File(DENIED_GIF_PATH, filename=DENIED_GIF_PATH.name))
 
         if author is not None:
             self.set_footer(text=f"Triggered by {author.display_name}", icon_url=author.display_avatar.url)

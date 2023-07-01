@@ -841,7 +841,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     @tasks.loop(seconds=60)
     async def update_ignored(self):
         """Check the database for users who have rejected the ToS and get a list of their IDs for message filtering"""
-        async with Session.begin() as session:
+        async with self.db_client.begin() as session:
             query = (
                 select(DiscordUser)
                 .options(load_only(DiscordUser.id, DiscordUser.tos_accepted, DiscordUser.tos_rejected))
@@ -857,7 +857,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         Returns True if accepted, False if rejected, None if not completed.
         """
         user_id = user.id if isinstance(user, (User, Member)) else user
-        async with Session.begin() as session:
+        async with self.db_client.begin() as session:
             user: DiscordUser = await session.get(DiscordUser, user_id)
             if user.tos_rejected is True:
                 return False
@@ -869,7 +869,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     # get a list of users who have accepted the ToS
     async def tos_accepted_users(self) -> Set[int]:
-        async with Session.begin() as session:
+        async with self.db_client.begin() as session:
             query = (
                 select(DiscordUser)
                 .options(load_only("id", "tos_accepted", "tos_rejected", raiseload=True))
@@ -883,9 +883,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     async def check_send_tos(self, message: Message) -> bool:
         logger.debug(f"Checking ToS for {message.author} ({message.author.id})")
         try:
-            async with Session.begin() as session:
+            async with self.db_client.begin() as session:
                 user: DiscordUser = await session.get(DiscordUser, message.author.id)
                 if user is None:
+                    logger.info(f"User {message.author} not found in database, creating entry")
                     user = DiscordUser.from_discord(message.author)
                     await session.merge(user)
                     await session.commit()

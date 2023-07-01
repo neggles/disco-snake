@@ -27,6 +27,8 @@ class PydanticType(TypeDecorator):
 
     impl = JSONB  # change to sa.types.JSON for non-PostgreSQL databases
 
+    cache_ok = True
+
     def __init__(self, pydantic_type: BaseModel):
         super().__init__()
         self.pydantic_type = pydantic_type
@@ -43,6 +45,9 @@ class PydanticType(TypeDecorator):
 
     def process_result_value(self, value, dialect):
         return parse_obj_as(self.pydantic_type, value) if value else None
+
+    def coerce_compared_value(self, op, value):
+        return self.impl.coerce_compared_value(op, value)
 
 
 def json_serializer(obj: Any, *args, **kwargs) -> str:
