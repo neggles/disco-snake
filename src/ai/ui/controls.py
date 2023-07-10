@@ -1,15 +1,10 @@
 import logging
 from lib2to3.fixes.fix_idioms import TYPE
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-from disnake import (
-    ApplicationCommandInteraction,
-    Colour,
-    Embed,
-    Member,
-    User,
-)
+from disnake import Colour, Embed, Member, OptionChoice, User
 from disnake.ui import Modal, StringSelect, TextInput, View
+from pydantic import BaseModel
 from shimeji.model_provider import OobaGenRequest
 
 if TYPE_CHECKING:
@@ -19,12 +14,35 @@ logger = logging.getLogger(__name__)
 PURPLE = Colour(0x9966FF)
 
 
+class AiParam(BaseModel):
+    name: str
+    id: str
+    kind: Callable
+
+
+settable_params: List[AiParam] = [
+    AiParam(name="Temperature", id="temperature", kind=float),
+    AiParam(name="Top P", id="top_p", kind=float),
+    AiParam(name="Top K", id="top_k", kind=float),
+    AiParam(name="Top A", id="top_a", kind=float),
+    AiParam(name="TFS", id="tfs", kind=float),
+    AiParam(name="Typ P", id="typical_p", kind=float),
+    AiParam(name="Rep P", id="repetition_penalty", kind=float),
+    AiParam(name="Min Length", id="min_length", kind=int),
+    AiParam(name="Max Length", id="max_new_tokens", kind=int),
+    AiParam(name="Eta Cutoff", id="eta_cutoff", kind=float),
+    AiParam(name="Epsilon Cutoff", id="epsilon_cutoff", kind=float),
+]
+
+set_choices = [OptionChoice(name=param.name, value=param.id) for param in settable_params]
+
+
 class AiStatusEmbed(Embed):
     def __init__(self, cog: "Ai", user: User | Member, *args, verbose: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         gensettings: OobaGenRequest = cog.provider_config.gensettings
 
-        vision_model = cog.eyes.config.modeltype if cog.eyes is not None else "N/A"
+        vision_model = cog.eyes.api_info.model_type if cog.eyes.api_info is not None else "N/A"
         imagen_model = cog.imagen.config.api_params.checkpoint if cog.imagen is not None else "N/A"
 
         self.description = "**AI Engine Status**" if not self.description else self.description
@@ -45,8 +63,10 @@ class AiStatusEmbed(Embed):
         self.add_field(name="Temperature", value=gensettings.temperature)
         self.add_field(name="Top P", value=gensettings.top_p)
         self.add_field(name="Top K", value=gensettings.top_k)
-        self.add_field(name="Typical P", value=gensettings.typical_p)
-        self.add_field(name="Rep. Penalty", value=gensettings.repetition_penalty)
+        self.add_field(name="Top A", value=gensettings.top_a)
+        self.add_field(name="TFS", value=gensettings.tfs)
+        self.add_field(name="Typ. P", value=gensettings.typical_p)
+        self.add_field(name="Rep. P", value=gensettings.repetition_penalty)
         self.add_field(name="Eta Cutoff", value=gensettings.eta_cutoff)
         self.add_field(name="Epsilon Cutoff", value=gensettings.epsilon_cutoff)
 
