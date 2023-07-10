@@ -251,7 +251,7 @@ class DiscoSnake(commands.Bot):
                 f"User {ctx.author} attempted to execute {ctx.application_command.qualified_name}, but is not an admin."
             )
             embed = NotAdminEmbed(ctx.author, error.message)
-            await ctx.send(embed=embed)
+            await ctx.send(embed=embed, delete_after=30.0)
 
         else:
             # that covers all the usual errors, so let's catch the rest

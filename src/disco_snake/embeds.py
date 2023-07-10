@@ -80,7 +80,7 @@ class NotAdminEmbed(Embed):
             description=description or "Did you really think that would work?",
             color=0xE02B2B,
         )
-        if DENIED_GIF_PATH.exists() and DENIED_GIF_PATH.is_file() and description is None:
+        if DENIED_GIF_PATH.exists() and DENIED_GIF_PATH.is_file():
             self.set_image(file=File(DENIED_GIF_PATH, filename=DENIED_GIF_PATH.name))
 
         if author is not None:
