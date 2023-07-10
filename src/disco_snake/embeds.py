@@ -1,5 +1,5 @@
 from random import choice as random_choice
-from typing import Union
+from typing import Optional, Union
 
 from disnake import Colour, Embed, File, Member, User
 from disnake.ext.commands import (
@@ -67,6 +67,24 @@ class MissingPermissionsEmbed(Embed):
             self.set_footer(text=f"Triggered by {author.display_name}", icon_url=author.display_avatar.url)
         if error is not None:
             self.add_field(name="Required permissions", value=", ".join(error.missing_permissions))
+
+
+class NotAdminEmbed(Embed):
+    def __init__(
+        self,
+        author: Union[User, Member] = None,
+        description: Optional[str] = None,
+    ):
+        super().__init__(
+            title="Ah ah ah, you didn't say the magic word!",
+            description=description or "Did you really think that would work?",
+            color=0xE02B2B,
+        )
+        if DENIED_GIF_PATH.exists() and DENIED_GIF_PATH.is_file() and description is None:
+            self.set_image(file=File(DENIED_GIF_PATH, filename=DENIED_GIF_PATH.name))
+
+        if author is not None:
+            self.set_footer(text=f"Triggered by {author.display_name}", icon_url=author.display_avatar.url)
 
 
 class MissingRequiredArgumentEmbed(Embed):

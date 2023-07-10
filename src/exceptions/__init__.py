@@ -1,18 +1,19 @@
-class UserBlacklisted(Exception):
-    """
-    Thrown when a user is attempting something, but is blacklisted.
-    """
+from disnake.ext.commands import CommandError
 
-    def __init__(self, message="User is blacklisted!"):
+
+class UserBlacklisted(CommandError):
+    def __init__(self, message: str = "You have been blacklisted and cannot interact with this bot.") -> None:
         self.message = message
         super().__init__(self.message)
 
 
-class UserNotOwner(Exception):
-    """
-    Thrown when a user is attempting something, but is not an owner of the bot.
-    """
+class UserNotAdmin(CommandError):
+    def __init__(self, message: str = "Did you really think that would work?") -> None:
+        self.message = message
+        super().__init__(self.message)
 
-    def __init__(self, message="User is not an owner of the bot!"):
+
+class UserNotOwner(UserNotAdmin):
+    def __init__(self, message: str = "Did you really think that would work?") -> None:
         self.message = message
         super().__init__(self.message)

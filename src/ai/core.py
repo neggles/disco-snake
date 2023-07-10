@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -20,14 +20,12 @@ from disnake import (
     Member,
     Message,
     MessageInteraction,
-    OptionChoice,
     TextChannel,
     Thread,
     User,
 )
 from disnake.ext import commands, tasks
 from Levenshtein import distance as lev_distance
-from pydantic import BaseModel
 from shimeji import ChatBot
 from shimeji.model_provider import OobaGenRequest, OobaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
@@ -59,7 +57,7 @@ from ai.settings import (
 )
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
 from ai.types import LruDict
-from ai.ui import AiStatusEmbed
+from ai.ui import AiParam, AiStatusEmbed, set_choices, settable_params
 from ai.utils import (
     MentionMixin,
     get_full_class_name,
@@ -115,27 +113,6 @@ re_emoji = re.compile(r"<:([^:]+):(\d+)>", re.I)
 def re_match_lower(match: re.Match):
     """function for re.sub() to convert the first match to lowercase"""
     return match.group(1).lower()
-
-
-class AiParam(BaseModel):
-    name: str
-    id: str
-    kind: Callable
-
-
-settable_params: List[AiParam] = [
-    AiParam(name="Temperature", id="temperature", kind=float),
-    AiParam(name="Top P", id="top_p", kind=float),
-    AiParam(name="Top K", id="top_k", kind=float),
-    AiParam(name="Typical P", id="typical_p", kind=float),
-    AiParam(name="Rep P", id="repetition_penalty", kind=float),
-    AiParam(name="Min Length", id="min_length", kind=int),
-    AiParam(name="Max Length", id="max_new_tokens", kind=int),
-    AiParam(name="Eta Cut", id="eta_cutoff", kind=float),
-    AiParam(name="Epsilon Cut", id="epsilon_cutoff", kind=float),
-]
-
-set_choices = [OptionChoice(name=param.name, value=param.id) for param in settable_params]
 
 
 def available_params(ctx: ApplicationCommandInteraction) -> List[str]:
@@ -910,7 +887,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 return True
         except Exception as e:
             logger.exception("error checking tos")
-            raise e
+            return False
 
     # clean up a message's content
     def get_msg_content_clean(self, message: Message, content: Optional[str] = None) -> str:
@@ -1123,7 +1100,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         verbose: bool = commands.Param(default=False, name="verbose", description="Verbose output"),
     ):
         embed = AiStatusEmbed(self, ctx.author, verbose=verbose)
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
 
     @ai_group.sub_command(name="set", description="Set AI parameters")
     @checks.is_admin()

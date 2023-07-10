@@ -5,6 +5,7 @@ from disnake.ext import commands
 
 from disco_snake.blacklist import Blacklist
 from disco_snake.settings import get_settings
+from exceptions import UserBlacklisted, UserNotAdmin, UserNotOwner
 
 T = TypeVar("T")
 
@@ -24,12 +25,15 @@ def is_admin() -> Callable[[T], T]:
     def predicate(ctx: commands.Context) -> bool:
         settings = get_settings()
         logger.debug(f"Checking if {ctx.author.id} is an admin in context {ctx}")
-        return any(
+        user_is_admin = any(
             (
                 ctx.author.id == settings.owner_id,
                 (ctx.author.id in settings.admin_ids),
             )
         )
+        if user_is_admin is not True:
+            raise UserNotAdmin()
+        return user_is_admin
 
     return commands.check(predicate)
 
@@ -46,12 +50,15 @@ def is_owner() -> Callable[[T], T]:
     def predicate(ctx: commands.Context) -> bool:
         settings = get_settings()
         logger.debug(f"Checking if {ctx.author.id} is the owner ({settings.owner_id}) in context {ctx}")
-        return any(
+        user_is_owner = any(
             (
                 ctx.author.id == settings.owner_id,
                 (ctx.author.id in settings.retcon_ids),
             )
         )
+        if user_is_owner is not True:
+            raise UserNotOwner()
+        return user_is_owner
 
     return commands.check(predicate)
 
@@ -69,7 +76,7 @@ def not_blacklisted() -> Callable[[T], T]:
         logger.debug(f"Checking if {ctx.author.id} is blacklisted in context {ctx}")
         if ctx.author.id in blacklist:
             logger.info(f"Blocking blacklisted user {ctx.author} in context {ctx}")
-            return False
+            raise UserBlacklisted()
         return True  # blacklist broken, don't block
 
     return commands.check(predicate)

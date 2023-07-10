@@ -97,9 +97,7 @@ class DiscoEyes:
         return self.config.token
 
     @property
-    def api_info(self) -> InfoResponse:
-        if self._api_info is None:
-            raise RuntimeError("API info not yet available")
+    def api_info(self) -> Optional[InfoResponse]:
         return self._api_info
 
     async def _fetch_api_info(self) -> None:
