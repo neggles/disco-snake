@@ -257,7 +257,7 @@ class DiscoEyes:
 
     async def db_client_get_caption(self, image_id: int) -> Optional[ImageCaption]:
         async with self.db_client.begin() as session:
-            caption = await session.get(ImageCaption, id=image_id)
+            caption = await session.get(ImageCaption, image_id)
         return caption
 
     def watch(self, channel: MessageChannel):
