@@ -101,7 +101,7 @@ def _restore_mentions(text: str, mentions: Dict[str, str]) -> str:
         if name_string == "@deleted-user":
             continue  # skip deleted users
         # restore mention from LRU dict
-        text = text.replace(name_string, user_mention)
+        text = re.sub("@?" + re.escape(name_string), user_mention, text, flags=re.I)
     return text
 
 

@@ -50,6 +50,7 @@ from ai.settings import (
     AI_LOG_FORMAT,
     BotMode,
     BotParameters,
+    GuildSettings,
     LMApiConfig,
     NamedSnowflake,
     Prompt,
@@ -212,7 +213,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     @property
     def sibling_ids(self) -> List[int]:
-        return self.params.sibling_ids
+        return self.params.siblings.ids
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -447,6 +448,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     async def get_message_context(
         self,
         message: Message,
+        *,
+        guild_settings: Optional[GuildSettings] = None,
         limit: int = 50,
         as_list: bool = True,
     ) -> Union[str, List[str]]:
@@ -460,8 +463,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 messages = messages[0 : idx + 1]
                 break
 
-        if message.guild:
-            bot_mode = self.params.get_guild_settings(message.guild.id).channel_bot_mode(message.channel.id)
+        if guild_settings is not None:
+            bot_mode = guild_settings.channel_bot_mode(message.channel.id)
         else:
             bot_mode = BotMode.Siblings
 
@@ -479,10 +482,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     continue  # this is a TOS message in a DM so lets skip it
             elif msg.author.bot is True:  # bots who aren't us
                 if bot_mode == BotMode.Strip:
+                    logger.debug(f"Stripping bot message {msg.id} from context chain")
                     continue  # skip all other bot messages if we're in strip mode
                 elif bot_mode == BotMode.Siblings:
                     if msg.author.id not in self.sibling_ids:
+                        logger.debug(f"Stripping non-sibling bot message {msg.id} from context chain")
                         continue  # skip non-sibling bot messages
+                    logger.debug(f"Keeping sibling bot message {msg.id}")
                 else:
                     pass  # don't skip other bot messages
 
