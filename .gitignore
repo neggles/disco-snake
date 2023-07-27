@@ -243,3 +243,7 @@ src/disco_snake/_version.py
 
 # compose override
 /docker-compose.*.yml
+
+# envrc for direnv
+/.envrc*
+!/.envrc.example
