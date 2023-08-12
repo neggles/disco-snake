@@ -524,7 +524,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 elif content != "" and "```" not in content and not content.startswith("-"):
                     if msg.author.id == self.bot.user.id:
                         # strip (laughs) from start of own context
-                        content = re_start_expression.sub("", content)
+                        stripped_content = re_start_expression.sub("", content)
+                        if len(stripped_content.strip()) > 0:
+                            content = stripped_content
                     chain.append(f"{author_name} {content}")
 
             for attachment in msg.attachments:
