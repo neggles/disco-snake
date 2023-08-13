@@ -51,6 +51,7 @@ from ai.settings import (
     BotMode,
     BotParameters,
     GuildSettings,
+    GuildSettingsList,
     LMApiConfig,
     NamedSnowflake,
     Prompt,
@@ -163,7 +164,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.trigger_cache: LruDict = LruDict()
         self.lm_lock = Lock()  # used to stop multiple responses from happening at once
 
-        self.guilds: List[int] = self.params.guilds
+        self.guilds: GuildSettingsList = self.params.guilds
         self.dm_user_ids: List[int] = self.params.dm_user_ids
         self.dm_user_ids.extend(self.bot.config.admin_ids)
         self.tos_reject_ids: Set[int] = set()
@@ -375,7 +376,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 if trigger is not None:
                     await message.channel.trigger_typing()
                     if conversation is None:
-                        conversation = await self.get_message_context(message)
+                        conversation = await self.get_message_context(message, guild_settings=guild_settings)
 
                     # save whether we're responding to a bot or not to prevent loops
                     self.trigger_cache.update({message.channel.id: message.author.bot is True})
@@ -463,9 +464,15 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 messages = messages[0 : idx + 1]
                 break
 
+        if guild_settings is None:
+            # attempt to retrieve guild settings if we don't have them
+            guild_settings = self.params.get_guild_settings(message.guild.id) if message.guild else None
+
         if guild_settings is not None:
+            # get bot mode for this channel
             bot_mode = guild_settings.channel_bot_mode(message.channel.id)
         else:
+            # default to siblings mode if we still don't have guild settings
             bot_mode = BotMode.Siblings
 
         chain = []
@@ -490,6 +497,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         continue  # skip non-sibling bot messages
                     logger.debug(f"Keeping sibling bot message {msg.id}")
                 else:
+                    logger.debug(f"Keeping bot message {msg.id}")
                     pass  # don't skip other bot messages
 
             # set up author name
@@ -799,7 +807,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 message: Message = messages.pop()
                 if message.author.bot is True:
                     return
-
                 idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
                 if idle_sec >= 2**31:
                     if self.get_msg_content_clean(message) == "":
