@@ -126,7 +126,7 @@ class DiscoEyes:
         # Strip out "This is an image of" etc. from the caption
         caption = re_image_of.sub(r"\1", response.caption).rstrip(".")
 
-        if len(caption) <= 8:
+        if len(caption) <= 4:
             raise ValueError(f"Received caption is too short: {caption=}")
         elif len(caption) > 320:
             caption = caption[:320] + "..."
@@ -162,11 +162,11 @@ class DiscoEyes:
         attachment_dict = attachment.to_dict()
         _ = attachment_dict.pop("content_type")  # don't need this
 
+        caption_text = None  # make it not complain if we get a different exception
         try:
             caption_text = await self._submit_attachment(attachment)
-        except ClientError as e:
+        except (ClientError, ValueError) as e:
             logger.error(f"Failed to caption image attachment: {e}")
-            caption_text = None
         finally:
             if caption_text is None:
                 raise ValueError("Failed to caption image attachment")
