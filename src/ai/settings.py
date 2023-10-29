@@ -371,7 +371,7 @@ class ImagenLMPrompt(BaseModel):
     def get_trailer(self) -> str:
         return "\n".join(self.trailer).replace("{prompt_tags}", self.get_tags())
 
-    def prompt(self, user_message: str) -> str:
+    def wrap_prompt(self, user_message: str) -> str:
         if len(user_message) == 0:
             user_message = self.gensettings.prompt
         return f"{self.get_header()}{user_message}{self.get_trailer()}"
@@ -388,24 +388,40 @@ class ImagenLMPrompt(BaseModel):
 
 class ImagenSDPrompt(BaseModel):
     lm_weight: float = 1.15
+    tag_sep: str = ","
+    word_sep: str = " "
     leading: List[str] = Field(...)
     trailing: List[str] = Field(...)
     negative: List[str] = Field(...)
     banned_tags: List[str] = Field(...)
 
-    def prompt(self, prompt: str) -> str:
-        leading_tags = ", ".join(self.leading)
-        trailing_tags = ", ".join(self.trailing)
-        return f"{leading_tags}, {prompt}, {trailing_tags}"
+    def wrap_prompt(self, prompt: str | list[str]) -> str:
+        prompt = prompt if isinstance(prompt, list) else [prompt]
+        prompt = self.tag_sep.join(self.get_leading(join=False) + prompt + self.get_trailing(join=False))
+        if self.word_sep != " ":
+            prompt = prompt.replace(f",{self.word_sep}", self.tag_sep)
+        return prompt
 
-    def negative_prompt(self) -> str:
-        return ", ".join(self.negative)
+    def get_negative(self, join: bool = True) -> str | list[str]:
+        if self.word_sep != " ":
+            negative = [x.replace(" ", self.word_sep) for x in self.negative]
+        else:
+            negative = self.negative
+        return self.tag_sep.join(negative) if join else negative
 
-    def get_leading(self) -> str:
-        return ", ".join(self.leading)
+    def get_leading(self, join: bool = True) -> str | list[str]:
+        if self.word_sep != " ":
+            leading = [x.replace(" ", self.word_sep) for x in self.leading]
+        else:
+            leading = self.leading
+        return self.tag_sep.join(leading) if join else leading
 
-    def get_trailing(self) -> str:
-        return ", ".join(self.trailing)
+    def get_trailing(self, join: bool = True) -> str | list[str]:
+        if self.word_sep != " ":
+            trailing = [x.replace(" ", self.word_sep) for x in self.trailing]
+        else:
+            trailing = self.trailing
+        return self.tag_sep.join(trailing) if join else trailing
 
 
 class ImagenSettings(BaseSettings):

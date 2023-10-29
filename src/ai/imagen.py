@@ -103,9 +103,8 @@ class Imagen:
 
         self._lock = Lock()
 
-        self.lm_last_request: str = ""
-        self.lm_last_response: str = ""
-        self._last_request: str = ""  # same as above but for internal use
+        self._last_request: str = ""
+        self._last_llm_tags: str = ""
 
         logger.info("Initialized Imagen.")
 
@@ -121,9 +120,8 @@ class Imagen:
             user_request = user_request.replace("your ", "her ")
 
         user_request = user_request.strip("?.!")
-        self.lm_last_request = user_request
         self._last_request = user_request
-        prompt = self.lm_prompt.prompt(user_request)
+        prompt = self.lm_prompt.wrap_prompt(user_request)
         if len(prompt.strip()) == 0:
             prompt = self.lm_prompt.default_prompt
         return prompt, user_request
@@ -148,51 +146,50 @@ class Imagen:
     def get_lm_stopping_strings(self) -> List[str]:
         return self.lm_prompt.gensettings.stopping_strings
 
-    def build_request(self, lm_tags: str, user_prompt: str) -> Dict[str, Any]:
-        time_tag = get_time_tag()
+    def build_request(self, lm_tag_string: str, user_prompt: str) -> Dict[str, Any]:
         user_prompt = user_prompt.lower()
-        lm_tags = lm_tags.lower()
-        format_tags = []
+        lm_tag_string = lm_tag_string.lower()
+        prompt_tags = [get_time_tag()]
+        lm_tags = []
 
-        if len(user_prompt) > 4 and len(lm_tags.strip()) > 2:
+        if len(user_prompt) > 4 and len(lm_tag_string.strip()) > 2:
             if any_in_text(
                 ["portrait", "vertical", "of you ", "of yourself ", "selfie"],
                 user_prompt,
             ):
-                format_tags.append("looking at viewer")
+                prompt_tags.append("looking at viewer")
             elif any_in_text(
                 ["person", "you as", "yourself as", "you cosplaying", "yourself cosplaying"],
                 user_prompt,
             ):
-                format_tags = ["cowboy shot"]
+                prompt_tags.append("cowboy shot")
 
             if "holding" in user_prompt:
-                format_tags.append("holding")
+                prompt_tags.append("holding")
 
-        # base tag set
-        combined_tags = f"{time_tag}, {', '.join(format_tags)}" if len(format_tags) > 0 else f"{time_tag}"
-
-        # filter out banned tags from the LM's generated tags
-        if len(lm_tags) > 0:
+            # filter out banned tags from the LM's generated tags
+        if len(lm_tag_string) > 0:
             # split tags, strip whitespace, remove banned tags, rejoin
-            split_tags = [x.strip() for x in lm_tags.split(",") if len(x) > 3]
-            cleaned_tags = []
-            for tag in split_tags:
-                is_clean = True
+            lm_tags_split = [x.strip().lower() for x in lm_tag_string.split(",") if len(x) > 3]
+            for tag in lm_tags_split:
                 if any([re.search(x, tag, re.I) for x in self.sd_prompt.banned_tags]):
                     logger.debug(f"Removing banned tag {tag}")
                     continue
-                if is_clean:
-                    cleaned_tags.append(tag)
+                lm_tags.append(tag)
 
-            cleaned_tags = list(set(cleaned_tags))  # remove duplicates
-            removed_count = len(split_tags) - len(cleaned_tags)
-            logger.debug(f"Removed {removed_count} tags from lm_tags, remaining: {cleaned_tags}")
-            cleaned_tags = ", ".join(cleaned_tags)
-            combined_tags = f"{combined_tags}, ({cleaned_tags}:{self.sd_prompt.lm_weight})"
+            removed = len(lm_tags_split) - len(lm_tags)
+            lm_tags = list(set(lm_tags))  # remove duplicates
+            duplicate = removed - (len(lm_tags_split) - len(lm_tags))
+            logger.debug(f"Removed {removed} banned and {duplicate} duplicate LM tags, remaining: {lm_tags}")
 
-        self.lm_last_response = combined_tags
-        image_prompt = self.sd_prompt.prompt(combined_tags)
+        lm_tags = [x.replace(" ", self.sd_prompt.word_sep) for x in lm_tags]
+        prompt_tags = [x.replace(" ", self.sd_prompt.word_sep) for x in prompt_tags]
+
+        self._last_llm_tags = self.sd_prompt.tag_sep.join(lm_tags)
+        if len(lm_tags) > 0:
+            prompt_tags.append(f"({self._last_llm_tags}:{self.sd_prompt.lm_weight})")
+
+        logger.debug(f"Final prompt tags: {prompt_tags}")
 
         # Generate at random aspect ratios, but same total pixels
         width, height = get_image_dimensions()
@@ -211,8 +208,8 @@ class Imagen:
 
         # Build the request and return it
         gen_request: Dict[str, Any] = self.sd_api_params.get_request(
-            prompt=image_prompt,
-            negative=self.sd_prompt.negative_prompt(),
+            prompt=self.sd_prompt.wrap_prompt(prompt_tags),
+            negative=self.sd_prompt.get_negative(join=True),
             width=width,
             height=height,
         )
@@ -225,7 +222,7 @@ class Imagen:
         req_string = req_string.replace(" ", "-").replace(",", "")  # remove spaces and commas
         req_string = re_clean_filename.sub("", req_string)  # trim fs-unfriendly characters
         req_string = re_single_dash.sub("-", req_string)  # collapse consecutive dashes
-        req_string = req_string.rstrip("-")  # remove trailing dashes
+        req_string = req_string.rstrip("-")[:64]  # remove trailing dashes, truncate to 64 chars
 
         # submit the request and save the image
         if self._lock.locked():
@@ -244,6 +241,7 @@ class Imagen:
 
                         # glue the LLM prompt onto the response
                         response["llm_prompt"] = self._last_request
+                        response["llm_tags"] = self._last_llm_tags
 
                         # load and decode the image
                         image: Image.Image = Image.open(BytesIO(b64decode(response["images"][0])))

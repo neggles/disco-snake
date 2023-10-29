@@ -1079,12 +1079,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.info(f"LLM Request: {user_request}")
 
         # get the LLM to create tags for the image
-        lm_tags = await self.imagen.submit_lm_prompt(lm_prompt)
-        lm_tags = lm_tags.strip('",').lower()
-        logger.info(f"LLM Response: {lm_tags}")
+        lm_tag_string = await self.imagen.submit_lm_prompt(lm_prompt)
+        lm_tag_string = lm_tag_string.strip('",').lower()
+        logger.info(f"LLM Response: {lm_tag_string}")
 
         # build the SD API request
-        sdapi_request = self.imagen.build_request(lm_tags, message_content)
+        sdapi_request = self.imagen.build_request(lm_tag_string, message_content)
         logger.info(f"SD API Request: {json.dumps(sdapi_request)}")
 
         # submit it
@@ -1094,7 +1094,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             result_file = File(result_path, filename=result_path.name)
             if self.webui.config.enabled:
                 try:
-                    self.webui.imagen_update(lm_trigger, lm_tags, result_path)
+                    self.webui.imagen_update(lm_trigger, lm_tag_string, result_path)
                 except Exception as e:
                     logger.exception(e)
             return result_file
