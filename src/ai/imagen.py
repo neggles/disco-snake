@@ -73,7 +73,7 @@ re_clean_filename = re.compile(r"[^a-zA-Z0-9_\- ]+")  # for removing non-alphanu
 re_single_dash = re.compile(r"-+")  # for removing multiple dashes
 re_fix_commas = re.compile(r",[,\s]*", re.I + re.M)
 
-re_image_description = re.compile(r"\[\s*image: ([^\]]+)\s*\]", re.I + re.M)
+re_image_description = re.compile(r"\[\s*image:? ([^\]]+)\s*\]", re.I + re.M)
 re_send_image = re.compile(r"[\[(].?(?:send|sends|sending) a? ?([^)\]]+)[)\]]", re.I + re.M)
 send_pic_regexes = [re_image_description, re_send_image]
 
