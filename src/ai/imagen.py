@@ -188,7 +188,6 @@ class Imagen:
         self._last_llm_tags = self.sd_prompt.tag_sep.join(lm_tags)
         if len(lm_tags) > 0:
             prompt_tags.append(f"({self._last_llm_tags}:{self.sd_prompt.lm_weight})")
-
         logger.debug(f"Final prompt tags: {prompt_tags}")
 
         # Generate at random aspect ratios, but same total pixels

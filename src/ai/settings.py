@@ -355,7 +355,6 @@ class ImagenLMPrompt(BaseModel):
     gensettings: OobaGenRequest = Field(...)
 
     def __post_init__(self):
-        self.re_subject = re.compile(r".* of")
         self.default_prompt = (
             self.gensettings.prompt
             if len(self.gensettings.prompt) > 0
