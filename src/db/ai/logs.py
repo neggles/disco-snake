@@ -25,10 +25,13 @@ class AiMessageInfo(BaseModel):
 
 class AiResponseLog(Base):
     __tablename__ = "ai_message_logs"
-    __mapper_args__ = {"eager_defaults": True}
+    __mapper_args__ = {
+        "eager_defaults": True,
+        "primary_key": ["id", "app_id"],
+    }
 
     id: Mapped[BigIntPK]
-    app_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, index=True)
+    app_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False)
     instance: Mapped[str] = mapped_column(sa.String, nullable=False)
     timestamp: Mapped[CreateTimestamp]
     message: Mapped[Optional[AiMessageInfo]] = mapped_column(pg.JSONB, nullable=True)
