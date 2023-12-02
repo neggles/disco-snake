@@ -89,6 +89,10 @@ class DiscoEyes:
         return self.config.enabled
 
     @property
+    async def background(self) -> bool:
+        return self.config.background
+
+    @property
     def api_host(self) -> str:
         return self.config.host
 
@@ -264,4 +268,6 @@ class DiscoEyes:
         self.attention.refresh(channel.id)
 
     def watching(self, channel: MessageChannel) -> bool:
+        if self.background is False:
+            return False
         return self.attention.active(channel.id)

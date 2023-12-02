@@ -759,7 +759,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 self.last_response = datetime.now(timezone.utc)
 
                 # update timestamp for this channel in the image caption engine
-                if self.eyes.enabled:
+                if self.eyes.enabled and self.eyes.background:
                     self.eyes.watch(message.channel)
 
                 # update webui state if it's enabled
@@ -1022,9 +1022,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     ## listener to background caption images
     @commands.Cog.listener("on_message")
     async def background_caption(self, message: Message):
-        if self.config.vision.background is not True:
-            # logger.debug("Background captioning disabled")
-            return
         if not message.attachments and not message.embeds:
             pass  # no attachments or embeds
 
