@@ -304,6 +304,7 @@ class ImagenApiParams(BaseModel):
     vae: Optional[str] = None
     clip_skip: int = 2
     overrides: Optional[dict] = None
+    alwayson_scripts: Optional[dict] = None
 
     def get_request(self, prompt: str, negative: str, width: int = -1, height: int = -1):
         request_obj = {
@@ -328,6 +329,10 @@ class ImagenApiParams(BaseModel):
             "denoising_strength": self.hr_denoise,
             "hr_upscaler": self.hr_upscaler,
         }
+        # set alwayson scripts if present
+        if self.alwayson_scripts is not None:
+            request_obj["alwayson_scripts"] = self.alwayson_scripts
+
         # copy the overrides dict so we don't modify the original
         overrides = self.overrides.copy() if self.overrides is not None else {}
 
