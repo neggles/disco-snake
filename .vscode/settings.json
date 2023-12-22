@@ -40,7 +40,7 @@
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "ms-python.black-formatter",
         "editor.codeActionsOnSave": {
-            "source.organizeImports": true
+            "source.organizeImports": "explicit"
         }
     },
     "ruff.args": ["--line-length=110", "--extend-ignore=F401,F841,E501"],
@@ -120,5 +120,10 @@
     "docker.dockerComposeBuild": false,
 
     // "remote.autoForwardPorts": true,
-    "remote.autoForwardPortsSource": "process"
+    "remote.autoForwardPortsSource": "hybrid",
+    "[json][jsonc]": {
+        "editor.codeActionsOnSave": {
+            "source.fixAll.sortJSON": "never"
+        }
+    }
 }
