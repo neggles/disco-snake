@@ -64,7 +64,8 @@ class Owner(commands.Cog, name="owner"):
         name="Edit Message",
         dm_permission=True,
     )
-    @checks.is_owner()
+    @commands.default_member_permissions(administrator=True)
+    @commands.is_owner()
     async def message_edit(self, ctx: MessageCommandInteraction):
         logger.debug(f"Received edit message command for message {ctx.target.id}")
         if ctx.target.author.id != self.bot.user.id:
