@@ -1,7 +1,7 @@
 import re
 from typing import Any, List
 
-from shimeji.tokenizers import GPT2, PreTrainedTokenizerFast
+from shimeji.tokenizers import Llama, PreTrainedTokenizerFast
 
 TRIM_DIR_TOP = 0
 TRIM_DIR_BOTTOM = 1
@@ -148,7 +148,7 @@ class ContextEntry:
             forced_activation  # if True, this context entry is activated even if it is not activated
         )
         self.cascading_activation = cascading_activation  # when activated, this context entry will search for other entries and activate them if found
-        self.tokenizer = tokenizer if tokenizer is not None else GPT2
+        self.tokenizer = tokenizer if tokenizer is not None else Llama()
 
     # max_length is in tokens
     def trim(self, max_length, token_budget):
