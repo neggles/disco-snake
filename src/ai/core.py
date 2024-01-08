@@ -26,17 +26,6 @@ from disnake import (
 )
 from disnake.ext import commands, tasks
 from Levenshtein import distance as lev_distance
-from shimeji import ChatBot
-from shimeji.model_provider import OobaGenRequest, OobaModel
-from shimeji.postprocessor import NewlinePrunerPostprocessor
-from shimeji.preprocessor import ContextPreprocessor
-from shimeji.util import (
-    INSERTION_TYPE_NEWLINE,
-    TRIM_DIR_NONE,
-    TRIM_DIR_TOP,
-    TRIM_TYPE_NEWLINE,
-    ContextEntry,
-)
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
 from transformers import AutoTokenizer
@@ -73,6 +62,17 @@ from db.ai import AiResponseLog
 from disco_snake import checks
 from disco_snake.blacklist import Blacklist
 from disco_snake.bot import DiscoSnake
+from shimeji.chatbot import ChatBot
+from shimeji.model_provider import OobaGenRequest, OobaModel
+from shimeji.postprocessor import NewlinePrunerPostprocessor
+from shimeji.preprocessor import ContextPreprocessor
+from shimeji.util import (
+    INSERTION_TYPE_NEWLINE,
+    TRIM_DIR_NONE,
+    TRIM_DIR_TOP,
+    TRIM_TYPE_NEWLINE,
+    ContextEntry,
+)
 
 COG_UID = "ai"
 
