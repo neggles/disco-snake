@@ -1,21 +1,30 @@
 __title__ = "shimeji"
-__version__ = "0.1.1"
+__version__ = "0.1.2-embed"
 __author__ = "hitomi-team"
-__license__ = "GPLv2 License"
+__license__ = "GPLv2"
 __copyright__ = "Copyright 2022 hitomi-team"
 
-__path__ = __import__("pkgutil").extend_path(__path__, __name__)
 
-from shimeji.shimeji import ChatBot
-
-from shimeji import memory, model_provider, postprocessor, preprocessor, tokenizers, util
+from shimeji import (
+    chatbot,
+    memory,
+    model_provider,
+    postprocessor,
+    preprocessor,
+    sqlcrud,
+    tokenizers,
+    util,
+)
+from shimeji.chatbot import ChatBot
 
 __all__ = [
     "ChatBot",
+    "chatbot",
     "memory",
     "model_provider",
     "postprocessor",
     "preprocessor",
+    "sqlcrud",
     "tokenizers",
     "util",
 ]
