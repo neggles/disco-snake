@@ -1,7 +1,0 @@
-transformers
-aiohttp
-pydantic
-asyncpg
-alembic
-sqlalchemy
-psycopg2-binary
