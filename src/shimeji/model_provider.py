@@ -265,6 +265,7 @@ class OobaModel(ModelProvider):
         if self.api_v2:
             payload["max_tokens"] = payload.pop("max_new_tokens")
 
+        r = None
         try:
             r = requests.post(
                 f"{self.endpoint_url}/{self._api_path}",
@@ -277,7 +278,8 @@ class OobaModel(ModelProvider):
         if r.status_code == 200:
             return r.json()[self._result_key][0]["text"]
         else:
-            raise Exception(f"Could not generate text with text-generation-webui. Error: {r.json()}")
+            err_resp = r.json() if hasattr(r, "json") else None
+            raise Exception(f"Could not generate text with text-generation-webui. Error: {err_resp}")
 
     async def generate_async(self, args: Union[ModelGenRequest, OobaGenRequest]) -> str:
         """
@@ -294,6 +296,7 @@ class OobaModel(ModelProvider):
         if self.api_v2:
             payload["max_tokens"] = payload.pop("max_new_tokens")
 
+        err_resp = None
         try:
             async with aiohttp.ClientSession(base_url=self.endpoint_url) as session:
                 async with session.post(f"/{self._api_path}", json=payload) as resp:
@@ -303,7 +306,9 @@ class OobaModel(ModelProvider):
                     else:
                         resp.raise_for_status()
         except Exception as e:
-            raise Exception(f"Could not generate response. Error: {await resp.text(encoding='utf-8')}") from e
+            if resp is not None:
+                err_resp = await resp.text(encoding="utf-8")
+            raise Exception(f"Could not generate response. Error: {err_resp}") from e
 
     def should_respond(self, context, name: str, prefix: str = "") -> bool:
         """
