@@ -129,10 +129,10 @@ class Imagen:
         request = self.lm_prompt.get_request(prompt)
         try:
             async with aiohttp.ClientSession(self.lm_api_host) as session:
-                async with session.post("/api/v1/generate", json=request.dict()) as resp:
+                async with session.post("/v1/completions", json=request.dict()) as resp:
                     if resp.status == 200:
                         ret = await resp.json()
-                        result: str = ret["results"][0]["text"]
+                        result: str = ret["choices"][0]["text"]
                         for tag in self.lm_prompt.tags:
                             result = result.replace(f"{tag},", "").replace(f"{tag}", "").strip()
                         result = re_fix_commas.sub(", ", result)
