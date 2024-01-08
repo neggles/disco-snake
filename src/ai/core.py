@@ -219,7 +219,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
 
-        logger.debug("Initializing Tokenizer...")
+        logger.info("Initializing Tokenizer...")
         tokenizer_dir = AI_DATA_DIR.joinpath("tokenizers/llama")
         if not tokenizer_dir.exists():
             tokenizer_dir.mkdir(parents=True, exist_ok=True)
@@ -230,17 +230,18 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             local_files_only=True,
             use_fast=True,
         )
-        logger.debug("Initializing Model Provider...")
+        logger.info("Initializing Model Provider...")
         if self.model_provider_name == "ooba":
             self.model_provider = OobaModel(
                 endpoint_url=self.provider_config.endpoint,
-                args=self.provider_config.gensettings,
+                default_args=self.provider_config.gensettings,
                 tokenizer=self.tokenizer,
+                api_v2=self.provider_config.api_v2,
             )
         else:
             raise ValueError(f"Unknown model provider type: {self.model_provider_name}")
 
-        logger.debug("Initializing ChatBot object")
+        logger.info("Initializing ChatBot object")
         self.chatbot = ChatBot(
             name=self.name,
             model_provider=self.model_provider,

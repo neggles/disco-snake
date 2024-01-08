@@ -26,6 +26,7 @@ def get_ooba_model(cfg: LMApiConfig, tokenizer: PreTrainedTokenizerFast) -> Ooba
 
     return OobaModel(
         endpoint_url=cfg.endpoint,
-        args=cfg.gensettings,
+        default_args=cfg.gensettings,
         tokenizer=tokenizer,
+        api_v2=False,
     )

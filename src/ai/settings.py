@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Iterator, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, BaseSettings, Field
-from shimeji.model_provider import OobaGenRequest
 
 from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, per_config_name
 from disco_snake.settings import JsonConfig
+from shimeji.model_provider import OobaGenRequest
 
 AI_DATA_DIR = PACKAGE_ROOT.parent.joinpath("data", "ai")
 AI_LOG_DIR = LOGDIR_PATH
@@ -245,6 +245,7 @@ class LMApiConfig(BaseModel):
     provider: str = "ooba"
     modeltype: str = Field(...)
     gensettings: OobaGenRequest = Field(...)
+    api_v2: bool = False
     username: Optional[str] = None
     password: Optional[str] = None
 

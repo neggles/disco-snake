@@ -219,7 +219,7 @@ class OobaModel(ModelProvider):
         default_args: OobaGenRequest,
         *,
         tokenizer: Optional[Tokenizer] = None,
-        api_v1: bool = True,
+        api_v2: bool = False,
         **kwargs,
     ):
         """Constructor for ModelProvider.
@@ -229,7 +229,7 @@ class OobaModel(ModelProvider):
         """
         super().__init__(endpoint_url, default_args, **kwargs)
         self.default_args: OobaGenRequest
-        self.api_v1 = api_v1
+        self.api_v2 = api_v2
 
         if isinstance(tokenizer, Tokenizer):
             self.tokenizer: Tokenizer = tokenizer
@@ -240,15 +240,15 @@ class OobaModel(ModelProvider):
 
     @property
     def _api_path(self):
-        if self.api_v1:
-            return "/api/v1/generate"
-        return "/v1/completions"
+        if self.api_v2:
+            return "v1/completions"
+        return "api/v1/generate"
 
     @property
     def _result_key(self):
-        if self.api_v1:
-            return "results"
-        return "choices"
+        if self.api_v2:
+            return "choices"
+        return "results"
 
     def generate(self, args: Union[ModelGenRequest, OobaGenRequest]) -> str:
         """
@@ -261,11 +261,15 @@ class OobaModel(ModelProvider):
         if not isinstance(args, OobaGenRequest):
             args: OobaGenRequest = OobaGenRequest.from_generic(args)
 
+        payload = args.dict()
+        if self.api_v2:
+            payload["max_tokens"] = payload.pop("max_new_tokens")
+
         try:
             r = requests.post(
-                f"{self.endpoint_url}{self._api_path}",
+                f"{self.endpoint_url}/{self._api_path}",
                 headers={"Content-Type": "application/json"},
-                json=args.dict(),
+                json=payload,
             )
             r.encoding = "utf-8"
         except Exception as e:
@@ -285,9 +289,14 @@ class OobaModel(ModelProvider):
         """
         if not isinstance(args, OobaGenRequest):
             args: OobaGenRequest = OobaGenRequest.from_generic(args)
+
+        payload = args.dict()
+        if self.api_v2:
+            payload["max_tokens"] = payload.pop("max_new_tokens")
+
         try:
             async with aiohttp.ClientSession(base_url=self.endpoint_url) as session:
-                async with session.post(f"/{self._api_path}", json=args.dict()) as resp:
+                async with session.post(f"/{self._api_path}", json=payload) as resp:
                     if resp.status == 200:
                         ret = await resp.json(encoding="utf-8")
                         return ret[self._result_key][0]["text"]
