@@ -1,11 +1,8 @@
 import logging
 from asyncio import sleep
-from collections.abc import MutableMapping
-from datetime import datetime
-from typing import Any, ClassVar, Generator, Union
+from typing import Union
 
 import disnake
-import sqlalchemy as sa
 from disnake import (
     ApplicationCommandInteraction,
     Colour,
@@ -17,8 +14,6 @@ from disnake import (
     Thread,
 )
 from disnake.ext import commands
-from rich import print
-from sympy import use
 
 from disco_snake import checks
 from disco_snake.blacklist import Blacklist

@@ -4,7 +4,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
-from transformers.models.llama.tokenization_llama_fast import LlamaTokenizerFast
 
 logger = logging.getLogger(__name__)
 

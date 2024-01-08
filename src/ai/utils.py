@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 import Levenshtein as lev
-from disnake import Emoji, Guild, Member, Message, Role
+from disnake import Guild, Member, Message, Role
 
 from ai.types import ListOfUsers, LruDict
 from disco_snake.bot import DiscoSnake

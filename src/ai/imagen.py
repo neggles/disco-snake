@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import aiohttp
-from numpy import isin
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 

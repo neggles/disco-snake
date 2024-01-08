@@ -1,6 +1,6 @@
 import json
 from functools import lru_cache
-from typing import Any, Type, TypeAlias
+from typing import Any, TypeAlias
 
 from pydantic import BaseModel, parse_obj_as
 from pydantic.json import pydantic_encoder

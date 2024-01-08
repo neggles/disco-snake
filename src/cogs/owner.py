@@ -11,7 +11,6 @@ from disnake import (
 from disnake.ext import commands
 from disnake.ui import Modal, TextInput
 
-from disco_snake import checks
 
 logger = logging.getLogger(__name__)
 

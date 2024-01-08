@@ -1,6 +1,5 @@
 # ruff: noqa: E402
 import subprocess
-from concurrent.futures import ProcessPoolExecutor
 from enum import Enum
 from functools import wraps
 from typing import Annotated, Optional

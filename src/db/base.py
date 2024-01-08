@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass, mapped_column
+from sqlalchemy.orm import DeclarativeBase, mapped_column
 
 
 # declarative base class

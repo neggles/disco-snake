@@ -1,15 +1,14 @@
 import logging
-import re
 from copy import deepcopy
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple, Union
+from typing import Iterator, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, BaseSettings, Field
 from shimeji.model_provider import OobaGenRequest
 
-from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, __version__, per_config_name
+from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, per_config_name
 from disco_snake.settings import JsonConfig
 
 AI_DATA_DIR = PACKAGE_ROOT.parent.joinpath("data", "ai")

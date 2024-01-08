@@ -12,7 +12,6 @@ from disnake import Attachment
 from PIL import Image
 from pydantic import BaseModel, Field
 from requests import get as requests_get
-from sqlalchemy import select
 
 from ai.settings import VisionConfig
 from ai.types import ImageOrBytes, MessageChannel, TimestampStore

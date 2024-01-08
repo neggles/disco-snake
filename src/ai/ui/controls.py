@@ -1,9 +1,7 @@
 import logging
-from lib2to3.fixes.fix_idioms import TYPE
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Callable, List
 
 from disnake import Colour, Embed, Member, OptionChoice, User
-from disnake.ui import Modal, StringSelect, TextInput, View
 from pydantic import BaseModel
 from shimeji.model_provider import OobaGenRequest
 
