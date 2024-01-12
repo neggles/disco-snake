@@ -3,7 +3,7 @@ from copy import deepcopy
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterator, Optional, Tuple, Union, list
+from typing import Iterator, Optional, Tuple, Union
 
 from pydantic import BaseModel, BaseSettings, Field
 
