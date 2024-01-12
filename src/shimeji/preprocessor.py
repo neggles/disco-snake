@@ -1,11 +1,9 @@
-from typing import List
-
+from shimeji.tokenizers import PreTrainedTokenizerFast
 from shimeji.util import (
-    TRIM_DIR_TOP,
     INSERTION_TYPE_NEWLINE,
+    TRIM_DIR_TOP,
     ContextEntry,
 )
-from shimeji.tokenizers import PreTrainedTokenizerFast
 
 
 class Preprocessor:
@@ -37,7 +35,7 @@ class ContextPreprocessor(Preprocessor):
         """
         self.token_budget = token_budget
         self.tokenizer = tokenizer
-        self.entries: List[ContextEntry] = []
+        self.entries: list[ContextEntry] = []
 
     def add_entry(self, entry):
         """Add a ContextEntry to the ContextPreprocessor.
@@ -113,7 +111,7 @@ class ContextPreprocessor(Preprocessor):
         """
         # sort self.entries by insertion_order
         self.entries.sort(key=lambda x: x.insertion_order, reverse=True)
-        activated_entries: List[ContextEntry] = []
+        activated_entries: list[ContextEntry] = []
 
         # Get entries activated by default
         for i in self.entries:

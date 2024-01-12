@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Dict, Final, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql as pg
-from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
-from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.orm.collections import attribute_keyed_dict
 
-from db.base import Base, CreateTimestamp, Timestamp, UpdateTimestamp
+from db.base import Base, Timestamp, UpdateTimestamp
 from db.discord.types import DiscordSnowflake
 
 if TYPE_CHECKING:
@@ -37,9 +33,9 @@ if False:
         created_at: Mapped[Timestamp]
         nsfw_level: Mapped[NSFWLevel] = mapped_column(sa.Enum(NSFWLevel), nullable=False)
 
-        guild_member_associations: Mapped[List[GuildMemberAssociation]] = relationship()
+        guild_member_associations: Mapped[list[GuildMemberAssociation]] = relationship()
 
-        guild_member_associations: Mapped[Dict[int, GuildMemberAssociation]] = relationship(
+        guild_member_associations: Mapped[dict[int, GuildMemberAssociation]] = relationship(
             back_populates="guild",
             collection_class=attribute_keyed_dict("user_id"),
             cascade="all, delete-orphan",

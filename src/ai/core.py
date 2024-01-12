@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Optional, Set, Tuple, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -117,7 +117,7 @@ def re_match_lower(match: re.Match):
     return match.group(1).lower()
 
 
-def available_params(ctx: ApplicationCommandInteraction) -> List[str]:
+def available_params(ctx: ApplicationCommandInteraction) -> list[str]:
     return [param.name for param in settable_params]
 
 
@@ -150,13 +150,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.prefix_bot: str = self.prompt.prefix_bot
         self.prefix_sep: str = self.prompt.prefix_sep
 
-        self.idle_channels: List[int] = self.params.get_idle_channels()
+        self.idle_channels: list[int] = self.params.get_idle_channels()
         self.autoresponse: bool = self.params.autoresponse
         self.context_size: int = self.params.context_size
         self.context_messages: int = self.params.context_messages
         self.idle_enable: bool = self.params.idle_enable
         self.logging_channel_id: int = self.params.logging_channel_id
-        self.nicknames: List[str] = self.params.nicknames
+        self.nicknames: list[str] = self.params.nicknames
         self.debug: bool = self.params.debug
         self.max_retries = self.params.max_retries
         self.ctxbreak = self.params.ctxbreak
@@ -165,7 +165,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.lm_lock = Lock()  # used to stop multiple responses from happening at once
 
         self.guilds: GuildSettingsList = self.params.guilds
-        self.dm_user_ids: List[int] = self.params.dm_user_ids
+        self.dm_user_ids: list[int] = self.params.dm_user_ids
         self.dm_user_ids.extend(self.bot.config.admin_ids)
         self.tos_reject_ids: Set[int] = set()
 
@@ -176,7 +176,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.logging_channel: Optional[TextChannel] = None
         self.tokenizer_type = self.provider_config.modeltype
         self.tokenizer: PreTrainedTokenizerBase = None
-        self.bad_words: List[str] = self.config.bad_words
+        self.bad_words: list[str] = self.config.bad_words
 
         # database client (async init)
         self.db_client: SessionType = Session
@@ -193,11 +193,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.debug_dir: Path = AI_LOG_DIR.joinpath("ai")
         self.debug_dir.mkdir(parents=True, exist_ok=True)
         self.debug_dir.joinpath("dm").mkdir(parents=True, exist_ok=True)
-        self._last_debug_log: Dict[str, Any] = {}
+        self._last_debug_log: dict[str, Any] = {}
 
         # for the MentionMixin
-        self._mention_cache: Dict[int, Any] = {}
-        self._emoji_cache: Dict[int, Any] = {}
+        self._mention_cache: dict[int, Any] = {}
+        self._emoji_cache: dict[int, Any] = {}
 
     # Getters for config object sub-properties
     @property
@@ -209,11 +209,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return self.provider_config.gensettings
 
     @property
-    def siblings(self) -> List[NamedSnowflake]:
+    def siblings(self) -> list[NamedSnowflake]:
         return self.params.siblings
 
     @property
-    def sibling_ids(self) -> List[int]:
+    def sibling_ids(self) -> list[int]:
         return self.params.siblings.ids
 
     async def cog_load(self) -> None:
@@ -361,7 +361,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             return  # ignore empty messages
 
         trigger: Optional[str] = None  # response trigger reason (tfw no StrEnum in 3.10)
-        conversation: Optional[List[str]] = None  # message's conversation context
+        conversation: Optional[list[str]] = None  # message's conversation context
         append = None  # optional masked message to append to the response
 
         try:
@@ -454,7 +454,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         guild_settings: Optional[GuildSettings] = None,
         limit: int = 50,
         as_list: bool = True,
-    ) -> Union[str, List[str]]:
+    ) -> Union[str, list[str]]:
         messages = await message.channel.history(limit=limit, before=message).flatten()
         messages.insert(0, message)  # add the message that triggered the response
 
@@ -556,26 +556,19 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return chain if as_list is True else ("\n".join(chain))
 
     # assemble a prompt/context for the model
-    async def process_context(self, conversation: List[str], message: Message):
+    async def process_context(self, conversation: list[str], message: Message):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
         logger.debug(f"building context from {len(conversation)} messages")
 
         if self.prompt.instruct is True:
-            post_instruct = conversation[-1:]
+            post_instruct = conversation.pop(-1) if self.prompt.inject_early else ""
             conversation = "\n".join(
                 [
-                    "\n".join(conversation[:-1]),
+                    "\n".join(conversation),
                     "\n" + self.prompt.model.full.rstrip(),
                     "\n".join(post_instruct).replace(self.prefix_user, "").lstrip(),
                 ]
             )
-            # conversation = "\n".join(
-            #     [
-            #         "\n".join(conversation),
-            #         "\n" + self.prompt.model.full.rstrip(),
-            #     ]
-            # )
-
         else:
             conversation = "\n".join(conversation)
 
@@ -617,13 +610,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     # actual response logic
     async def do_response(
         self,
-        conversation: List[str],
+        conversation: list[str],
         message: Message,
         trigger: Optional[str] = None,
         append: Optional[str] = None,
     ) -> str:
         async with message.channel.typing():
-            debug_data: Dict[str, Any] = {}
+            debug_data: dict[str, Any] = {}
 
             response = ""
             response_image = None
@@ -935,7 +928,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     # search for bad words in a message
     def find_bad_words(self, input: str) -> str:
-        found_words: List[str] = []
+        found_words: list[str] = []
         input_words: str = input.split()
 
         for word in input_words:

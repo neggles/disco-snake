@@ -3,7 +3,7 @@ from copy import deepcopy
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple, Union
+from typing import Iterator, Optional, Tuple, Union, list
 
 from pydantic import BaseModel, BaseSettings, Field
 
@@ -60,7 +60,7 @@ class SnowflakeList(BaseModel):
         return self.__root__[key]
 
     @property
-    def ids(self) -> List[int]:
+    def ids(self) -> list[int]:
         return [x.id for x in self.__root__]
 
     def get_id(self, id: int) -> Optional[NamedSnowflake]:
@@ -77,11 +77,11 @@ class PermissionList(BaseModel):
     roles: SnowflakeList = Field([])
 
     @property
-    def user_ids(self) -> List[int]:
+    def user_ids(self) -> list[int]:
         return [x.id for x in self.users]
 
     @property
-    def role_ids(self) -> List[int]:
+    def role_ids(self) -> list[int]:
         return [x.id for x in self.roles]
 
 
@@ -105,7 +105,7 @@ class GuildSettings(NamedSnowflake):
     mention_role: Optional[int] = None
     idle_enable: bool = False
     idle_interval: int = Field(300)
-    channels: List[ChannelSettings] = Field([])
+    channels: list[ChannelSettings] = Field([])
 
     def channel_enabled(self, channel_id: int) -> bool:
         """
@@ -144,7 +144,7 @@ class GuildSettingsList(BaseModel):
         return self.__root__[key]
 
     @property
-    def guild_ids(self) -> List[int]:
+    def guild_ids(self) -> list[int]:
         return [x.id for x in self]
 
     def get_id(self, guild_id: int) -> Optional[GuildSettings]:
@@ -158,7 +158,7 @@ class GuildSettingsList(BaseModel):
 class BotParameters(BaseModel):
     autoresponse: bool = False
     idle_enable: bool = False
-    nicknames: List[str] = Field([])
+    nicknames: list[str] = Field([])
     context_size: int = 1024
     context_messages: int = 50
     logging_channel_id: Optional[int] = None
@@ -171,21 +171,21 @@ class BotParameters(BaseModel):
     siblings: SnowflakeList = Field(default_factory=SnowflakeList)
 
     @property
-    def guild_ids(self) -> List[int]:
+    def guild_ids(self) -> list[int]:
         return self.guilds.guild_ids
 
     @property
-    def sibling_ids(self) -> List[int]:
+    def sibling_ids(self) -> list[int]:
         return self.siblings.ids
 
     @property
-    def dm_user_ids(self) -> List[int]:
+    def dm_user_ids(self) -> list[int]:
         return self.dm_users.ids
 
     def get_guild_settings(self, guild_id: int) -> Optional[GuildSettings]:
         return self.guilds.get_id(guild_id)
 
-    def get_idle_channels(self) -> List[int]:
+    def get_idle_channels(self) -> list[int]:
         return [
             channel
             for guild in self.guilds
@@ -197,7 +197,7 @@ class BotParameters(BaseModel):
 
 class PromptElement(BaseModel):
     prefix: str = Field(None)
-    prompt: Union[str, List[str]] = Field(...)
+    prompt: Union[str, list[str]] = Field(...)
     suffix: str = Field(None)
     concat: str = Field(" ")
 
@@ -212,8 +212,9 @@ class PromptElement(BaseModel):
 
 
 class Prompt(BaseModel):
-    instruct: Optional[bool] = True
-    with_date: Optional[bool] = False
+    instruct: bool = Field(True)
+    inject_early: bool = Field(False)
+    with_date: bool = Field(False)
     character: PromptElement = Field(...)
     system: PromptElement = Field(...)
     model: PromptElement = Field(...)
@@ -266,8 +267,8 @@ class AiSettings(BaseSettings):
     model_provider: LMApiConfig
     gradio: GradioConfig
     vision: Optional[VisionConfig] = None
-    strip: List[str] = Field([])
-    bad_words: List[str] = Field([])
+    strip: list[str] = Field([])
+    bad_words: list[str] = Field([])
 
     class Config(JsonConfig):
         json_config_path = AI_DATA_DIR.joinpath("config.json")
@@ -354,9 +355,9 @@ class ImagenApiParams(BaseModel):
 
 
 class ImagenLMPrompt(BaseModel):
-    tags: List[str] = Field(...)
-    header: List[str] = Field(...)
-    trailer: List[str] = Field(...)
+    tags: list[str] = Field(...)
+    header: list[str] = Field(...)
+    trailer: list[str] = Field(...)
     gensettings: OobaGenRequest = Field(...)
 
     def __post_init__(self):
@@ -394,10 +395,10 @@ class ImagenSDPrompt(BaseModel):
     lm_weight: float = 1.15
     tag_sep: str = ","
     word_sep: str = " "
-    leading: List[str] = Field(...)
-    trailing: List[str] = Field(...)
-    negative: List[str] = Field(...)
-    banned_tags: List[str] = Field(...)
+    leading: list[str] = Field(...)
+    trailing: list[str] = Field(...)
+    negative: list[str] = Field(...)
+    banned_tags: list[str] = Field(...)
 
     def wrap_prompt(self, prompt: str | list[str]) -> str:
         prompt = prompt if isinstance(prompt, list) else [prompt]

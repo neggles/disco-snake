@@ -1,14 +1,14 @@
 from collections import OrderedDict
 from datetime import datetime
 from time import monotonic
-from typing import Any, List, Optional, TypeAlias, Union
+from typing import Any, Optional, TypeAlias, Union
 
 from cachetools import TTLCache
 from disnake import DMChannel, GroupChannel, Member, TextChannel, Thread, User
 from PIL.Image import Image
 from pydantic import BaseModel, Field
 
-ListOfUsers: TypeAlias = Union[List[Union[User, Member]], List[User], List[Member]]
+ListOfUsers: TypeAlias = Union[list[Union[User, Member]], list[User], list[Member]]
 
 MessageChannel: TypeAlias = Union[TextChannel, DMChannel, GroupChannel, Thread]
 
@@ -51,7 +51,7 @@ class AiMessageData(BaseModel):
     author_name: str = Field(...)
     trigger: str = Field("Unknown")
     content: str = Field(...)
-    conversation: List[str] = Field(...)
+    conversation: list[str] = Field(...)
 
 
 class AiResponseLog(BaseModel):

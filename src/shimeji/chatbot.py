@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 
 from shimeji.model_provider import ModelProvider
 from shimeji.postprocessor import Postprocessor
@@ -10,8 +10,8 @@ class ChatBot:
         self,
         name: str,
         model_provider: ModelProvider,
-        preprocessors: List[Preprocessor | None] = [],
-        postprocessors: List[Postprocessor | None] = [],
+        preprocessors: list[Preprocessor | None] = [],
+        postprocessors: list[Postprocessor | None] = [],
         **kwargs,
     ):
         """Constructor for ChatBot.
@@ -25,10 +25,10 @@ class ChatBot:
         self.name = name
         self.model_provider: ModelProvider = model_provider
 
-        self.preprocessors: List[Preprocessor] = preprocessors
-        self.postprocessors: List[Postprocessor] = postprocessors
+        self.preprocessors: list[Preprocessor] = preprocessors
+        self.postprocessors: list[Postprocessor] = postprocessors
 
-        self.conversation_chain: List[str] = []
+        self.conversation_chain: list[str] = []
 
     def should_respond(self, text, push_chain):
         """Determine if the chatbot should respond to the given text or conversation chain.

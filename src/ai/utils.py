@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 import Levenshtein as lev
@@ -31,7 +31,7 @@ def shorten_spaces(text: str) -> str:
     return re_spaces.sub(" ", text)
 
 
-def anti_spam(messages: Union[List[Message], Message], threshold=0.8) -> Tuple[List[Message], int]:
+def anti_spam(messages: Union[list[Message], Message], threshold=0.8) -> Tuple[list[Message], int]:
     # Put messages in a list if only one message is passed
     if not isinstance(messages, list):
         messages = [messages]
@@ -82,7 +82,7 @@ class MentionMixin:
 
 def _stringify_mentions(
     bot: DiscoSnake, text: str, guild: Optional[Guild] = None
-) -> Tuple[str, Dict[str, str]]:
+) -> Tuple[str, dict[str, str]]:
     mentions = {}
     for mention in re_mention.finditer(text):
         user_mention = f"{mention.group(0)}"
@@ -96,7 +96,7 @@ def _stringify_mentions(
     return text, mentions
 
 
-def _restore_mentions(text: str, mentions: Dict[str, str]) -> str:
+def _restore_mentions(text: str, mentions: dict[str, str]) -> str:
     for name_string, user_mention in mentions.items():
         if name_string == "@deleted-user":
             continue  # skip deleted users
@@ -105,7 +105,7 @@ def _restore_mentions(text: str, mentions: Dict[str, str]) -> str:
     return text
 
 
-def _stringify_emoji(text: str) -> Tuple[str, Dict[str, str]]:
+def _stringify_emoji(text: str) -> Tuple[str, dict[str, str]]:
     emojis = {}
     for match in re_emoji.finditer(text):
         emoji_tag = f"{match.group(0)}"
@@ -115,7 +115,7 @@ def _stringify_emoji(text: str) -> Tuple[str, Dict[str, str]]:
     return text, emojis
 
 
-def _restore_emoji(text: str, emojis: Dict[str, str]) -> str:
+def _restore_emoji(text: str, emojis: dict[str, str]) -> str:
     for emoji_name, emoji_tag in emojis.items():
         # restore emoji from LRU dict
         text = text.replace(emoji_name, emoji_tag)
@@ -247,7 +247,7 @@ def get_prompt_datetime(tz: Union[str, ZoneInfo] = ZoneInfo("Asia/Tokyo"), with_
     return datetime.now(tz=tz).strftime(fmt_string)
 
 
-def any_in_text(strings: List[str], text: str) -> bool:
+def any_in_text(strings: list[str], text: str) -> bool:
     """Returns True if any of the strings are in the text"""
     return any([s in text for s in strings])
 
@@ -259,7 +259,7 @@ def member_in_role(member: Member, role: Union[Role, int]) -> bool:
     return role in [x.id for x in member.roles]
 
 
-def member_in_any_role(member: Member, roles: List[Union[Role, int]]) -> bool:
+def member_in_any_role(member: Member, roles: list[Union[Role, int]]) -> bool:
     """Returns True if the user has any of the roles"""
     for role in roles:
         if member_in_role(member, role):

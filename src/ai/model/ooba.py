@@ -1,7 +1,7 @@
 import copy
 import json
 import logging
-from typing import Any, List, Mapping, Optional
+from typing import Any, Mapping, Optional, list
 
 import aiohttp
 import requests
@@ -41,7 +41,7 @@ class TextGenLLM(LLM):
     truncation_length: int = 2048
     ban_eos_token: bool = False
     skip_special_tokens: bool = True
-    stopping_strings: List[str] = []
+    stopping_strings: list[str] = []
 
     class Config:
         """Configuration for this pydantic object."""
@@ -101,7 +101,7 @@ class TextGenLLM(LLM):
     def _call(
         self,
         prompt: str,
-        stop: Optional[List[str]] = None,
+        stop: Optional[list[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
     ) -> str:
         """Call text-generation-webui's synchroneous API.
@@ -109,7 +109,7 @@ class TextGenLLM(LLM):
         :param prompt: Prompt to pass to the API.
         :type prompt: str
         :param stop: Optional list of stopping strings, defaults to None
-        :type stop: Optional[List[str]], optional
+        :type stop: Optional[list[str]], optional
         :return: The generated response.
         :rtype: str
         """

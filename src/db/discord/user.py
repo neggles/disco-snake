@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Dict, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 import disnake
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
-from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
-from sqlalchemy.orm.collections import attribute_keyed_dict
 
 from db.base import Base, CreateTimestamp, Timestamp, UpdateTimestamp
 from db.discord import DiscordName, DiscordSnowflake
@@ -64,12 +61,12 @@ class DiscordUser(Base):
         sa.select(BlacklistEntry.user_id).where(BlacklistEntry.user_id == id).exists()
     )
 
-    # guild_member_associations: Mapped[Dict[int, GuildMemberAssociation]] = relationship(
+    # guild_member_associations: Mapped[dict[int, GuildMemberAssociation]] = relationship(
     #     back_populates="member",
     #     collection_class=attribute_keyed_dict("guild_id"),
     #     cascade="all, delete-orphan",
     # )
-    # guilds: AssociationProxy[Dict[int, DiscordGuild]] = association_proxy(
+    # guilds: AssociationProxy[dict[int, DiscordGuild]] = association_proxy(
     #     "guild_member_associations",
     #     "guild",
     #     creator=lambda guild: GuildMemberAssociation(guild=guild),

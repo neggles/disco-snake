@@ -2,7 +2,7 @@ import asyncio
 import logging
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 import gradio as gr
 from gradio.themes.utils import colors
@@ -53,7 +53,7 @@ class GradioUi:
             css=self.css,
         )
 
-        self.dynamic_elements: List[gr.components.Component] = []
+        self.dynamic_elements: list[gr.components.Component] = []
 
         # Last text prompts
         self.lm_last_prompt = ""

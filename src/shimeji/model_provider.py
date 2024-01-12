@@ -2,7 +2,7 @@ import copy
 import logging
 from abc import ABC, abstractmethod
 from os import PathLike
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import aiohttp
 import requests
@@ -29,7 +29,7 @@ class ModelGenArgs(BaseModel):
     truncation_length: Optional[int] = None
     ban_eos_token: Optional[bool] = None
     skip_special_tokens: Optional[bool] = None
-    stopping_strings: Optional[List[str]] = None
+    stopping_strings: Optional[list[str]] = None
 
 
 class ModelSampleArgs(BaseModel):
@@ -42,7 +42,7 @@ class ModelSampleArgs(BaseModel):
     rep_p: Optional[float] = None
     rep_p_range: Optional[int] = None
     rep_p_slope: Optional[float] = None
-    bad_words: Optional[List[str]] = None
+    bad_words: Optional[list[str]] = None
 
     do_sample: Optional[bool] = None
     penalty_alpha: Optional[float] = None
@@ -65,8 +65,16 @@ class ModelGenRequest(BaseModel):
 
 
 class OobaGenRequest(BaseModel):
-    prompt: str = ""
-    max_new_tokens: int = 250
+    prompt: str | list[str] = Field("")
+    best_of: int = Field(1)
+    echo: bool = Field(False)
+
+    frequency_penalty: float = Field(0.0)
+    logit_bias: Optional[dict[str, float]] = Field(None)
+    logprobs: Optional[int] = Field(None)
+    max_tokens: Optional[int] = Field(250)
+    n: Optional[int] = Field(1)
+
     do_sample: bool = True
     temperature: float = 0.7
     top_p: float = 1.0
@@ -89,7 +97,13 @@ class OobaGenRequest(BaseModel):
     truncation_length: int = 2048
     ban_eos_token: bool = False
     skip_special_tokens: bool = True
-    stopping_strings: List[str] = []
+    stopping_strings: list[str] = []
+
+    stop: Optional[str | list[str]] = Field(None)
+
+    mirostat_mode: int = Field(0)
+    mirostat_tau: float = Field(5.0)
+    mirostat_eta: float = Field(0.1)
 
     @classmethod
     def from_generic(cls, req: ModelGenRequest) -> "OobaGenRequest":

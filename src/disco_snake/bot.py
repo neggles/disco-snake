@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from functools import partial as partial_func
 from pathlib import Path
 from traceback import print_exception
-from typing import List, Optional
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from disnake import (
@@ -171,7 +171,7 @@ class DiscoSnake(commands.Bot):
         with guild_data_path.open("w", encoding="utf-8") as f:
             json.dump(guild_data, f, skipkeys=True, indent=2, default=str)
 
-    def available_cogs(self) -> List[str]:
+    def available_cogs(self) -> list[str]:
         cogs = [
             p.stem
             for p in self.cogdir_path.iterdir()
@@ -359,7 +359,7 @@ class DiscoSnake(commands.Bot):
     async def user_save_task(self) -> None:
         async with Session() as session:
             async with session.begin():
-                users: List[DiscordUser] = []
+                users: list[DiscordUser] = []
 
                 user: Member
                 for user in self.get_all_members():

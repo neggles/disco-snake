@@ -1,8 +1,9 @@
 import logging
-from typing import TYPE_CHECKING, Callable, List
+from typing import TYPE_CHECKING, Callable
 
 from disnake import Colour, Embed, Member, OptionChoice, User
 from pydantic import BaseModel
+
 from shimeji.model_provider import OobaGenRequest
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ class AiParam(BaseModel):
     kind: Callable
 
 
-settable_params: List[AiParam] = [
+settable_params: list[AiParam] = [
     AiParam(name="Temperature", id="temperature", kind=float),
     AiParam(name="Top P", id="top_p", kind=float),
     AiParam(name="Top K", id="top_k", kind=float),

@@ -1,8 +1,7 @@
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql as pg
-from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym_for
+from sqlalchemy.orm import mapped_column
 
 ## Annotated types for Discord objects
 DiscordSnowflake = Annotated[

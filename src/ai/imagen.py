@@ -8,7 +8,7 @@ from io import BytesIO
 from math import ceil, sqrt
 from pathlib import Path
 from random import choice, randint
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -142,10 +142,10 @@ class Imagen:
         except Exception as e:
             raise Exception(f"Could not generate response. Error: {await resp.text()}") from e
 
-    def get_lm_stopping_strings(self) -> List[str]:
+    def get_lm_stopping_strings(self) -> list[str]:
         return self.lm_prompt.gensettings.stopping_strings
 
-    def build_request(self, lm_tag_string: str, user_prompt: str) -> Dict[str, Any]:
+    def build_request(self, lm_tag_string: str, user_prompt: str) -> dict[str, Any]:
         user_prompt = user_prompt.lower()
         lm_tag_string = lm_tag_string.lower()
         prompt_tags = [get_time_tag()]
@@ -205,7 +205,7 @@ class Imagen:
             width = height = ceil_to_interval(sqrt(pixels))
 
         # Build the request and return it
-        gen_request: Dict[str, Any] = self.sd_api_params.get_request(
+        gen_request: dict[str, Any] = self.sd_api_params.get_request(
             prompt=self.sd_prompt.wrap_prompt(prompt_tags),
             negative=self.sd_prompt.get_negative(join=True),
             width=width,
@@ -214,7 +214,7 @@ class Imagen:
         logger.debug(f"Generated request: {gen_request}")
         return gen_request
 
-    async def submit_request(self, request: Dict[str, Any]) -> Path:
+    async def submit_request(self, request: dict[str, Any]) -> Path:
         # make a tag for the filename
         req_string: str = request["prompt"][:50]
         req_string = req_string.replace(" ", "-").replace(",", "")  # remove spaces and commas

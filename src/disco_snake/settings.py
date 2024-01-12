@@ -3,7 +3,7 @@ import logging
 from functools import lru_cache
 from os import PathLike
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseConfig, BaseSettings, Field, PostgresDsn, validator
@@ -28,7 +28,7 @@ class JsonSettingsSource:
             Path(json_config_path) if json_config_path is not None else None
         )
 
-    def __call__(self, settings: BaseSettings) -> Dict[str, Any]:  # noqa C901
+    def __call__(self, settings: BaseSettings) -> dict[str, Any]:  # noqa C901
         classname = settings.__class__.__name__
         encoding = settings.__config__.env_file_encoding
         if self.json_config_path is None:
@@ -55,7 +55,7 @@ class JsonMultiSettingsSource:
         else:
             self.json_config_path = [Path(json_config_path)] if json_config_path is not None else []
 
-    def __call__(self, settings: BaseSettings) -> Dict[str, Any]:  # noqa C901
+    def __call__(self, settings: BaseSettings) -> dict[str, Any]:  # noqa C901
         classname = settings.__class__.__name__
         encoding = settings.__config__.env_file_encoding
         if len(self.json_config_path) == 0:
@@ -119,19 +119,19 @@ class BotSettings(BaseSettings):
     ai_conf_name: Optional[str] = Field(None)
 
     owner_id: int = Field(...)
-    admin_ids: List[int] = Field(..., unique_items=True)
-    retcon_ids: List[int] = Field([], unique_items=True)
+    admin_ids: list[int] = Field(..., unique_items=True)
+    retcon_ids: list[int] = Field([], unique_items=True)
     home_guild: int = Field(...)
     support_guild: int = Field(...)
     support_channel: int = Field(...)
 
     status_type: str = Field("playing")
-    statuses: List[str] = Field(["with your heart"])
+    statuses: list[str] = Field(["with your heart"])
     log_level: str = Field("INFO")
     debug: bool = Field(False)
     reload: bool = Field(False)
 
-    disable_cogs: List[str] = Field([])
+    disable_cogs: list[str] = Field([])
 
     @validator("timezone", pre=True, always=True)
     def validate_timezone(cls, v) -> ZoneInfo:

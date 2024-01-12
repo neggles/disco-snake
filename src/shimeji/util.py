@@ -1,5 +1,5 @@
 import re
-from typing import Any, List
+from typing import Any
 
 from shimeji.tokenizers import Llama, PreTrainedTokenizerFast
 
@@ -120,7 +120,7 @@ def trim_tokens(tokens, trim_dir, limit):
 class ContextEntry:
     def __init__(
         self,
-        keys: List[str] = [""],
+        keys: list[str] = [""],
         text: str = "",
         prefix: str = "",
         suffix: str = "",
