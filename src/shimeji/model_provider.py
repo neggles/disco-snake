@@ -2,7 +2,7 @@ import copy
 import logging
 from abc import ABC, abstractmethod
 from os import PathLike
-from typing import Optional, Union
+from typing import Optional
 
 import aiohttp
 import requests
@@ -15,126 +15,63 @@ from shimeji.tokenizers import Llama
 logger = logging.getLogger(__name__)
 
 
-class ModelGenArgs(BaseModel):
-    max_length: int = Field(256)
-    max_time: Optional[float] = None
-    min_length: Optional[int] = None
-    eos_token_id: Optional[int] = None
-    logprobs: Optional[int] = None
-    best_of: Optional[int] = None
-
-    # text-generation-webui specific
-    seed: Optional[int] = None
-    add_bos_token: Optional[bool] = None
-    truncation_length: Optional[int] = None
-    ban_eos_token: Optional[bool] = None
-    skip_special_tokens: Optional[bool] = None
-    stopping_strings: Optional[list[str]] = None
-
-
-class ModelSampleArgs(BaseModel):
-    temp: Optional[float] = None
-    top_p: Optional[float] = None
-    top_a: Optional[float] = None
-    top_k: Optional[int] = None
-    typical_p: Optional[float] = None
-    tfs: Optional[float] = None
-    rep_p: Optional[float] = None
-    rep_p_range: Optional[int] = None
-    rep_p_slope: Optional[float] = None
-    bad_words: Optional[list[str]] = None
-
-    do_sample: Optional[bool] = None
-    penalty_alpha: Optional[float] = None
-
-    # text-generation-webui specific (mostly contrastive search)
-    no_repeat_ngram_size: Optional[int] = None
-    num_beams: Optional[int] = None
-    penalty_alpha: Optional[float] = None
-    length_penalty: Optional[float] = None
-    early_stopping: Optional[bool] = None
-    encoder_rep_p: Optional[float] = None
-
-
-class ModelGenRequest(BaseModel):
-    model: Optional[str] = Field(None)
-    prompt: str = Field("")
-    softprompt: Optional[str] = Field(None)
-    sample_args: ModelSampleArgs = Field(default_factory=ModelSampleArgs)
-    gen_args: ModelGenArgs = Field(default_factory=ModelGenArgs)
-
-
-class OobaGenRequest(BaseModel):
-    prompt: str | list[str] = Field("")
-    best_of: int = Field(1)
-    echo: bool = Field(False)
-
-    frequency_penalty: float = Field(0.0)
-    logit_bias: Optional[dict[str, float]] = Field(None)
-    logprobs: Optional[int] = Field(None)
-    max_tokens: Optional[int] = Field(250)
-    n: Optional[int] = Field(1)
-
+class OobaGenParams(BaseModel):
+    preset: str | None = Field(None, description="name of a file under presets/ to load settings from")
+    min_p: float = 0
+    dynamic_temperature: bool = False
+    dynatemp_low: Optional[float] = None
+    dynatemp_high: Optional[float] = None
+    dynatemp_exponent: Optional[float] = None
+    top_k: int = 0
+    repetition_penalty: float = 1
+    repetition_penalty_range: int = 1024
+    typical_p: float = 1
+    tfs: float = 1
+    top_a: float = 0
+    epsilon_cutoff: float = 0
+    eta_cutoff: float = 0
+    guidance_scale: float = 1
+    negative_prompt: str = ""
+    penalty_alpha: float = 0
+    mirostat_mode: int = 0
+    mirostat_tau: float = 5
+    mirostat_eta: float = 0.1
+    temperature_last: bool = False
     do_sample: bool = True
-    temperature: float = 0.7
-    top_p: float = 1.0
-    typical_p: float = 1.0
-    epsilon_cutoff: float = 0.0
-    eta_cutoff: float = 0.0
-    repetition_penalty: float = 1.1
-    encoder_repetition_penalty: float = 1.0
-    top_k: int = 40
-    top_a: float = 0.0
-    tfs: float = 1.0
-    min_length: int = 0
-    no_repeat_ngram_size: int = 0
-    num_beams: int = 1
-    penalty_alpha: float = 0.0
-    length_penalty: float = 1.0
-    early_stopping: bool = False
     seed: int = -1
-    add_bos_token: bool = True
-    truncation_length: int = 2048
+    encoder_repetition_penalty: float = 1
+    no_repeat_ngram_size: int = 0
+    min_length: int = 0
+    num_beams: int = 1
+    length_penalty: float = 1
+    early_stopping: bool = False
+    truncation_length: int = 0
+    max_tokens_second: int = 0
+    custom_token_bans: str = ""
+    auto_max_new_tokens: bool = False
     ban_eos_token: bool = False
+    add_bos_token: bool = True
     skip_special_tokens: bool = True
-    stopping_strings: list[str] = []
+    grammar_string: str = ""
 
-    stop: Optional[str | list[str]] = Field(None)
 
-    mirostat_mode: int = Field(0)
-    mirostat_tau: float = Field(5.0)
-    mirostat_eta: float = Field(0.1)
+class OobaCompletionParams(BaseModel):
+    prompt: str | list[str]
+    echo: bool = False
+    stream: bool = False
+    frequency_penalty: Optional[float] = 0
+    logit_bias: Optional[dict] = None
+    logprobs: Optional[int] = None
+    max_tokens: Optional[int] = 16
+    presence_penalty: Optional[float] = 0
+    stop: Optional[str | list[str]] = None
+    suffix: Optional[str] = None
+    temperature: Optional[float] = 1
+    top_p: Optional[float] = 1
 
-    @classmethod
-    def from_generic(cls, req: ModelGenRequest) -> "OobaGenRequest":
-        """
-        Converts a ModelGenRequest to an OobaGenRequest since the format is quite a bit different.
-        """
-        ret = {
-            "prompt": req.prompt,
-            "max_new_tokens": req.gen_args.max_length,
-            "do_sample": req.sample_args.do_sample,
-            "temperature": req.sample_args.temp,
-            "top_p": req.sample_args.top_p,
-            "typical_p": req.sample_args.typical_p,
-            "repetition_penalty": req.sample_args.rep_p,
-            "encoder_repetition_penalty": req.sample_args.encoder_rep_p,
-            "top_k": req.sample_args.top_k,
-            "no_repeat_ngram_size": req.sample_args.no_repeat_ngram_size,
-            "num_beams": req.sample_args.num_beams,
-            "penalty_alpha": req.sample_args.penalty_alpha,
-            "length_penalty": req.sample_args.length_penalty,
-            "early_stopping": req.sample_args.early_stopping,
-            "min_length": req.gen_args.min_length,
-            "seed": req.gen_args.seed,
-            "add_bos_token": req.gen_args.add_bos_token,
-            "truncation_length": req.gen_args.truncation_length,
-            "ban_eos_token": req.gen_args.ban_eos_token,
-            "skip_special_tokens": req.gen_args.skip_special_tokens,
-            "stopping_strings": req.gen_args.stopping_strings,
-        }
-        ret = OobaGenRequest.parse_obj(ret)
-        return ret
+
+class OobaGenRequest(OobaGenParams, OobaCompletionParams):
+    pass
 
 
 class ModelProvider(ABC):
@@ -264,20 +201,10 @@ class OobaModel(ModelProvider):
             return "choices"
         return "results"
 
-    def generate(self, args: Union[ModelGenRequest, OobaGenRequest]) -> str:
-        """
-        Generate a response from the ModelProvider's endpoint.
-
-        :param args: The arguments to pass to the endpoint.
-        :type args: dict
-        :raises NotImplementedError: If the generate method is not implemented.
-        """
-        if not isinstance(args, OobaGenRequest):
-            args: OobaGenRequest = OobaGenRequest.from_generic(args)
-
-        payload = args.dict()
-        if self.api_v2:
-            payload["max_tokens"] = payload.pop("max_new_tokens")
+    def generate(self, args: OobaGenRequest) -> str:
+        payload = args.dict(exclude_none=True)
+        if self.api_v2 and "max_tokens" not in payload:
+            payload["max_tokens"] = payload.pop("max_new_tokens", 1024)
 
         r = None
         try:
@@ -295,20 +222,10 @@ class OobaModel(ModelProvider):
             err_resp = r.json() if hasattr(r, "json") else None
             raise Exception(f"Could not generate text with text-generation-webui. Error: {err_resp}")
 
-    async def generate_async(self, args: Union[ModelGenRequest, OobaGenRequest]) -> str:
-        """
-        Generate a response from the ModelProvider's endpoint asynchronously.
-
-        :param args: The arguments to pass to the endpoint.
-        :type args: dict
-        :raises NotImplementedError: If the generate method is not implemented.
-        """
-        if not isinstance(args, OobaGenRequest):
-            args: OobaGenRequest = OobaGenRequest.from_generic(args)
-
-        payload = args.dict()
-        if self.api_v2:
-            payload["max_tokens"] = payload.pop("max_new_tokens")
+    async def generate_async(self, args: OobaGenRequest) -> str:
+        payload = args.dict(exclude_none=True)
+        if self.api_v2 and "max_tokens" not in payload:
+            payload["max_tokens"] = payload.pop("max_new_tokens", 1024)
 
         err_resp = None
         try:
