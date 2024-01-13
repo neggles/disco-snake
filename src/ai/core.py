@@ -723,7 +723,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 response = self.fixup_bot_user_tokens(response, message).lstrip()
                 # Clean response - trim left whitespace and fix emojis and pings
                 response = self.restore_mentions_emoji(text=response, message=message)
-                response = response.rstrip("#}").lstrip("\"'")
+                response = response.rstrip("#}\"'").lstrip("\"'")
 
                 if append is not None and len(append.strip()) > 0:
                     response = f"{response} < {append.strip()} >"

@@ -218,7 +218,7 @@ class Prompt(BaseModel):
     character: PromptElement = Field(...)
     system: PromptElement = Field(...)
     model: PromptElement = Field(...)
-    prefix_bot: str = "\n"
+    prefix_bot: Optional[str] = None
     prefix_user: str = "\n"
     prefix_sep: str = "\n"
 
