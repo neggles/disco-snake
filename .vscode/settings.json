@@ -37,16 +37,16 @@
     },
 
     "[python]": {
+        "editor.wordBasedSuggestions": "off",
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "ms-python.black-formatter",
         "editor.codeActionsOnSave": {
-            "source.organizeImports": "explicit"
+            "source.organizeImports": "always"
         }
     },
-    "ruff.args": ["--line-length=110", "--extend-ignore=F401,F841,E501"],
+    "ruff.lint.args": ["--line-length=110", "--extend-ignore=F401,F841,E501"],
     "ruff.fixAll": true,
     "ruff.organizeImports": true,
-    "python.formatting.provider": "none",
     "black-formatter.args": ["--line-length=110"],
     "python.analysis.ignore": ["/usr/lib/python3.10"],
     "python.analysis.diagnosticMode": "openFilesOnly",
@@ -57,16 +57,6 @@
         "**/__pycache__",
         "**/.venv"
     ],
-    "python.linting.enabled": false,
-    "python.linting.flake8Enabled": false,
-    "python.linting.mypyEnabled": false,
-    "python.linting.pylintEnabled": false,
-    "python.linting.flake8Args": [
-        "--config=${workspaceFolder}/setup.cfg",
-        "--max-line-length=110"
-    ],
-    "autoDocstring.docstringFormat": "sphinx",
-    "autoDocstring.startOnNewLine": false,
 
     "[json]": {
         "editor.codeActionsOnSave": {
