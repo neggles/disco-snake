@@ -25,6 +25,7 @@ from disnake import (
     User,
 )
 from disnake.ext import commands, tasks
+from fastapi import HTTPException
 from Levenshtein import distance as lev_distance
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
@@ -51,7 +52,6 @@ from ai.types import LruDict
 from ai.ui import AiParam, AiStatusEmbed, set_choices, settable_params
 from ai.utils import (
     MentionMixin,
-    get_full_class_name,
     get_prompt_datetime,
     member_in_any_role,
 )
@@ -122,7 +122,7 @@ def available_params(ctx: ApplicationCommandInteraction) -> list[str]:
 
 
 def convert_param(ctx: ApplicationCommandInteraction, input: str) -> AiParam:
-    return next(iter([param for param in settable_params if param.name == input or param.id == input]))
+    return next((param for param in settable_params if param.name == input or param.id == input))
 
 
 class Ai(MentionMixin, commands.Cog, name=COG_UID):
@@ -398,30 +398,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         except Exception as e:
             logger.exception(e)
-            exc_class = get_full_class_name(e)
-            if exc_class == "HTTPException":
-                # don't bother, the backend is down
-                return
-
+            if isinstance(e, HTTPException):
+                return  # ignore HTTP errors
+            exc_class = e.__class__.__name__
             exc_desc = str(f"**``{exc_class}``**\n```{format_exc()}```")
-            error_file = self.debug_dir.joinpath(f"error-{datetime.now(timezone.utc)}.txt".replace(" ", ""))
-            error_file.write_text(exc_desc)
-
-            if len(exc_desc) < 2048:
-                embed = Embed(title="**Exception**", description=f"**``{exc_class}``**")
-                if self.logging_channel is not None:
-                    await self.logging_channel.send(embed=embed)
-                else:
-                    await message.channel.send(embed=embed, delete_after=60.0)
-            else:
-                embed = Embed(
-                    title="**Exception**",
-                    description="Exception too long for message, see attached file.",
-                )
-                if self.logging_channel is not None:
-                    await self.logging_channel.send(embed=embed, file=File(error_file))
-                else:
-                    await message.channel.send(embed=embed, file=File(error_file), delete_after=60.0)
+            err_filename = f"error-{datetime.now(timezone.utc)}.txt".replace(" ", "")
+            self.debug_dir.joinpath(err_filename).write_text(exc_desc)
 
     # retrieve the LM prompt and inject name, time, etc.
     def get_prompt(self, ctx: Optional[MessageInteraction] = None, include_model: bool = False) -> str:

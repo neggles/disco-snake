@@ -158,7 +158,7 @@ class BotParameters(BaseModel):
     autoresponse: bool = False
     idle_enable: bool = False
     nicknames: list[str] = Field([])
-    context_size: int = 1024
+    context_size: int = -1
     context_messages: int = 50
     logging_channel_id: Optional[int] = None
     debug: bool = False
