@@ -1,4 +1,8 @@
-from shimeji.tokenizers import PreTrainedTokenizerFast
+from abc import ABC, abstractmethod
+from typing import Optional
+
+from transformers.tokenization_utils import PreTrainedTokenizerBase
+
 from shimeji.util import (
     INSERTION_TYPE_NEWLINE,
     TRIM_DIR_TOP,
@@ -6,9 +10,10 @@ from shimeji.util import (
 )
 
 
-class Preprocessor:
+class Preprocessor(ABC):
     """Abstract class for preprocessors."""
 
+    @abstractmethod
     def __call__(self, context: str, is_respond: bool, name: str) -> str:
         """Process the given context before the ModelProvider is called.
 
@@ -27,7 +32,7 @@ class Preprocessor:
 class ContextPreprocessor(Preprocessor):
     """A Preprocessor that builds a context from a list of ContextEntry objects."""
 
-    def __init__(self, token_budget=1024, tokenizer: PreTrainedTokenizerFast = None):
+    def __init__(self, token_budget: int = 1024, tokenizer: PreTrainedTokenizerBase = None):
         """Initialize a ContextPreprocessor.
 
         :param token_budget: The maximum number of tokens that can be used in the context, defaults to 1024.
@@ -37,7 +42,7 @@ class ContextPreprocessor(Preprocessor):
         self.tokenizer = tokenizer
         self.entries: list[ContextEntry] = []
 
-    def add_entry(self, entry):
+    def add_entry(self, entry: ContextEntry):
         """Add a ContextEntry to the ContextPreprocessor.
 
         :param entry: The ContextEntry to add.
@@ -45,7 +50,7 @@ class ContextPreprocessor(Preprocessor):
         """
         self.entries.append(entry)
 
-    def del_entry(self, entry):
+    def del_entry(self, entry: ContextEntry):
         """Delete a ContextEntry from the ContextPreprocessor.
 
         :param entry: The ContextEntry to delete.
@@ -54,7 +59,7 @@ class ContextPreprocessor(Preprocessor):
         self.entries.remove(entry)
 
     # return true if key is found in an entry's text
-    def key_lookup(self, entry_a, entry_b):
+    def key_lookup(self, entry_a: ContextEntry, entry_b: ContextEntry):
         """Check if a ContextEntry's key is found in an entry's text.
 
         :param entry_a: The ContextEntry to check.
@@ -72,7 +77,7 @@ class ContextPreprocessor(Preprocessor):
         return False
 
     # recursive function that searches for other entries that are activated
-    def cascade_lookup(self, entry, nest=0):
+    def cascade_lookup(self, entry: ContextEntry, nest: Optional[int] = 0):
         """Search for other entries that are activated by a given entry.
 
         :param entry: The entry to recursively search for other entries in.
@@ -96,12 +101,12 @@ class ContextPreprocessor(Preprocessor):
         return cascaded_entries
 
     # handles cases where elements are added to the end of a list using list.insert
-    def ordinal_pos(self, position, length):
+    def ordinal_pos(self, position: int, length: int):
         if position < 0:
             return length + 1 + position
         return position
 
-    def context(self, budget=1024) -> str:
+    def context(self, budget: int = 1024) -> str:
         """Build the context from the ContextPreprocessor's entries.
 
         :param budget: The maximum number of tokens that can be used in the context, defaults to 1024.

@@ -1,7 +1,6 @@
 import logging
 from copy import deepcopy
 from enum import Enum
-from functools import lru_cache
 from pathlib import Path
 from typing import Iterator, Optional, Tuple, Union
 
@@ -274,7 +273,6 @@ class AiSettings(BaseSettings):
         json_config_path = AI_DATA_DIR.joinpath("config.json")
 
 
-@lru_cache(maxsize=2)
 def get_ai_settings(config_path: Optional[Path] = None) -> AiSettings:
     if config_path is None:
         config_path = AI_DATA_DIR.joinpath(per_config_name("config.json"))
@@ -439,7 +437,6 @@ class ImagenSettings(BaseSettings):
         json_config_path = AI_DATA_DIR.joinpath("imagen.json")
 
 
-@lru_cache(maxsize=2)
 def get_imagen_settings(config_path: Optional[Path] = None) -> ImagenSettings:
     if config_path is None:
         config_path = AI_DATA_DIR.joinpath(per_config_name("imagen.json"))

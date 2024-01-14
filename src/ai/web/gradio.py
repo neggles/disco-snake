@@ -365,13 +365,13 @@ class GradioUi:
                                     elem_id="min_length",
                                     info="Minimum generation length (tokens)",
                                 )
-                                max_new_tokens = gr.Slider(
-                                    value=self.lm_gensettings.max_new_tokens,
+                                max_tokens = gr.Slider(
+                                    value=self.lm_gensettings.max_tokens,
                                     minimum=0,
                                     maximum=2000,
                                     step=1,
-                                    label="max_new_tokens",
-                                    elem_id="max_new_tokens",
+                                    label="max_tokens",
+                                    elem_id="max_tokens",
                                     info="Maximum generation length (tokens)",
                                 )
                                 ban_eos_token = gr.Checkbox(
@@ -402,9 +402,7 @@ class GradioUi:
                                     info="Maximum length of the input to the model. For most models, this is 2048.",
                                 )
                                 min_length.input(fn=evt_set_param, inputs=min_length, api_name="min_length")
-                                max_new_tokens.input(
-                                    fn=evt_set_param, inputs=max_new_tokens, api_name="max_new_tokens"
-                                )
+                                max_tokens.input(fn=evt_set_param, inputs=max_tokens, api_name="max_tokens")
                                 ban_eos_token.input(
                                     fn=evt_set_param, inputs=ban_eos_token, api_name="ban_eos_token"
                                 )
@@ -421,7 +419,7 @@ class GradioUi:
                                 self.dynamic_elements.extend(
                                     [
                                         min_length,
-                                        max_new_tokens,
+                                        max_tokens,
                                         ban_eos_token,
                                         add_bos_token,
                                         skip_special_tokens,

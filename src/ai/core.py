@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Optional, Set, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -104,7 +104,7 @@ re_detect_url = re.compile(
     re.M + re.I,
 )
 
-# find consecutive (at least 2) optionally with spaces in between (blank lines)
+# find consecutive newlines (at least 2) optionally with spaces in between (blank lines)
 re_consecutive_newline = re.compile(r"(\n[\s\n]*\n\s*)", re.M + re.I)
 
 # capture mentions and emojis
@@ -139,35 +139,30 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         # Load config file
         self.config = get_ai_settings()
+        self.lm_lock = Lock()  # used to stop multiple responses from happening at once
 
         # Parse config file
         self.provider_config: LMApiConfig = self.config.model_provider
 
         # Load config params up into top level properties
         self.params: BotParameters = self.config.params
+        self.nicknames: list[str] = self.params.nicknames
+
         self.prompt: Prompt = self.config.prompt
+        self.max_retries = self.params.max_retries
+
         self.prefix_user: str = self.prompt.prefix_user
         self.prefix_bot: str = self.prompt.prefix_bot
         self.prefix_sep: str = self.prompt.prefix_sep
 
-        self.idle_channels: list[int] = self.params.get_idle_channels()
-        self.autoresponse: bool = self.params.autoresponse
-        self.context_size: int = self.params.context_size
-        self.context_messages: int = self.params.context_messages
         self.idle_enable: bool = self.params.idle_enable
-        self.logging_channel_id: int = self.params.logging_channel_id
-        self.nicknames: list[str] = self.params.nicknames
-        self.debug: bool = self.params.debug
-        self.max_retries = self.params.max_retries
+        self.idle_channels: list[int] = self.params.get_idle_channels()
+
         self.ctxbreak = self.params.ctxbreak
-
-        self.trigger_cache: LruDict = LruDict()
-        self.lm_lock = Lock()  # used to stop multiple responses from happening at once
-
         self.guilds: GuildSettingsList = self.params.guilds
         self.dm_user_ids: list[int] = self.params.dm_user_ids
         self.dm_user_ids.extend(self.bot.config.admin_ids)
-        self.tos_reject_ids: Set[int] = set()
+        self.tos_reject_ids: set[int] = set()
 
         # we will populate these later during async init
         self.model_provider: OobaModel = None
@@ -182,20 +177,21 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.db_client: SessionType = Session
         self.blacklist: Blacklist = Blacklist()
 
-        # selfietron
-        self.imagen = Imagen(cog=self)
-        # image caption engine
-        self.eyes = DiscoEyes(cog=self)
-        # gradio ui
-        self.webui = GradioUi(cog=self, config=self.config.gradio)
+        ## addon modules
+        self.imagen = Imagen(cog=self)  # selfietron
+        self.eyes = DiscoEyes(cog=self)  # image caption engine
+        self.webui = GradioUi(cog=self, config=self.config.gradio)  # gradio ui
 
-        # somewhere to put the last context we generated for debugging
+        # debugging related
+        self.debug: bool = self.params.debug
         self.debug_dir: Path = AI_LOG_DIR.joinpath("ai")
         self.debug_dir.mkdir(parents=True, exist_ok=True)
         self.debug_dir.joinpath("dm").mkdir(parents=True, exist_ok=True)
         self._last_debug_log: dict[str, Any] = {}
+        self.logging_channel_id: int = self.params.logging_channel_id
 
-        # for the MentionMixin
+        # cache dicts
+        self._trigger_cache: LruDict = LruDict(max_size=100)
         self._mention_cache: dict[int, Any] = {}
         self._emoji_cache: dict[int, Any] = {}
 
@@ -209,6 +205,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return self.provider_config.gensettings
 
     @property
+    def context_size(self) -> int:
+        if self.params.context_size < 0:
+            return self.lm_gensettings.truncation_length - self.lm_gensettings.max_tokens - 32
+        return self.params.context_size
+
+    @property
     def siblings(self) -> list[NamedSnowflake]:
         return self.params.siblings
 
@@ -220,21 +222,24 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.info("AI engine initializing, please wait...")
 
         logger.info("Initializing Tokenizer...")
-        tokenizer_dir = AI_DATA_DIR.joinpath("tokenizers/llama")
+        tokenizer_dir = AI_DATA_DIR.joinpath(f"tokenizers/{self.tokenizer_type}")
+
         if not tokenizer_dir.exists():
             tokenizer_dir.mkdir(parents=True, exist_ok=True)
         if not tokenizer_dir.joinpath("tokenizer.json").exists():
-            extract_tokenizer(tokenizer_dir)
+            extract_tokenizer(name=self.tokenizer_type, target_dir=tokenizer_dir)
         self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=tokenizer_dir,
             local_files_only=True,
+            trust_remote_code=True,
             use_fast=True,
         )
+
         logger.info("Initializing Model Provider...")
         if self.model_provider_name == "ooba":
             self.model_provider = OobaModel(
                 endpoint_url=self.provider_config.endpoint,
-                default_args=self.provider_config.gensettings,
+                default_args=self.lm_gensettings,
                 tokenizer=self.tokenizer,
                 api_v2=self.provider_config.api_v2,
             )
@@ -380,7 +385,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         conversation = await self.get_message_context(message, guild_settings=guild_settings)
 
                     # save whether we're responding to a bot or not to prevent loops
-                    self.trigger_cache.update({message.channel.id: message.author.bot is True})
+                    self._trigger_cache.update({message.channel.id: message.author.bot is True})
 
                     # send ToS if it's not been accepted or rejected yet
                     if tos_accepted is None:
@@ -649,7 +654,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             debug_data["conversation"] = conversation
 
             try:
-                debug_data["parameters"] = self.provider_config.gensettings.dict()
+                debug_data["parameters"] = self.lm_gensettings.dict()
             except Exception as e:
                 logger.exception("Failed to get gensettings")
 
@@ -853,7 +858,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 return True
 
     # get a list of users who have accepted the ToS
-    async def tos_accepted_users(self) -> Set[int]:
+    async def tos_accepted_users(self) -> set[int]:
         async with self.db_client.begin() as session:
             query = (
                 select(DiscordUser)
@@ -979,7 +984,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     # check if the last message we responded to in this context was from a bot
     def last_trigger_was_bot(self, message: Message) -> bool:
         """Check if the last message we responded to in this context was from a bot."""
-        cache_entry = self.trigger_cache.get(message.channel.id, False)
+        cache_entry = self._trigger_cache.get(message.channel.id, False)
         return cache_entry
 
     # deal with fake nitro bullshit
@@ -1125,14 +1130,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         embed.add_field(name="Parameter", value=f"{param.name}", inline=False)
 
         try:
-            if not hasattr(self.provider_config.gensettings, param.id):
+            if not hasattr(self.lm_gensettings, param.id):
                 raise ValueError(f"Unknown parameter: {param} (got {param.id}, {param.kind})")
 
             # cast the value to the correct type using the class from the tuple
             new_value = param.kind(value)
             # save the old value and set the new one
-            old_value = getattr(self.provider_config.gensettings, param.id)
-            setattr(self.provider_config.gensettings, param.id, new_value)
+            old_value = getattr(self.lm_gensettings, param.id)
+            setattr(self.lm_gensettings, param.id, new_value)
 
             # add the old and new values to the embed
             embed.add_field(name="Old", value=f"{old_value}")

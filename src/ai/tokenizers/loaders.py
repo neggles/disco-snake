@@ -18,16 +18,21 @@ def extract_tokenizer(name: str, target_dir: Path):
         raise e
 
 
-def get_tokenizer(name: str = "llama") -> PreTrainedTokenizerBase:
-    """Get the tokenizer by extracting it from package data files and loading it"""
+def get_tokenizer(name: str = "llama", **kwargs) -> PreTrainedTokenizerBase:
+    """Get a tokenizer by extracting it from package data files and loading it"""
+    # pop these kwargs if present to avoid accidental overrides
+    _, _ = kwargs.pop("pretrained_model_name_or_path", None), kwargs.pop("local_files_only", None)
+    # extract tokenizer to temp dir
     with TemporaryDirectory(prefix="disco_snake_", ignore_cleanup_errors=True) as temp_dir:
         temp_path = Path(temp_dir)
         extract_tokenizer(name, temp_path)
+        # load tokenizer from temp dir
         tokenizer = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=temp_path,
             local_files_only=True,
-            use_fast=True,
+            **kwargs,
         )
-        if tokenizer is None:
-            raise ValueError("Tokenizer not found!")
+    # return tokenizer if found
+    if tokenizer is None:
+        raise ValueError("Tokenizer not found!")
     return tokenizer
