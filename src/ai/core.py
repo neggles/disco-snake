@@ -5,6 +5,7 @@ import logging
 import re
 from asyncio import Lock
 from datetime import datetime, timedelta, timezone
+from io import StringIO
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
@@ -192,7 +193,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     # Getters for config object sub-properties
     @property
     def name(self) -> str:
-        return self.config.name
+        return self.config.name.split(" ")[0]
 
     @property
     def lm_gensettings(self) -> OobaGenRequest:
@@ -545,6 +546,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     # assemble a prompt/context for the model
     async def process_context(self, conversation: list[str], message: Message):
+        if self.prompt.disco_mode:
+            logger.debug("Disco mode enabled, returning only the message that triggered the response")
+            context = message.content
+            context = re_mention.sub("", context)  # remove mentions
+            return context.strip()
+
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
         logger.debug(f"building context from {len(conversation)} messages")
 
@@ -728,6 +735,19 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 response = self.restore_mentions_emoji(text=response, message=message)
                 response = response.rstrip("#}\"'").lstrip("\"'")
 
+                if self.prompt.disco_mode:
+                    logger.debug("Prepending prompt to response (disco mode)")
+                    response = f"{context} {response}"
+
+                response_file = None
+                if len(response) > 1900:
+                    if self.prompt.disco_mode:
+                        logger.debug("Overlength response in disco mode, will send as file")
+                        response_file = File(StringIO(response), filename="story.txt")
+                    else:
+                        logger.debug("Response is too long, trimming...")
+                        response = response[:1900].strip() + "-"
+
                 if append is not None and len(append.strip()) > 0:
                     response = f"{response} < {append.strip()} >"
                 debug_data["response"] = response
@@ -750,8 +770,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     logger.info("Response was empty.")
                     await message.add_reaction("🤷‍♀️")
                 else:
-                    await message.channel.send(response)
-                    logger.info(f"Response: {response}")
+                    if response_file is not None:
+                        content = " ".join(response.split(" ")[:20]) + "... (too long, attached)"
+                        await message.channel.send(content=content, file=response_file)
+                        logger.info(f"Response: {content} (with file)")
+                    else:
+                        await message.channel.send(response)
+                        logger.info(f"Response: {response}")
 
                 self.last_response = datetime.now(timezone.utc)
 

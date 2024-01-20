@@ -212,6 +212,7 @@ class PromptElement(BaseModel):
 
 class Prompt(BaseModel):
     instruct: bool = Field(True)
+    disco_mode: bool = Field(False)
     inject_early: bool = Field(False)
     with_date: bool = Field(False)
     character: PromptElement = Field(...)
