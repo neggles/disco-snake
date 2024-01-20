@@ -1,37 +1,45 @@
 import re
+from enum import Enum
 from typing import Any
 
-from shimeji.tokenizers import Llama, PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizerBase
 
-TRIM_DIR_TOP = 0
-TRIM_DIR_BOTTOM = 1
-TRIM_DIR_NONE = 2
-
-TRIM_TYPE_NEWLINE = 3
-TRIM_TYPE_SENTENCE = 4
-TRIM_TYPE_TOKEN = 5
-
-INSERTION_TYPE_NEWLINE = 6
-INSERTION_TYPE_SENTENCE = 7
-INSERTION_TYPE_TOKEN = 8
+from shimeji.tokenizers import Llama
 
 
-def split_into_sentences(str) -> list[str | Any]:
+class TrimDir(int, Enum):
+    Top = 0
+    Bottom = 1
+    Never = 2
+
+
+class BreakType(int, Enum):
+    Newline = 0
+    Sentence = 1
+    Token = 2
+
+
+def split_into_sentences(text: str) -> list[str | Any]:
     # preserve line breaks too
-    return re.split(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s", str)
+    return re.split(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s", text)
 
 
-def trim_newlines(tokens, trim_dir, limit, tokenizer: PreTrainedTokenizerFast):
-    if (trim_dir == TRIM_DIR_NONE) or (len(tokens) <= limit):
+def trim_newlines(
+    tokens: list[int],
+    trim_dir: TrimDir,
+    limit: int,
+    tokenizer: PreTrainedTokenizerBase,
+):
+    if (trim_dir == TrimDir.Never) or (len(tokens) <= limit):
         return tokens
 
     lines = tokenizer.decode(tokens).split("\n")
     start, end, step = 0, 0, 0
-    if trim_dir == TRIM_DIR_TOP:
+    if trim_dir == TrimDir.Top:
         start = len(lines) - 1
         end = -1
         step = -1
-    elif trim_dir == TRIM_DIR_BOTTOM:
+    elif trim_dir == TrimDir.Bottom:
         start = 0
         end = len(lines)
         step = 1
@@ -40,23 +48,28 @@ def trim_newlines(tokens, trim_dir, limit, tokenizer: PreTrainedTokenizerFast):
 
     for idx in range(start, end, step):
         line = lines[idx]
-        if trim_dir == TRIM_DIR_TOP:
+        if trim_dir == TrimDir.Top:
             line = "\n" + line
-        elif trim_dir == TRIM_DIR_BOTTOM:
+        elif trim_dir == TrimDir.Bottom:
             line = line + "\n"
         new_tokens = tokenizer.encode(line)
         if len(new_tokens) + len(acc_tokens) > limit:
             return acc_tokens
         else:
-            if trim_dir == TRIM_DIR_TOP:
+            if trim_dir == TrimDir.Top:
                 acc_tokens = new_tokens + acc_tokens
-            elif trim_dir == TRIM_DIR_BOTTOM:
+            elif trim_dir == TrimDir.Bottom:
                 acc_tokens = acc_tokens + new_tokens
     return acc_tokens
 
 
-def trim_sentences(tokens, trim_dir, limit, tokenizer: PreTrainedTokenizerFast):
-    if (trim_dir == TRIM_DIR_NONE) or (len(tokens) <= limit):
+def trim_sentences(
+    tokens: list[int],
+    trim_dir: TrimDir,
+    limit: int,
+    tokenizer: PreTrainedTokenizerBase,
+):
+    if (trim_dir == TrimDir.Never) or (len(tokens) <= limit):
         return tokens
 
     text = tokenizer.decode(tokens)
@@ -66,24 +79,25 @@ def trim_sentences(tokens, trim_dir, limit, tokenizer: PreTrainedTokenizerFast):
     text_begin, text_end = 0, 0
     sentence_idx, last_sentence_idx = 0, 0
 
-    if trim_dir == TRIM_DIR_TOP:
-        start = len(sentences) - 1
-        end = -1
-        step = -1
-        text_begin = 0
-        text_end = len(text)
-    elif trim_dir == TRIM_DIR_BOTTOM:
-        start = 0
-        end = len(sentences)
-        step = 1
-        text_begin = 0
-        text_end = len(text)
-    else:
-        return tokens
+    match trim_dir:
+        case TrimDir.Top:
+            start = len(sentences) - 1
+            end = -1
+            step = -1
+
+        case TrimDir.Bottom:
+            start = 0
+            end = len(sentences)
+            step = 1
+        case _:
+            return tokens
+
+    text_begin = 0
+    text_end = len(text)
 
     for idx in range(start, end, step):
         sentence = sentences[idx]
-        if trim_dir == TRIM_DIR_TOP:
+        if trim_dir == TrimDir.Top:
             sentence_idx = text.rindex(sentence) + text_begin
             if (sentence_idx > 0) and (sentence_idx < len(text)) and (text[sentence_idx] == " "):
                 sentence_idx -= 1
@@ -93,7 +107,8 @@ def trim_sentences(tokens, trim_dir, limit, tokenizer: PreTrainedTokenizerFast):
                 to_encode = text[text_end:]
                 return tokenizer.encode(to_encode)
             text_end = sentence_idx - 1
-        elif trim_dir == TRIM_DIR_BOTTOM:
+
+        elif trim_dir == TrimDir.Bottom:
             sentence_idx = text.index(sentence) + text_begin
             sentence_end = sentence_idx + len(sentence)
             if (sentence_end < text_end) and (text[sentence_end : sentence_end + 1] == "\n"):
@@ -105,16 +120,22 @@ def trim_sentences(tokens, trim_dir, limit, tokenizer: PreTrainedTokenizerFast):
                 return tokenizer.encode(to_encode)
             last_sentence_idx = sentence_end
             text_begin += len(sentence)
+
     return tokens
 
 
-def trim_tokens(tokens, trim_dir, limit):
-    if (trim_dir == TRIM_DIR_NONE) or (len(tokens) <= limit):
+def trim_tokens(tokens: list[int], trim_dir: TrimDir, limit: int):
+    overrun = len(tokens) - limit
+    if overrun <= 0:
         return tokens
-    if trim_dir == TRIM_DIR_TOP:
-        return tokens[len(tokens) - limit :]
-    elif trim_dir == TRIM_DIR_BOTTOM:
-        return tokens[:limit]
+
+    match trim_dir:
+        case TrimDir.Top:
+            return tokens[overrun:]
+        case TrimDir.Bottom:
+            return tokens[:limit]
+        case _:
+            return tokens
 
 
 class ContextEntry:
@@ -128,12 +149,12 @@ class ContextEntry:
         reserved_tokens: int = 0,
         insertion_order: int = 100,
         insertion_position: int = -1,
-        trim_direction: int = TRIM_DIR_BOTTOM,
-        trim_type: int = TRIM_TYPE_SENTENCE,
-        insertion_type: int = INSERTION_TYPE_SENTENCE,
+        trim_direction: TrimDir = TrimDir.Bottom,
+        trim_type: BreakType = BreakType.Sentence,
+        insertion_type: BreakType = BreakType.Sentence,
         forced_activation: bool = False,
         cascading_activation: bool = False,
-        tokenizer: PreTrainedTokenizerFast = None,
+        tokenizer: PreTrainedTokenizerBase = None,
     ):
         self.keys = keys  # key used to activate this context entry
         self.text = prefix + text + suffix  # text associated with this context entry
@@ -148,30 +169,37 @@ class ContextEntry:
             forced_activation  # if True, this context entry is activated even if it is not activated
         )
         self.cascading_activation = cascading_activation  # when activated, this context entry will search for other entries and activate them if found
-        self.tokenizer = tokenizer if tokenizer is not None else Llama()
+        self.tokenizer = tokenizer if tokenizer is not None else Llama
 
     # max_length is in tokens
-    def trim(self, max_length, token_budget):
-        target = 0
+    def trim(self, max_length: int, token_budget: int):
+        target_tokens = 0
         tokens = self.tokenizer.encode(self.text)
-        num_tokens = len(tokens)
-        projected = max_length - num_tokens
+        token_count = len(tokens)
+
+        projected = max_length - token_count
         if projected > token_budget:
-            target = token_budget
+            target_tokens = token_budget
         elif projected >= 0:
-            target = num_tokens
+            target_tokens = token_count
         else:
-            target = max_length
-        if self.trim_type == TRIM_TYPE_NEWLINE:
-            tokens = self.trim_newlines(tokens, self.trim_direction, target)
-        elif self.trim_type == TRIM_TYPE_SENTENCE or len(tokens) > target:
-            tokens = self.trim_sentences(tokens, self.trim_direction, target)
-        elif self.trim_type == TRIM_TYPE_TOKEN or len(tokens) > target:
-            tokens = self.trim_tokens(tokens, self.trim_direction, target)
+            target_tokens = max_length
+
+        match self.trim_type:
+            case BreakType.Newline:
+                tokens = self.trim_newlines(tokens, self.trim_direction, target_tokens)
+            case BreakType.Sentence:
+                tokens = self.trim_sentences(tokens, self.trim_direction, target_tokens)
+            case BreakType.Token:
+                tokens = self.trim_tokens(tokens, self.trim_direction, target_tokens)
+            case _:
+                if len(tokens) > target_tokens:
+                    tokens = self.trim_tokens(tokens, self.trim_direction, target_tokens)
+
         return tokens
 
-    def get_text(self, max_length, token_budget):
-        return self.tokenizer.decode(self.trim(max_length, token_budget), skip_special_tokens=True)
+    def get_text(self, max_length: int, token_budget: int):
+        return self.tokenizer.decode(self.trim(max_length, token_budget))
 
     def trim_newlines(self, tokens, trim_dir, limit):
         return trim_newlines(tokens, trim_dir, limit, self.tokenizer)

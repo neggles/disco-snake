@@ -4,9 +4,9 @@ from typing import Optional
 from transformers.tokenization_utils import PreTrainedTokenizerBase
 
 from shimeji.util import (
-    INSERTION_TYPE_NEWLINE,
-    TRIM_DIR_TOP,
+    BreakType,
     ContextEntry,
+    TrimDir,
 )
 
 
@@ -150,7 +150,7 @@ class ContextPreprocessor(Preprocessor):
                     reserved = len_tokens
 
             text = i.get_text(budget + reserved, self.token_budget)
-            ctxtext = text.splitlines(keepends=False)
+            ctxtext = text.splitlines()
             trimmed_tokenized = self.tokenizer.encode(text)
             budget -= len(trimmed_tokenized) - reserved
             ctxinsertion = i.insertion_position
@@ -199,10 +199,10 @@ class ContextPreprocessor(Preprocessor):
                 suffix=f"\n{name}:",
                 reserved_tokens=512,
                 insertion_order=0,
-                trim_direction=TRIM_DIR_TOP,
+                trim_direction=TrimDir.Top,
                 forced_activation=True,
                 cascading_activation=True,
-                insertion_type=INSERTION_TYPE_NEWLINE,
+                insertion_type=BreakType.Newline,
                 insertion_position=-1,
             )
         else:
@@ -211,10 +211,10 @@ class ContextPreprocessor(Preprocessor):
                 suffix="",
                 reserved_tokens=512,
                 insertion_order=0,
-                trim_direction=TRIM_DIR_TOP,
+                trim_direction=TrimDir.Top,
                 forced_activation=True,
                 cascading_activation=True,
-                insertion_type=INSERTION_TYPE_NEWLINE,
+                insertion_type=BreakType.Newline,
                 insertion_position=-1,
             )
         self.add_entry(main_entry)

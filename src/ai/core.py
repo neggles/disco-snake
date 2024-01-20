@@ -66,13 +66,7 @@ from shimeji.chatbot import ChatBot
 from shimeji.model_provider import OobaGenRequest, OobaModel
 from shimeji.postprocessor import NewlinePrunerPostprocessor
 from shimeji.preprocessor import ContextPreprocessor
-from shimeji.util import (
-    INSERTION_TYPE_NEWLINE,
-    TRIM_DIR_NONE,
-    TRIM_DIR_TOP,
-    TRIM_TYPE_NEWLINE,
-    ContextEntry,
-)
+from shimeji.util import BreakType, ContextEntry, TrimDir
 
 COG_UID = "ai"
 
@@ -242,6 +236,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 default_args=self.lm_gensettings,
                 tokenizer=self.tokenizer,
                 api_v2=self.provider_config.api_v2,
+                debug=self.params.debug,
             )
         else:
             raise ValueError(f"Unknown model provider type: {self.model_provider_name}")
@@ -421,7 +416,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         prompt.append(self.prompt.character.full)
         if include_model:
             prompt.append(self.prompt.model.full.rstrip())
-        prompt = "\n".join(prompt)
+
+        prompt = "\n".join([x for x in prompt if len(x) > 0])
 
         replace_tokens = {
             "bot_name": self.name,
@@ -463,7 +459,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             # default to siblings mode if we still don't have guild settings
             bot_mode = BotMode.Siblings
 
-        chain = []
+        def wrap_message(content: str, role: str = "user") -> dict[str, str]:
+            return {"role": role.strip(), "content": content.strip()}
+
+        chain: list[dict[str, str]] = []
         for msg in reversed(messages):
             if msg.author.id in self.tos_reject_ids:
                 continue  # skip users who rejected the privacy policy
@@ -472,6 +471,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     # skip messages that start with a command prefix or a comma-space
                     continue
 
+            msg_role = "user"
             if msg.author.id == self.bot.user.id:
                 if msg.content.startswith("This is an AI chatbot made by"):
                     continue  # this is a TOS message in a DM so lets skip it
@@ -491,39 +491,40 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             # set up author name
             if msg.author.id == self.bot.user.id:
                 author_name = f"{self.prefix_user}{self.prefix_sep}{self.name}:"
+                msg_role = "assistant"
             else:
                 author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
 
             if len(msg.embeds) > 0:
                 nitro_bs = self.handle_stupid_fucking_embed(message)
                 if nitro_bs is not None:
-                    chain.append(f"{author_name} {nitro_bs}")
+                    chain.append(wrap_message(f"{author_name} {nitro_bs}", msg_role))
                     continue
                 for embed in msg.embeds:
                     if embed.type == "image":
                         try:
                             caption = await self.eyes.perceive_url(embed.thumbnail.url, msg.id)
                             if caption is not None:
-                                chain.append(f"{author_name} [image: {caption}]")
+                                chain.append(wrap_message(f"{author_name} [image: {caption}]", msg_role))
                         except Exception as e:
                             logger.exception(e)
-                            chain.append(f"{author_name} [image: loading error]")
+                            chain.append(wrap_message(f"{author_name} [image: loading error]", msg_role))
                     elif embed.description is not None and msg.author.bot is False:
-                        chain.append(f"{author_name} [embed: {embed.description}]")
+                        chain.append(wrap_message(f"{author_name} [embed: {embed.description}]", msg_role))
                     elif embed.title is not None and msg.author.id != self.bot.user.id:
-                        chain.append(f"{author_name} [embed: {embed.title}]")
+                        chain.append(wrap_message(f"{author_name} [embed: {embed.title}]", msg_role))
 
             if msg.content and len(msg.embeds) == 0:
                 content = self.get_msg_content_clean(msg)
                 if content.startswith("http"):
-                    chain.append(f"{author_name} [a link to a webpage]")
+                    chain.append(wrap_message(f"{author_name} [a link to a webpage]", msg_role))
                 elif content != "" and "```" not in content and not content.startswith("-"):
                     if msg.author.id == self.bot.user.id:
                         # strip (laughs) from start of own context
                         stripped_content = re_start_expression.sub("", content)
                         if len(stripped_content.strip()) > 0:
                             content = stripped_content
-                    chain.append(f"{author_name} {content}")
+                    chain.append(wrap_message(f"{author_name} {content}", msg_role))
 
             for attachment in msg.attachments:
                 try:
@@ -532,20 +533,29 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         continue
                     caption = await self.eyes.perceive_attachment(attachment)
                     if caption is not None:
-                        chain.append(f"{author_name} [image: {caption}]")
+                        chain.append(wrap_message(f"{author_name} [image: {caption}]", msg_role))
                 except Exception as e:
                     logger.exception(e)
-                    chain.append(f"{author_name} [image: loading error]")
+                    chain.append(wrap_message(f"{author_name} [image: loading error]", msg_role))
 
-        chain = [x.strip() for x in chain if x.strip() != ""]
-        if chain[-1].lower().startswith(f"{self.prefix_user}{self.prefix_sep}{self.name}:".lower()):
+        if chain[-1]["role"] == "assistant":
             chain = chain[:-1]  # remove last message if it's from the bot, cheap hack for now
-        return chain if as_list is True else ("\n".join(chain))
+
+        return chain if as_list is True else ("\n".join([x["content"] for x in chain]))
 
     # assemble a prompt/context for the model
     async def process_context(self, conversation: list[str], message: Message):
         contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
         logger.debug(f"building context from {len(conversation)} messages")
+
+        if isinstance(conversation[0], dict):
+            logger.debug("applying chat template")
+            conversation = self.tokenizer.apply_chat_template(conversation, tokenize=False).splitlines()
+            logger.debug(f"conversation: {conversation}")
+            # conv_processed = []
+            # for msgdict in conversation:
+            #     conv_processed.append(f'<|im_start|>{msgdict["role"]}\n{msgdict["content"]}<|im_end|>')
+            # conversation = conv_processed
 
         if self.prompt.instruct is True:
             post_instruct = conversation.pop(-1) if self.prompt.inject_early else ""
@@ -560,15 +570,15 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             conversation = "\n".join(conversation)
 
         prompt_entry = ContextEntry(
-            text=self.get_prompt(message),
+            text=f"<|im_start|>system\n{self.get_prompt(message)}<|im_end|>",
             prefix="",
             suffix="",
             reserved_tokens=512,
             insertion_order=1000,
             insertion_position=0,
-            trim_direction=TRIM_DIR_NONE,
-            trim_type=TRIM_TYPE_NEWLINE,
-            insertion_type=INSERTION_TYPE_NEWLINE,
+            trim_direction=TrimDir.Never,
+            trim_type=BreakType.Newline,
+            insertion_type=BreakType.Newline,
             forced_activation=True,
             cascading_activation=False,
             tokenizer=self.tokenizer,
@@ -576,15 +586,15 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         contextmgr.add_entry(prompt_entry)
 
         conversation_entry = ContextEntry(
-            text=conversation + f"\n{self.name}:",
+            text=conversation + f"\n<|im_start|>assistant\n{self.name}:",
             prefix="",
             suffix="",
             reserved_tokens=1024,
             insertion_order=500,
             insertion_position=-1,
-            trim_direction=TRIM_DIR_TOP,
-            trim_type=TRIM_TYPE_NEWLINE,
-            insertion_type=INSERTION_TYPE_NEWLINE,
+            trim_direction=TrimDir.Top,
+            trim_type=BreakType.Newline,
+            insertion_type=BreakType.Newline,
             forced_activation=True,
             cascading_activation=False,
             tokenizer=self.tokenizer,
@@ -592,7 +602,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         contextmgr.add_entry(conversation_entry)
 
         context = contextmgr.context(self.context_size)
-        return re_consecutive_newline.sub("\n", context)  # yeet all consecutive newlines (empty lines)
+        context = "\n".join([x.strip() for x in context.splitlines() if len(x.strip()) > 0])
+        context = re_consecutive_newline.sub("\n", context)  # yeet all consecutive newlines (empty lines)
+        context = context.replace("|> ", "|>")
+        return context
 
     # actual response logic
     async def do_response(
@@ -633,7 +646,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 "content": message.content,
             }
             # make conversation be a top level key
-            debug_data["conversation"] = conversation
+            if isinstance(conversation[0], dict):
+                debug_data["conversation"] = [f'{x["content"]}' for x in conversation]
+            else:
+                debug_data["conversation"] = conversation
 
             try:
                 debug_data["parameters"] = self.lm_gensettings.dict()

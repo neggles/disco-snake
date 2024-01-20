@@ -127,11 +127,14 @@ class Imagen:
 
     async def submit_lm_prompt(self, prompt: Optional[str] = None) -> str:
         request = self.lm_prompt.get_request(prompt)
+        payload = request.dict(exclude_none=True)
+        logger.debug(f"Sending request: {json.dumps(payload, default=str, ensure_ascii=False)}")
+
         try:
-            async with aiohttp.ClientSession(self.lm_api_host) as session:
-                async with session.post("/v1/completions", json=request.dict()) as resp:
+            async with aiohttp.ClientSession(base_url=self.lm_api_host) as session:
+                async with session.post("/v1/completions", json=payload) as resp:
                     if resp.status == 200:
-                        ret = await resp.json()
+                        ret = await resp.json(encoding="utf-8")
                         result: str = ret["choices"][0]["text"]
                         for tag in self.lm_prompt.tags:
                             result = result.replace(f"{tag},", "").replace(f"{tag}", "").strip()
@@ -143,7 +146,7 @@ class Imagen:
             raise Exception(f"Could not generate response. Error: {await resp.text()}") from e
 
     def get_lm_stopping_strings(self) -> list[str]:
-        return self.lm_prompt.gensettings.stopping_strings
+        return self.lm_prompt.gensettings.stop
 
     def build_request(self, lm_tag_string: str, user_prompt: str) -> dict[str, Any]:
         user_prompt = user_prompt.lower()

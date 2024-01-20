@@ -1,4 +1,5 @@
 import copy
+import json
 import logging
 from abc import ABC, abstractmethod
 from os import PathLike
@@ -12,7 +13,7 @@ from transformers import AutoTokenizer, LlamaTokenizerFast
 
 from shimeji.tokenizers import Llama
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.replace("shimeji", "ai"))
 
 
 class OobaGenParams(BaseModel):
@@ -81,9 +82,12 @@ class ModelProvider(ABC):
         self,
         endpoint_url: str,
         default_args: Optional[dict | BaseModel] = None,
+        *,
+        debug: bool = False,
         **kwargs,
     ):
         self.endpoint_url = endpoint_url
+        self.debug = debug
         if not hasattr(self, "default_args"):
             self.default_args = default_args or kwargs.get("args", None)
         if self.default_args is None:
@@ -170,7 +174,7 @@ class OobaModel(ModelProvider):
         default_args: OobaGenRequest,
         *,
         tokenizer: Optional[Tokenizer] = None,
-        api_v2: bool = False,
+        api_v2: bool = True,
         **kwargs,
     ):
         """Constructor for ModelProvider.
@@ -206,20 +210,23 @@ class OobaModel(ModelProvider):
         if self.api_v2 and "max_tokens" not in payload:
             payload["max_tokens"] = payload.pop("max_new_tokens", 1024)
 
-        r = None
+        if self.debug:
+            logger.debug(f"Sending request: {json.dumps(payload, default=str, ensure_ascii=False)}")
+
+        resp, err_resp = None, None
         try:
-            r = requests.post(
+            resp = requests.post(
                 f"{self.endpoint_url}/{self._api_path}",
                 headers={"Content-Type": "application/json"},
                 json=payload,
             )
-            r.encoding = "utf-8"
+            resp.encoding = "utf-8"
         except Exception as e:
             raise e
-        if r.status_code == 200:
-            return r.json()[self._result_key][0]["text"]
+        if resp.status_code == 200:
+            return resp.json()[self._result_key][0]["text"]
         else:
-            err_resp = r.json() if hasattr(r, "json") else None
+            err_resp = resp.json() if hasattr(resp, "json") else None
             raise Exception(f"Could not generate text with text-generation-webui. Error: {err_resp}")
 
     async def generate_async(self, args: OobaGenRequest) -> str:
@@ -227,7 +234,10 @@ class OobaModel(ModelProvider):
         if self.api_v2 and "max_tokens" not in payload:
             payload["max_tokens"] = payload.pop("max_new_tokens", 1024)
 
-        err_resp = None
+        if self.debug:
+            logger.debug(f"Sending request: {json.dumps(payload, default=str, ensure_ascii=False)}")
+
+        resp, err_resp = None, None
         try:
             async with aiohttp.ClientSession(base_url=self.endpoint_url) as session:
                 async with session.post(f"/{self._api_path}", json=payload) as resp:
@@ -254,12 +264,15 @@ class OobaModel(ModelProvider):
 
         args: OobaGenRequest = copy.deepcopy(self.default_args)
         args.prompt = f"{context}{prefix}"
-        args.temperature = 0.25
-        args.top_p = 0.9
-        args.top_k = 40
-        args.repetition_penalty = 1.0
+        args.temperature = 0.7
+        args.temperature_last = False
+        args.top_p = 1.0
+        args.min_p = 0.1
+        args.top_k = 25
+        args.repetition_penalty = 1.2
+        args.repetition_penalty_range = 32
         args.do_sample = True
-        args.max_new_tokens = 24
+        args.max_tokens = 24
         args.min_length = 0
         response = self.generate(args)
         logger.debug(f"Response: {response.strip()}")
@@ -280,13 +293,15 @@ class OobaModel(ModelProvider):
 
         args: OobaGenRequest = copy.deepcopy(self.default_args)
         args.prompt = f"{context}{prefix}"
-        args.temperature = 0.25
+        args.temperature = 0.7
+        args.temperature_last = False
         args.top_p = 1.0
-        args.top_k = 1
-        args.num_beams = 3
+        args.min_p = 0.1
+        args.top_k = 25
         args.repetition_penalty = 1.2
+        args.repetition_penalty_range = 32
         args.do_sample = True
-        args.max_new_tokens = 10
+        args.max_tokens = 24
         args.min_length = 0
         response = await self.generate_async(args)
         logger.debug(f"Response: {response.strip()}")
