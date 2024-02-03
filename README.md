@@ -1,7 +1,12 @@
 # disco snake
 
-a discord bot built using [disnake](https://disnake.dev), [aitextgen](https://docs.aitextgen.io/)
-(for the time being), [Huggingface](https://huggingface.co) Transformers, and Huggingface Diffusers.
+a discord bot built using [disnake](https://disnake.dev) and a bunch of other crap.
+
+uses text-generation-webui, stable-diffusion-webui, and a couple misc custom scripts as a backend
+
+also postgres
+
+this is a low-effort readme.
 
 ## but what does it do
 
