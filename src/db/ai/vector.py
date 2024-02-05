@@ -1,8 +1,4 @@
-from typing import Optional
-
 import sqlalchemy as sa
-from pgvector.sqlalchemy import Vector
-from sqlalchemy.dialects import postgresql as pg
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.base import Base, BigIntPK, CreateTimestamp
