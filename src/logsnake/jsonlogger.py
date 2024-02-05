@@ -4,6 +4,7 @@ https://github.com/madzak/python-json-logger
 This library is provided to allow standard python logging
 to output log data as JSON formatted strings
 """
+
 import importlib
 import json
 import logging
