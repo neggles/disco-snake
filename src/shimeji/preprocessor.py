@@ -13,20 +13,12 @@ from shimeji.util import (
 class Preprocessor(ABC):
     """Abstract class for preprocessors."""
 
-    @abstractmethod
     def __call__(self, context: str, is_respond: bool, name: str) -> str:
-        """Process the given context before the ModelProvider is called.
+        return self.process(context, is_respond, name)
 
-        :param context: The context to preprocess.
-        :type context: str
-        :param is_respond: Whether the context is being built for a chatbot response.
-        :type is_respond: bool
-        :param name: The name of the chatbot.
-        :type name: str
-        :return: The processed context.
-        :rtype: str
-        """
-        raise NotImplementedError(f"{self.__class__} is an abstract class")
+    @abstractmethod
+    def process(self, context: str, is_respond: bool, name: str) -> str:
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class ContextPreprocessor(Preprocessor):
@@ -180,7 +172,7 @@ class ContextPreprocessor(Preprocessor):
                 newctx.append(after[aIdx])
         return "\n".join(newctx)
 
-    def __call__(self, context: str, is_respond: bool, name: str) -> str:
+    def process(self, context: str, is_respond: bool, name: str) -> str:
         """Build the context from the ContextPreprocessor's entries.
 
         :param context: The context to build the context from.

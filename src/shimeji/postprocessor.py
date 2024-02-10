@@ -1,22 +1,21 @@
-class Postprocessor:
+from abc import ABC, abstractmethod
+
+
+class Postprocessor(ABC):
     """Abstract class for postprocessors."""
 
     def __call__(self, context: str) -> str:
-        """Process the given context before the ModelProvider is called.
+        return self.process(context)
 
-        :param context: The context to preprocess.
-        :type context: str
-        :raises NotImplementedError: If the postprocessor is not implemented.
-        :return: The processed context.
-        :rtype: str
-        """
-        raise NotImplementedError(f"{self.__class__} is an abstract class")
+    @abstractmethod
+    def process(self, context: str) -> str:
+        raise NotImplementedError("Abstract base class was called ;_;")
 
 
 class NewlinePrunerPostprocessor(Postprocessor):
     """Postprocessor that removes newlines."""
 
-    def __call__(self, context: str) -> str:
+    def process(self, context: str) -> str:
         """Process the given context.
 
         :param context: The context to process.
