@@ -24,13 +24,13 @@ class ChatBot:
         for preprocessor in self.preprocessors:
             text = preprocessor(text, is_respond, name=self.name)
 
-        return text
+        return text.rstrip(" ")
 
     def postprocess(self, text: str) -> str:
         for postprocessor in self.postprocessors:
             text = postprocessor(text)
 
-        return text
+        return text.rstrip(" ")
 
     def should_respond(self, text: str):
         text = self.preprocess(text, is_respond=False)

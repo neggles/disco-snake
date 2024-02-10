@@ -49,6 +49,7 @@ from ai.settings import (
     get_ai_settings,
 )
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
+from ai.tokenizers.yi.tokenization_yi import YiTokenizer
 from ai.types import LruDict
 from ai.ui import AiParam, AiStatusEmbed, set_choices, settable_params
 from ai.utils import (
@@ -87,9 +88,10 @@ logger = logging.getLogger(__name__)
 
 re_angle_bracket = re.compile(r"\<(.*)\>", re.M)
 re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
-re_bot_token = re.compile(r"(<BOT>|<bot>|{{bot}}|<CHAR>|<char>|{{char}})")
-re_unescape_format = re.compile(r"\\([*_~`])")
-re_strip_special = re.compile(r"[^a-zA-Z0-9]+", re.M)
+re_bot_token = re.compile(r"(<bot>|{{bot}}|<char>|{{char}}|<assistant>|{{assistant}})", re.I)
+re_unescape_md = re.compile(r"\\([*_~`])")
+re_nonword = re.compile(r"[^a-zA-Z0-9]+", re.M + re.I)
+re_nonword_end = re.compile(r"([^a-zA-Z0-9])[^a-zA-Z0-9()]+$", re.M + re.I)
 
 re_linebreak_name = re.compile(r"(\n|\r|\r\n)(\S+): ", re.M)
 re_start_expression = re.compile(r"^\s*[(\*]\w+[)\*]\s*", re.I + re.M)
@@ -218,17 +220,20 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         logger.info("Initializing Tokenizer...")
         tokenizer_dir = AI_DATA_DIR.joinpath(f"tokenizers/{self.tokenizer_type}")
-
-        if not tokenizer_dir.exists():
-            tokenizer_dir.mkdir(parents=True, exist_ok=True)
-        if not tokenizer_dir.joinpath("tokenizer.json").exists():
+        tokenizer_dir.mkdir(parents=True, exist_ok=True)
+        if not tokenizer_dir.joinpath("tokenizer.json").is_file():
             extract_tokenizer(name=self.tokenizer_type, target_dir=tokenizer_dir)
-        self.tokenizer = AutoTokenizer.from_pretrained(
+
+        self.tokenizer: YiTokenizer = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=tokenizer_dir,
             local_files_only=True,
             trust_remote_code=True,
             use_fast=True,
+            model_max_length=self.lm_gensettings.truncation_length,
         )
+        if self.prompt.chat_template is not None:
+            self.tokenizer.chat_template = "\n".join(self.prompt.chat_template)
+            logger.debug(f"Loaded tokenizer chat template: {self.tokenizer.chat_template}")
 
         logger.info("Initializing Model Provider...")
         if self.model_provider_name == "ooba":
@@ -288,6 +293,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.info("Shutting down WebUI...")
             self.webui.shutdown()
 
+        logger.info("AI engine unloaded.")
+
     @commands.Cog.listener("on_ready")
     async def on_ready(self):
         if self.logging_channel is None and self.logging_channel_id is not None:
@@ -302,7 +309,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             except Exception:
                 logger.exception(f"Failed to get user object for {user_id}")
         # done
-        logger.info("Cog is ready.")
+        logger.info("AI engine is ready, uwu~")
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
@@ -559,10 +566,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.debug("applying chat template")
             conversation = self.tokenizer.apply_chat_template(conversation, tokenize=False).splitlines()
             logger.debug(f"conversation: {conversation}")
-            # conv_processed = []
-            # for msgdict in conversation:
-            #     conv_processed.append(f'<|im_start|>{msgdict["role"]}\n{msgdict["content"]}<|im_end|>')
-            # conversation = conv_processed
 
         if self.prompt.instruct is True:
             post_instruct = conversation.pop(-1) if self.prompt.inject_early else ""
@@ -577,7 +580,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             conversation = "\n".join(conversation)
 
         prompt_entry = ContextEntry(
-            text=f"<|im_start|>system\n{self.get_prompt(message)}<|im_end|>",
+            text=self.get_prompt(message),
             prefix="",
             suffix="",
             reserved_tokens=512,
@@ -672,7 +675,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
                 for attempt in range(self.max_retries):
                     attempt = attempt + 1  # deal with range() starting from 0
-                    response: str = await self.chatbot.respond_async(context, push_chain=False)
+                    response: str = await self.chatbot.respond_async(context)
                     bad_words = self.find_bad_words(response)
                     if any([response.lower() == x for x in self.bad_words]):
                         logger.info(f"Response {attempt} contained bad words: {response}\nRetrying...")
@@ -733,7 +736,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 response = self.fixup_bot_user_tokens(response, message).lstrip()
                 # Clean response - trim left whitespace and fix emojis and pings
                 response = self.restore_mentions_emoji(text=response, message=message)
-                response = response.rstrip("#}\"'").lstrip("\"'")
+                # Unescape markdown
+                response = re_unescape_md.sub(r"\1", response)
+                # Clean up multiple non-word characters at the end of the response
+                response = re_nonword_end.sub(r"\1", response)
+
+                response = response.rstrip("#}\"\\'").lstrip("\\\"'").replace("\\r", "").replace("\\n", "\n")
 
                 if self.prompt.disco_mode:
                     logger.debug("Prepending prompt to response (disco mode)")
@@ -950,7 +958,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
         response = re_user_token.sub(f"@{author_name}", response)
         response = re_bot_token.sub(f"@{self.name}", response)
-        response = re_unescape_format.sub(r"\1", response)
+        response = re_unescape_md.sub(r"\1", response)
         response = response.rstrip("</s>").strip()
         return response
 
@@ -960,7 +968,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         input_words: str = input.split()
 
         for word in input_words:
-            word_stripped: str = re_strip_special.sub("", word).lower()
+            word_stripped: str = re_nonword.sub("", word).lower()
             word_len = len(word_stripped)
             if word_len > 2:
                 threshold = 2 if word_len > 6 else 1 if word_len > 4 else 0

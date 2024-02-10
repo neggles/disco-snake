@@ -2,7 +2,7 @@ import logging
 from copy import deepcopy
 from enum import Enum
 from pathlib import Path
-from typing import Iterator, Optional, Tuple, Union
+from typing import Iterator, Optional
 
 from pydantic import BaseModel, BaseSettings, Field
 
@@ -126,7 +126,7 @@ class GuildSettings(NamedSnowflake):
     def channel_imagen(self, channel_id: int) -> bool:
         return next((x.imagen for x in self.channels if x.id == channel_id), self.imagen)
 
-    def channel_idle_mode(self, channel_id: int) -> Tuple[bool, int]:
+    def channel_idle_mode(self, channel_id: int) -> tuple[bool, int]:
         return next(
             ((x.idle_enable, x.idle_interval) for x in self.channels if x.id == channel_id),
             (self.idle_enable, self.idle_interval),
@@ -195,19 +195,31 @@ class BotParameters(BaseModel):
 
 
 class PromptElement(BaseModel):
-    prefix: str = Field(None)
-    prompt: Union[str, list[str]] = Field(...)
-    suffix: str = Field(None)
-    concat: str = Field(" ")
+    prefix: Optional[str | list[str]] = Field(None)
+    prompt: Optional[str | list[str]] = Field(...)
+    suffix: Optional[str | list[str]] = Field(None)
+    concat: str = Field("")
 
     @property
     def full(self) -> str:
-        prompt = self.concat.join(self.prompt) if isinstance(self.prompt, list) else self.prompt
-        if self.prefix is not None and len(self.prefix) > 0:
-            prompt = self.concat.join([self.prefix, prompt])
-        if self.suffix is not None and len(self.suffix) > 0:
-            prompt = self.concat.join([prompt, self.suffix])
+        prompt = self.elem_string(self.prompt)
+        if prompt is None:
+            return None
+
+        if self.prefix:
+            prompt = self.concat.join([self.elem_string(self.prefix), prompt])
+        if self.suffix:
+            prompt = self.concat.join([prompt, self.elem_string(self.suffix)])
         return prompt
+
+    def elem_string(self, elem: Optional[str | list[str]]) -> str:
+        match elem:
+            case [_, *_]:
+                return self.concat.join(elem)
+            case str():
+                return elem
+            case _:
+                return None
 
 
 class Prompt(BaseModel):
@@ -221,6 +233,7 @@ class Prompt(BaseModel):
     prefix_bot: Optional[str] = None
     prefix_user: str = "\n"
     prefix_sep: str = "\n"
+    chat_template: Optional[list[str]] = None
 
 
 class GradioConfig(BaseModel):
