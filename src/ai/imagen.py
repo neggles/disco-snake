@@ -107,6 +107,10 @@ class Imagen:
 
         logger.info("Initialized Imagen.")
 
+    @property
+    def enabled(self):
+        return self.params.enabled
+
     def get_lm_prompt(self, user_request: str) -> str:
         if len(user_request.split("of", 1)) > 1:
             user_request: str = user_request.split("of", 1)[1]

@@ -46,7 +46,7 @@ class ChatBot:
 
         response = self.model_provider.response(text)
 
-        text = self.postprocess(text, is_respond=False)
+        text = self.postprocess(text)
 
         return response
 
@@ -55,7 +55,7 @@ class ChatBot:
 
         response = await self.model_provider.response_async(text)
 
-        text = self.postprocess(text, is_respond=False)
+        text = self.postprocess(text)
 
         return response
 
