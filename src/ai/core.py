@@ -576,7 +576,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     "\n".join(post_instruct).replace(self.prefix_user, "").lstrip(),
                 ]
             )
-        else:
+
+        if isinstance(conversation, list):
             conversation = "\n".join(conversation)
 
         prompt_entry = ContextEntry(
