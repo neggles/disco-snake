@@ -1,10 +1,20 @@
-Copyright (c) 2022, Andrew Powers-Holmes
+Copyright (c) 2022-2024, Andrew Powers-Holmes
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 Unless otherwise marked or stated in a license file located in a lower-level directory, code in
-this repository/project is licensed under the GNU Affero General Public License, Version 3.0.
-
-Parts of this project are covered under the BSD 3-Clause license - see src/ailogger/LICENSE
-Parts of this project are covered under the MIT license - see src/aitextgen/LICENSE
+this repository/project is licensed under the GNU General Public License, version 3 or later.
 
 Other parts of this program may be licensed under other licenses; this will be indicated
 in SPDX tags, or a LICENSE file in one of the relevant source file's parent folders.
