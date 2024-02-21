@@ -238,12 +238,24 @@ src/disco_snake/_version.py
 # pidfiles
 *.pid
 
-# local misc
-/misc
+# local misc and temp
+/misc/
+/temp/
 
 # compose override
 /docker-compose.*.yml
 
-# envrc for direnv
-/.envrc*
-!/.envrc.example
+# direnv
+.envrc
+.envrc.*
+
+# dotenv
+.env
+.env.*
+
+# temp files
+**/tmp_*.*
+**/*.tmp.*
+
+# but keep examples
+!*.example
