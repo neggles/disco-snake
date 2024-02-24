@@ -30,7 +30,7 @@ from fastapi import HTTPException
 from Levenshtein import distance as lev_distance
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, BatchEncoding
 
 import logsnake
 from ai.eyes import DiscoEyes
@@ -187,10 +187,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self._last_debug_log: dict[str, Any] = {}
         self.logging_channel_id: int = self.params.logging_channel_id
 
-        # cache dicts
+        # cache dicts and props
         self._trigger_cache: LruDict = LruDict(max_size=100)
         self._mention_cache: dict[int, Any] = {}
         self._emoji_cache: dict[int, Any] = {}
+        self._n_prompt_tokens: int = None
 
     # Getters for config object sub-properties
     @property
@@ -214,6 +215,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     @property
     def sibling_ids(self) -> list[int]:
         return self.params.siblings.ids
+
+    @property
+    def n_prompt_tokens(self):
+        if self._n_prompt_tokens is None:
+            prompt_str = "\n".join(self.get_prompt())
+            encoded: BatchEncoding = self.tokenizer.batch_encode_plus([prompt_str], return_length=True)
+            self._n_prompt_tokens = max(encoded.get("length")[0] + 64, 512)
+        return self._n_prompt_tokens
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -584,7 +593,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             text=self.get_prompt(message),
             prefix="",
             suffix="",
-            reserved_tokens=512,
+            reserved_tokens=self.n_prompt_tokens,
             insertion_order=1000,
             insertion_position=0,
             trim_direction=TrimDir.Never,
@@ -741,8 +750,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 response = re_unescape_md.sub(r"\1", response)
                 # Clean up multiple non-word characters at the end of the response
                 response = re_nonword_end.sub(r"\1", response)
-
+                # scream into the void
                 response = response.rstrip("#}\"\\'").lstrip("\\\"'").replace("\\r", "").replace("\\n", "\n")
+                response = response.replace("\\u00a0", "\n")
 
                 if self.prompt.disco_mode:
                     logger.debug("Prepending prompt to response (disco mode)")
