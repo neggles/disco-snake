@@ -164,6 +164,7 @@ class BotParameters(BaseModel):
     debug: bool = False
     memory_enable: bool = False
     max_retries: int = 3
+    ctxbreak_restrict: bool = True
     ctxbreak: PermissionList = Field(default_factory=PermissionList)
     guilds: GuildSettingsList = Field(default_factory=GuildSettingsList)
     dm_users: SnowflakeList = Field(default_factory=SnowflakeList)

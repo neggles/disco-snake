@@ -680,6 +680,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             context = await self.process_context(conversation, message)
             context = context.rstrip()
             debug_data["context"] = context.splitlines()
+            debug_data["n_prompt_tokens"] = self.n_prompt_tokens
+            ctokens = self.tokenizer.batch_encode_plus([context], return_length=True)
+            debug_data["ncontext_tokens"] = ctokens.get("length")[0]
 
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
@@ -1015,6 +1018,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         content = message.content.lower()
         if not content.startswith("<ctxbreak>"):
             return False  # not a context break message
+
+        if self.config.params.ctxbreak_restrict is False:
+            return True  # ctxbreak is unrestricted
+
         if isinstance(message.channel, DMChannel):
             return True  # people can always break context in DMs
         if message.author.id in list(self.ctxbreak.user_ids + self.bot.config.admin_ids):
