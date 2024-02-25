@@ -219,9 +219,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     @property
     def n_prompt_tokens(self):
         if self._n_prompt_tokens is None:
-            prompt_str = "\n".join(self.get_prompt())
+            prompt_str = self.get_prompt()
+            if isinstance(prompt_str, list):
+                prompt_str = "\n".join(prompt_str)
             encoded: BatchEncoding = self.tokenizer.batch_encode_plus([prompt_str], return_length=True)
-            self._n_prompt_tokens = max(encoded.get("length")[0] + 64, 512)
+            n_tokens = encoded.get("length")[0]
+            self._n_prompt_tokens = max(n_tokens + 64, 512)
         return self._n_prompt_tokens
 
     async def cog_load(self) -> None:
@@ -682,7 +685,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             debug_data["context"] = context.splitlines()
             debug_data["n_prompt_tokens"] = self.n_prompt_tokens
             ctokens = self.tokenizer.batch_encode_plus([context], return_length=True)
-            debug_data["ncontext_tokens"] = ctokens.get("length")[0]
+            debug_data["n_context_tokens"] = ctokens.get("length")[0]
 
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
