@@ -455,9 +455,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         message: Message,
         *,
         guild_settings: Optional[GuildSettings] = None,
-        limit: int = 50,
+        limit: Optional[int] = None,
         as_list: bool = True,
     ) -> Union[str, list[str]]:
+        if limit is None:
+            limit = self.params.context_messages
+
         messages = await message.channel.history(limit=limit, before=message).flatten()
         messages.insert(0, message)  # add the message that triggered the response
 
