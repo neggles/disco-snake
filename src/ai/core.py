@@ -437,7 +437,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if include_model:
             prompt.append(self.prompt.model.full.rstrip())
 
-        prompt = "\n".join([x for x in prompt if len(x) > 0])
+        prompt = "\n".join([x for x in prompt if x is not None and len(x) > 0])
 
         replace_tokens = {
             "bot_name": self.name,

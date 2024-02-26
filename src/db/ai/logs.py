@@ -40,6 +40,8 @@ class AiResponseLog(Base):
     context: Mapped[Optional[list[str]]] = mapped_column(pg.ARRAY(sa.String), nullable=True)
     response: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
     response_raw: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    n_prompt_tokens: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
+    n_context_tokens: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
 
     @classmethod
     def from_old_format(cls, log_obj: dict) -> "AiResponseLog":
