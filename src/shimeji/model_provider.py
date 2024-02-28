@@ -16,6 +16,23 @@ from shimeji.tokenizers import Llama
 logger = logging.getLogger(__name__.replace("shimeji", "ai"))
 
 
+def default_sampler_priority() -> list[str]:
+    return [
+        "temperature",
+        "dynamic_temperature",
+        "quadratic_sampling",
+        "top_k",
+        "top_p",
+        "typical_p",
+        "epsilon_cutoff",
+        "eta_cutoff",
+        "tfs",
+        "top_a",
+        "min_p",
+        "mirostat",
+    ]
+
+
 class OobaGenParams(BaseModel):
     preset: str | None = Field(None, description="name of a file under presets/ to load settings from")
     min_p: float = 0
@@ -54,6 +71,7 @@ class OobaGenParams(BaseModel):
     add_bos_token: bool = True
     skip_special_tokens: bool = True
     grammar_string: str = ""
+    sampler_priority: list[str] = Field(default_factory=default_sampler_priority)
 
 
 class OobaCompletionParams(BaseModel):

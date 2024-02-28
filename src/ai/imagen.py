@@ -117,7 +117,7 @@ class Imagen:
             user_request = "a photo of " + user_request.strip()
 
         for word in ["yourself ", "you "]:
-            user_request = user_request.replace(word, "a girl ")
+            user_request = user_request.replace(word, f"a {self.params.chartype} ")
 
         if "your " in user_request:
             user_request = user_request.replace("your ", "her ")

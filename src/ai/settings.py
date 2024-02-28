@@ -300,6 +300,7 @@ class ImagenParams(BaseModel):
     enabled: bool
     api_host: str
     timezone: str
+    chartype: str = "girl"
 
 
 class ImagenApiParams(BaseModel):
@@ -369,8 +370,7 @@ class ImagenApiParams(BaseModel):
 
 class ImagenLMPrompt(BaseModel):
     tags: list[str] = Field(...)
-    header: list[str] = Field(...)
-    trailer: list[str] = Field(...)
+    template: list[str] = Field(...)
     gensettings: OobaGenRequest = Field(...)
 
     def __post_init__(self):
@@ -380,22 +380,17 @@ class ImagenLMPrompt(BaseModel):
             else "a cute girl looking out her apartment window"
         )
 
-    def get_tags(self) -> str:
+    @property
+    def tag_string(self) -> str:
         return ", ".join(self.tags)
 
-    def get_header(self) -> str:
-        return "\n".join(self.header).replace("{prompt_tags}", self.get_tags())
-
-    def get_trailer(self) -> str:
-        return "\n".join(self.trailer).replace("{prompt_tags}", self.get_tags())
-
-    def wrap_prompt(self, user_message: str) -> str:
-        if len(user_message) == 0:
-            user_message = self.gensettings.prompt
-        return f"{self.get_header()}{user_message}{self.get_trailer()}"
+    def wrap_prompt(self, user_message: Optional[str] = None) -> str:
+        if user_message is None or len(user_message) == 0:
+            user_message = self.default_prompt
+        return "\n".join(self.template).format(prompt_tags=self.tag_string, user_message=user_message.strip())
 
     def clean_tags(self, prompt: str) -> str:
-        return prompt.replace(self.get_tags() + ", ", "")
+        return prompt.replace(f"{self.tag_string},", "").strip()
 
     def get_request(self, prompt: Optional[str] = None) -> OobaGenRequest:
         gensettings = deepcopy(self.gensettings)
