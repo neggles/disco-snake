@@ -930,7 +930,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     logger.info(f"User {message.author} not found in database, creating entry")
                     user = DiscordUser.from_discord(message.author)
                     await session.merge(user)
-                    await session.commit()
+                    await session.flush()
                     user = await session.get(DiscordUser, message.author.id)
                 if user is None:
                     raise Exception("Failed to create or retrieve user")
