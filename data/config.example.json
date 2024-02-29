@@ -1,16 +1,16 @@
 {
   "app_id": "your_discord_application_id",
   "bot_token": "your_discord_bot_token",
-  "permissions": "your_bot_permission_mask",
+  "permissions": "39994806094912",
 
   "timezone": "UTC",
   "owner": "user#1234",
   "repo_url": "https://github.com/username/repo-name",
   "db_uri": "postgresql+psycopg://postgres:postgres@localhost:2027/discosnake?sslmode=disable",
 
-  "owner_id": 123456789876543,
-  "admin_ids": [123456787654321, 876543212345678],
-  "home_guild": 98765432345678,
+  "owner_id": 141501701847777280,
+  "admin_ids": [141501701847777280, 156863751704936448],
+  "home_guild": 796951111990902814,
 
   "log_level": "info",
   "debug": false,
