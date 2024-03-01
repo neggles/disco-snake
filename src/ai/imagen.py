@@ -72,6 +72,13 @@ re_clean_filename = re.compile(r"[^a-zA-Z0-9_\- ]+")  # for removing non-alphanu
 re_single_dash = re.compile(r"-+")  # for removing multiple dashes
 re_fix_commas = re.compile(r",[,\s]*", re.I + re.M)
 
+re_eyes_hair = re.compile(
+    r"(red|blue|brown|black|grey|silver|gold|yellow|orange|green|purple|violet|indigo|pink)"
+    + r" (eye|hair)s?",
+    re.I + re.M,
+)
+
+
 re_image_description = re.compile(r"\[\s*image:? ([^\]]+)\s*\]", re.I + re.M)
 re_send_image = re.compile(r"[\[(].?(?:send|sends|sending) a? ?([^)\]]+)[)\]]", re.I + re.M)
 send_pic_regexes = [re_image_description, re_send_image]
@@ -178,8 +185,11 @@ class Imagen:
             # split tags, strip whitespace, remove banned tags, rejoin
             lm_tags_split = [x.strip().lower() for x in lm_tag_string.split(",") if len(x) > 3]
             for tag in lm_tags_split:
-                if any([re.search(x, tag, re.I) for x in self.sd_prompt.banned_tags]):
-                    logger.debug(f"Removing banned tag {tag}")
+                if any((re.search(x, tag, re.I) for x in self.sd_prompt.banned_tags)):
+                    logger.debug(f"Removing banned tag '{tag}'")
+                    continue
+                if self.sd_prompt.cleanup_desc and re_eyes_hair.search(tag, re.I):
+                    logger.debug(f"Removing eye/hair description tag '{tag}'")
                     continue
                 lm_tags.append(tag)
 

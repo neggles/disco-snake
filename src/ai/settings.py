@@ -373,16 +373,17 @@ class ImagenLMPrompt(BaseModel):
     template: list[str] = Field(...)
     gensettings: OobaGenRequest = Field(...)
 
-    def __post_init__(self):
-        self.default_prompt = (
+    @property
+    def tag_string(self) -> str:
+        return ", ".join(self.tags)
+
+    @property
+    def default_prompt(self) -> str:
+        return (
             self.gensettings.prompt
             if len(self.gensettings.prompt) > 0
             else "a cute girl looking out her apartment window"
         )
-
-    @property
-    def tag_string(self) -> str:
-        return ", ".join(self.tags)
 
     def wrap_prompt(self, user_message: Optional[str] = None) -> str:
         if user_message is None or len(user_message) == 0:
@@ -403,6 +404,7 @@ class ImagenSDPrompt(BaseModel):
     lm_weight: float = 1.15
     tag_sep: str = ","
     word_sep: str = " "
+    cleanup_desc: bool = True
     leading: list[str] = Field(...)
     trailing: list[str] = Field(...)
     negative: list[str] = Field(...)
