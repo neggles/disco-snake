@@ -18,18 +18,18 @@ logger = logging.getLogger(__name__.replace("shimeji", "ai"))
 
 def default_sampler_priority() -> list[str]:
     return [
+        "min_p",
         "temperature",
         "dynamic_temperature",
         "quadratic_sampling",
-        "top_k",
         "top_p",
         "typical_p",
         "epsilon_cutoff",
         "eta_cutoff",
         "tfs",
         "top_a",
-        "min_p",
         "mirostat",
+        "top_k",
     ]
 
 
