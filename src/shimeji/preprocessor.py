@@ -165,11 +165,11 @@ class ContextPreprocessor(Preprocessor):
             newctx = []
 
             for bIdx in range(len(before)):
-                newctx.append(before[bIdx])
+                newctx.append(before[bIdx].strip())
             for cIdx in range(len(ctxtext)):
-                newctx.append(ctxtext[cIdx])
+                newctx.append(ctxtext[cIdx].strip())
             for aIdx in range(len(after)):
-                newctx.append(after[aIdx])
+                newctx.append(after[aIdx].strip())
         return "\n".join(newctx)
 
     def process(self, context: str, is_respond: bool, name: str) -> str:

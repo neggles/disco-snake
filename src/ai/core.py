@@ -11,6 +11,7 @@ from random import choice as random_choice
 from traceback import format_exc
 from typing import Any, Optional, Tuple, Union
 
+import jinja2 as j2
 from disnake import (
     ApplicationCommandInteraction,
     Colour,
@@ -148,10 +149,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.prompt: Prompt = self.config.prompt
         self.max_retries = self.params.max_retries
 
-        self.prefix_user: str = self.prompt.prefix_user
-        self.prefix_bot: str = self.prompt.prefix_bot
-        self.prefix_sep: str = self.prompt.prefix_sep
-
         self.idle_enable: bool = self.params.idle_enable
         self.idle_channels: list[int] = self.params.get_idle_channels()
 
@@ -192,6 +189,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self._mention_cache: dict[int, Any] = {}
         self._emoji_cache: dict[int, Any] = {}
         self._n_prompt_tokens: int = None
+        # other cached vars
+        self.j2_env: j2.Environment = j2.Environment(
+            keep_trailing_newline=False,
+            trim_blocks=True,
+            lstrip_blocks=True,
+            cache_size=10,
+        )
+        self._chat_template: Optional[j2.Template] = None
 
     # Getters for config object sub-properties
     @property
@@ -223,9 +228,23 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if isinstance(prompt_str, list):
                 prompt_str = "\n".join(prompt_str)
             encoded: BatchEncoding = self.tokenizer.batch_encode_plus([prompt_str], return_length=True)
-            n_tokens = encoded.get("length")[0]
+            n_tokens = encoded.get("length", [0])[0]
             self._n_prompt_tokens = max(n_tokens + 64, 512)
         return self._n_prompt_tokens
+
+    @property
+    def chat_template(self) -> Optional[j2.Template]:
+        if self._chat_template is None and self.prompt.chat_template_str is not None:
+            logger.debug("Compiling chat template...")
+            self._chat_template = self.j2_env.from_string(self.prompt.chat_template_str)
+            logger.debug("Template compiled")
+        return self._chat_template
+
+    def apply_chat_template(self, messages: list[dict[str, str]], add_generation_prompt: bool = True) -> str:
+        if self.chat_template is None:
+            return "\n".join([x["content"] for x in messages])
+        rendered = self.chat_template.render(messages=messages, add_generation_prompt=add_generation_prompt)
+        return rendered
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -243,9 +262,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             use_fast=True,
             model_max_length=self.lm_gensettings.truncation_length,
         )
-        if self.prompt.chat_template is not None:
-            self.tokenizer.chat_template = "\n".join(self.prompt.chat_template)
-            logger.debug(f"Loaded tokenizer chat template: {self.tokenizer.chat_template}")
 
         logger.info("Initializing Model Provider...")
         if self.model_provider_name == "ooba":
@@ -293,6 +309,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if not self.log_archive_loop.is_running():
             logger.info("Starting log archive loop")
             self.log_archive_loop.start()
+
+        _ = self.chat_template  # force template compilation
 
         logger.info("AI engine initialized... probably? yolo!")
 
@@ -376,8 +394,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             tos_accepted = True  # ignore ToS check for bots
 
         # Now that we've filtered out messages we don't care about, let's get the message content
-        message_content = self.get_msg_content_clean(message)
-        if message_content == "":
+        content = self.get_msg_content_clean(message)
+        if content is None:
             return  # ignore empty messages
 
         trigger: Optional[str] = None  # response trigger reason (tfw no StrEnum in 3.10)
@@ -387,11 +405,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         try:
             async with self.lm_lock:
                 if direct_message:
-                    logger.debug(f"DM from {message.author}: {message_content}")
+                    logger.debug(f"DM from {message.author}: {content}")
                     trigger = "DM"
 
                 elif self.check_mention(message):
-                    logger.debug(f"Mentioned in {message.channel}: {message_content}")
+                    logger.debug(f"Mentioned in {message.channel}: {content}")
                     trigger = "mention"
 
                 if trigger is not None:
@@ -421,7 +439,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             self.debug_dir.joinpath(err_filename).write_text(exc_desc)
 
     # retrieve the LM prompt and inject name, time, etc.
-    def get_prompt(self, ctx: Optional[MessageInteraction] = None, include_model: bool = False) -> str:
+    def get_prompt(self, ctx: Optional[MessageInteraction] = None) -> str:
         if ctx is None:
             location_context = "and friends in a Discord server"
         elif hasattr(ctx, "guild") and ctx.guild is not None:
@@ -434,8 +452,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         prompt = []
         prompt.append(self.prompt.system.full)
         prompt.append(self.prompt.character.full)
-        if include_model:
-            prompt.append(self.prompt.model.full.rstrip())
 
         prompt = "\n".join([x for x in prompt if x is not None and len(x) > 0])
 
@@ -455,13 +471,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         message: Message,
         *,
         guild_settings: Optional[GuildSettings] = None,
-        limit: Optional[int] = None,
-        as_list: bool = True,
+        max_messages: Optional[int] = None,
     ) -> Union[str, list[str]]:
-        if limit is None:
-            limit = self.params.context_messages
+        if max_messages is None:
+            max_messages = self.params.context_messages
 
-        messages = await message.channel.history(limit=limit, before=message).flatten()
+        messages = await message.channel.history(limit=max_messages, before=message).flatten()
         messages.insert(0, message)  # add the message that triggered the response
 
         # magic tag to break context chain to get bot out of librarian mode
@@ -490,11 +505,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if msg.author.id in self.tos_reject_ids:
                 continue  # skip users who rejected the privacy policy
             if msg.content is not None:
-                if msg.content.startswith("-") or msg.content.startswith(", "):
-                    # skip messages that start with a command prefix or a comma-space
-                    continue
+                if any((msg.content.startswith(x) for x in ["-", "/", ", "])):
+                    continue  # skip messages that start with a command prefix or a comma-space
+                if "```" in msg.content:
+                    continue  # skip messages with code blocks
 
-            msg_role = "user"
             if msg.author.id == self.bot.user.id:
                 if msg.content.startswith("This is an AI chatbot made by"):
                     continue  # this is a TOS message in a DM so lets skip it
@@ -506,17 +521,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     if msg.author.id not in self.sibling_ids:
                         logger.debug(f"Stripping non-sibling bot message {msg.id} from context chain")
                         continue  # skip non-sibling bot messages
-                    logger.debug(f"Keeping sibling bot message {msg.id}")
-                else:
-                    logger.debug(f"Keeping bot message {msg.id}")
-                    pass  # don't skip other bot messages
 
             # set up author name
             if msg.author.id == self.bot.user.id:
-                author_name = f"{self.prefix_user}{self.prefix_sep}{self.name}:"
                 msg_role = "assistant"
+                author_name = f"{self.name}:"
             else:
-                author_name = f"{self.prefix_user}{self.prefix_sep}{msg.author.display_name.strip()}:"
+                msg_role = "user"
+                author_name = f"{msg.author.display_name.strip()}:"
 
             if len(msg.embeds) > 0:
                 nitro_bs = self.handle_stupid_fucking_embed(message)
@@ -539,35 +551,44 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
             if msg.content and len(msg.embeds) == 0:
                 content = self.get_msg_content_clean(msg)
+                if content is None:
+                    logger.debug(f"Message {msg.id} was empty after cleaning, skipping...")
+                    continue  # skip empty-after-cleaning messages
+
                 if content.startswith("http"):
                     chain.append(wrap_message(f"{author_name} [a link to a webpage]", msg_role))
-                elif content != "" and "```" not in content and not content.startswith("-"):
-                    if msg.author.id == self.bot.user.id:
-                        # strip (laughs) from start of own context
-                        stripped_content = re_start_expression.sub("", content)
-                        if len(stripped_content.strip()) > 0:
-                            content = stripped_content
+                    continue
+
+                if msg.author.id == self.bot.user.id:
+                    content = re_start_expression.sub("", content)
+                    if len(content) >= 0:
+                        chain.append(wrap_message(f"{author_name} {content}", msg_role))
+                    else:
+                        logger.debug(f"Self-sent message {msg.id} was empty after cleaning, skipping...")
+                        continue
+                else:
                     chain.append(wrap_message(f"{author_name} {content}", msg_role))
 
             for attachment in msg.attachments:
                 try:
                     if not attachment.content_type.startswith("image/"):
-                        logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
+                        logger.debug(f"got non-image content-type: '{attachment.content_type}', skipping")
                         continue
+                    # caption image
                     caption = await self.eyes.perceive_attachment(attachment)
                     if caption is not None:
                         chain.append(wrap_message(f"{author_name} [image: {caption}]", msg_role))
+                    else:
+                        chain.append(wrap_message(f"{author_name} [image: unknown content]", msg_role))
+                    continue
                 except Exception as e:
                     logger.exception(e)
                     chain.append(wrap_message(f"{author_name} [image: loading error]", msg_role))
 
-        if chain[-1]["role"] == "assistant":
-            chain = chain[:-1]  # remove last message if it's from the bot, cheap hack for now
-
-        return chain if as_list is True else ("\n".join([x["content"] for x in chain]))
+        return chain
 
     # assemble a prompt/context for the model
-    async def process_context(self, conversation: list[str], message: Message):
+    async def process_context(self, conversation: list[str | dict[str, str]], message: Message):
         if self.prompt.disco_mode:
             logger.debug("Disco mode enabled, returning only the message that triggered the response")
             context = message.content
@@ -578,22 +599,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.debug(f"building context from {len(conversation)} messages")
 
         if isinstance(conversation[0], dict):
-            logger.debug("applying chat template")
-            conversation = self.tokenizer.apply_chat_template(conversation, tokenize=False).splitlines()
-            logger.debug(f"conversation: {conversation}")
-
-        if self.prompt.instruct is True:
-            post_instruct = conversation.pop(-1) if self.prompt.inject_early else ""
-            conversation = "\n".join(
-                [
-                    "\n".join(conversation),
-                    "\n" + self.prompt.model.full.rstrip(),
-                    "\n".join(post_instruct).replace(self.prefix_user, "").lstrip(),
-                ]
-            )
+            conversation = self.apply_chat_template(conversation, add_generation_prompt=False).splitlines()
+            logger.debug(f"applied chat template:\n{conversation}")
 
         if isinstance(conversation, list):
-            conversation = "\n".join(conversation)
+            conversation = "\n".join([x.strip() for x in conversation])
 
         prompt_entry = ContextEntry(
             text=self.get_prompt(message),
@@ -630,7 +640,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         context = contextmgr.context(self.context_size)
         context = "\n".join([x.strip() for x in context.splitlines() if len(x.strip()) > 0])
         context = re_consecutive_newline.sub("\n", context)  # yeet all consecutive newlines (empty lines)
-        context = context.replace("|> ", "|>")
         return context
 
     # actual response logic
@@ -763,6 +772,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 response = response.rstrip("#}\"\\'").lstrip("\\\"'").replace("\\r", "").replace("\\n", "\n")
                 response = response.replace("\\u00a0", "\n")
 
+                if self.params.force_lowercase:
+                    if response.isupper() is False:  # only force lowercase if we are not yelling
+                        response = response.lower()
+
                 if self.prompt.disco_mode:
                     logger.debug("Prepending prompt to response (disco mode)")
                     response = f"{context} {response}"
@@ -859,7 +872,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     return
                 idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
                 if idle_sec >= 2**31:
-                    if self.get_msg_content_clean(message) == "":
+                    if self.get_msg_content_clean(message) is None:
                         return
                     logger.debug(f"Running idle response to message {message.id}")
                     # if it's been more than <idle_interval> sec, send a response
@@ -955,20 +968,23 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             return False
 
     # clean up a message's content
-    def get_msg_content_clean(self, message: Message, content: Optional[str] = None) -> str:
-        content = content if content is not None else message.content
-        # logger.debug(f"Cleaning message content: {content}")
+    def get_msg_content_clean(self, message: Message, content: Optional[str] = None) -> Optional[str]:
+        # if no content is provided, use the message's content
+        content = content or message.content
+        # if there's a codeblock in there, return None
+        if "```" in content:
+            return None
+        # convert mentions and emoji from user IDs to to plain text
         content = self.stringify_mentions_emoji(content, message=message)
-
         # eliminate any and all content between angle brackets <>
         content = re_angle_bracket.sub("", content)
         # turn newlines into spaces. this is a cheap hack but the model doesn't handle newlines well
-        content = content.replace("\n", " ")
-        # if there's a codeblock in there, return an empty string
-        content = content.lstrip() if "```" not in content else ""
-        # return the content, mentions, and emoji if requested, otherwise just the content
+        # content = content.replace("\n", " ")
         # logger.debug(f"Cleaned message content: {content}")
-        return content
+        # strip leading and trailing whitespace
+        content = content.strip()
+        # return the cleaned content, or None if it's empty
+        return content if len(content) > 0 else None
 
     # clean out some bad tokens from responses and fix up mentions
     def fixup_bot_user_tokens(self, response: str, message: Message) -> str:
@@ -1114,19 +1130,24 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         """
         # get the message content
         if isinstance(message, Message):
-            message_content = self.get_msg_content_clean(message).lower()
+            content: Optional[str] = self.get_msg_content_clean(message)
+        elif isinstance(message, str):
+            content: str = message.lower()
         else:
-            message_content = message.lower()
+            raise ValueError("take_pic got an unexpected message type (not str or Message)")
 
-        if message_content == "":
+        if content is None:
             logger.debug("Message was empty after cleaning.")
-            return ""
+            return None
+
+        # lowercase the content
+        content = content.lower().strip()
 
         # get the image description and remove newlines
-        message_content = message_content.replace("\n", " ").replace(self.name + " ", "")
+        content = content.replace("\n", " ").replace(f"{self.name} ", "")
 
         # build the LLM prompt for the image
-        lm_trigger = self.imagen.strip_take_pic(message_content)
+        lm_trigger = self.imagen.strip_take_pic(content)
         lm_prompt, user_request = self.imagen.get_lm_prompt(lm_trigger)
         logger.info(f"LLM Request: {user_request}")
 
@@ -1136,7 +1157,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.info(f"LLM Response: {lm_tag_string}")
 
         # build the SD API request
-        sdapi_request = self.imagen.build_request(lm_tag_string, message_content)
+        sdapi_request = self.imagen.build_request(lm_tag_string, content)
         logger.info(f"SD API Request: {json.dumps(sdapi_request)}")
 
         # submit it

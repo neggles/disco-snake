@@ -157,6 +157,7 @@ class GuildSettingsList(BaseModel):
 class BotParameters(BaseModel):
     autoresponse: bool = False
     idle_enable: bool = False
+    force_lowercase: bool = False
     nicknames: list[str] = Field([])
     context_size: int = 4096
     context_messages: int = 100
@@ -224,17 +225,21 @@ class PromptElement(BaseModel):
 
 
 class Prompt(BaseModel):
-    instruct: bool = Field(True)
     disco_mode: bool = Field(False)
     inject_early: bool = Field(False)
     with_date: bool = Field(False)
     character: PromptElement = Field(...)
     system: PromptElement = Field(...)
-    model: PromptElement = Field(...)
     prefix_bot: Optional[str] = None
     prefix_user: str = "\n"
     prefix_sep: str = "\n"
     chat_template: Optional[list[str]] = None
+
+    @property
+    def chat_template_str(self) -> Optional[str]:
+        if self.chat_template is not None and len(self.chat_template) > 0:
+            return "\n".join(self.chat_template)
+        return None
 
 
 class GradioConfig(BaseModel):
