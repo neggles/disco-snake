@@ -763,6 +763,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
                 # replace "<USER>" with user mention, same for "<BOT>"
                 response = self.fixup_bot_user_tokens(response, message).lstrip()
+                if self.params.force_lowercase:
+                    if response.isupper() is False:  # only force lowercase if we are not yelling
+                        response = response.lower()
                 # Clean response - trim left whitespace and fix emojis and pings
                 response = self.restore_mentions_emoji(text=response, message=message)
                 # Unescape markdown
@@ -772,10 +775,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 # scream into the void
                 response = response.rstrip("#}\"\\'").lstrip("\\\"'").replace("\\r", "").replace("\\n", "\n")
                 response = response.replace("\\u00a0", "\n")
-
-                if self.params.force_lowercase:
-                    if response.isupper() is False:  # only force lowercase if we are not yelling
-                        response = response.lower()
 
                 if self.prompt.disco_mode:
                     logger.debug("Prepending prompt to response (disco mode)")
