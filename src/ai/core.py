@@ -640,7 +640,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         context = contextmgr.context(self.context_size)
         context = "\n".join([x.strip() for x in context.splitlines() if len(x.strip()) > 0])
         context = re_consecutive_newline.sub("\n", context)  # yeet all consecutive newlines (empty lines)
-        context = context.replace("|> ", "")  # remove any spurious whitespace from the roles
+        context = context.replace("|> ", "|>")  # remove any spurious whitespace from the roles
         return context
 
     # actual response logic
