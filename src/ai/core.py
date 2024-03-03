@@ -995,7 +995,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         response = re_user_token.sub(f"@{author_name}", response)
         response = re_bot_token.sub(f"@{self.name}", response)
         response = re_unescape_md.sub(r"\1", response)
-        response = response.rstrip("</s>").strip()
+        response = response.replace("</s>", "").strip()
         return response
 
     # search for bad words in a message
