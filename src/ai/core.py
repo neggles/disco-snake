@@ -773,7 +773,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 # Clean up multiple non-word characters at the end of the response
                 response = re_nonword_end.sub(r"\1", response)
                 # scream into the void
-                response = response.rstrip("#}\"\\'").lstrip("\\\"'").replace("\\r", "").replace("\\n", "\n")
+                response = response.replace("\\r", "").replace("\\n", "\n")
                 response = response.replace("\\u00a0", "\n")
 
                 if self.prompt.disco_mode:
