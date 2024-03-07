@@ -60,7 +60,7 @@
 
     "[json]": {
         "editor.codeActionsOnSave": {
-            "source.fixAll.sortJSON": false
+            "source.fixAll.sortJSON": "never"
         },
         "editor.defaultFormatter": "esbenp.prettier-vscode",
         "editor.formatOnSave": true,
@@ -68,7 +68,7 @@
     },
     "[jsonc]": {
         "editor.codeActionsOnSave": {
-            "source.fixAll.sortJSON": false
+            "source.fixAll.sortJSON": "never"
         },
         "editor.defaultFormatter": "esbenp.prettier-vscode",
         "editor.formatOnSave": true,
