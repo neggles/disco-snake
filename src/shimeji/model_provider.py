@@ -2,14 +2,15 @@ import copy
 import json
 import logging
 from abc import ABC, abstractmethod
+from functools import wraps
 from os import PathLike
-from typing import Optional
+from typing import Any, Optional
 
 import aiohttp
 import requests
 from pydantic import BaseModel, Field
 from tokenizers import Tokenizer
-from transformers import AutoTokenizer, LlamaTokenizerFast
+from transformers import AutoTokenizer, BatchEncoding, LlamaTokenizerFast, PreTrainedTokenizerBase
 
 from shimeji.tokenizers import Llama
 
@@ -78,19 +79,63 @@ class OobaCompletionParams(BaseModel):
     prompt: str | list[str]
     echo: bool = False
     stream: bool = False
-    frequency_penalty: Optional[float] = 0
+    frequency_penalty: Optional[float] = None
     logit_bias: Optional[dict] = None
     logprobs: Optional[int] = None
-    max_tokens: Optional[int] = 16
-    presence_penalty: Optional[float] = 0
+    max_tokens: Optional[int] = None
+    presence_penalty: Optional[float] = None
     stop: Optional[str | list[str]] = None
     suffix: Optional[str] = None
-    temperature: Optional[float] = 1
-    top_p: Optional[float] = 1
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
 
 
 class OobaGenRequest(OobaGenParams, OobaCompletionParams):
     pass
+
+
+class TabbyGenRequest(BaseModel):
+    prompt: str | list[str]
+    model: Optional[str] = None
+
+    max_tokens: int = 128
+    generate_window: Optional[int] = None
+
+    temperature: Optional[float] = None
+    min_temp: Optional[float] = None
+    max_temp: Optional[float] = None
+    temp_exponent: Optional[float] = None
+    temperature_last: Optional[bool] = None
+    smoothing_factor: Optional[float] = None
+
+    top_p: Optional[float] = None
+    typical: Optional[float] = Field(None, alias="typical_p")
+    min_p: Optional[float] = None
+    top_k: Optional[int] = None
+    top_a: Optional[float] = None
+    tfs: Optional[float] = None
+
+    cfg_scale: Optional[float] = None
+    negative_prompt: Optional[str | list[str]] = None
+
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+    repetition_penalty: float = 1.15
+    repetition_decay: Optional[int] = None
+    penalty_range: Optional[int] = None
+
+    token_healing: Optional[bool] = None
+    add_bos_token: Optional[bool] = None
+    ban_eos_token: Optional[bool] = None
+
+    stop: Optional[str | list[str]] = None
+
+    logprobs: Optional[int] = None
+    logit_bias: Optional[dict[str, int]] = None
+
+    # system-level
+    echo: bool = False
+    stream: bool = False
 
 
 class ModelProvider(ABC):
@@ -104,6 +149,7 @@ class ModelProvider(ABC):
         debug: bool = False,
         **kwargs,
     ):
+        self.tokenizer: PreTrainedTokenizerBase
         self.endpoint_url = endpoint_url
         self.debug = debug
         if not hasattr(self, "default_args"):
@@ -112,7 +158,7 @@ class ModelProvider(ABC):
             raise ValueError("default args is required")
 
     @abstractmethod
-    def generate(self, args: dict | BaseModel) -> str:
+    def generate(self, args: dict | BaseModel, return_dict: bool = False) -> str | dict[str, Any]:
         """Generate a response from the ModelProvider's endpoint.
 
         :param args: The arguments to pass to the endpoint.
@@ -121,7 +167,7 @@ class ModelProvider(ABC):
         """
         raise NotImplementedError("Abstract base class was called ;_;")
 
-    async def generate_async(self, args: dict | BaseModel) -> str:
+    async def generate_async(self, args: dict | BaseModel, return_dict: bool = False) -> str | dict[str, Any]:
         """Generate a response from the ModelProvider's endpoint asynchronously.
 
         :param args: The arguments to pass to the endpoint.
@@ -131,30 +177,12 @@ class ModelProvider(ABC):
         raise NotImplementedError("Abstract base class was called ;_;")
 
     @abstractmethod
-    def should_respond(self, context: str, name: str) -> str:
-        """Determine if the ModelProvider predicts that the name should respond to the given context.
-
-        :param context: The context to use.
-        :type context: str
-        :param name: The name to check.
-        :type name: str
-        :raises NotImplementedError: If the should_respond method is not implemented.
-        """
-        raise NotImplementedError("Abstract base class was called ;_;")
-
-    def should_respond_async(self, context: str, name: str) -> str:
-        """Determine if the ModelProvider predicts that the name should respond to the given context asynchronously.
-
-        :param context: The context to use.
-        :type context: str
-        :param name: The name to check.
-        :type name: str
-        :raises NotImplementedError: If the should_respond method is not implemented.
-        """
-        raise NotImplementedError("Abstract base class was called ;_;")
-
-    @abstractmethod
-    def response(self, context: str) -> str:
+    def response(
+        self,
+        context: Optional[str],
+        gensettings: Optional[dict | BaseModel] = None,
+        return_dict: bool = False,
+    ) -> str | dict[str, Any]:
         """Generate a response from the ModelProvider's endpoint.
 
         :param context: The context to use.
@@ -163,7 +191,12 @@ class ModelProvider(ABC):
         """
         raise NotImplementedError("Abstract base class was called ;_;")
 
-    def response_async(self, context: str) -> str:
+    def response_async(
+        self,
+        context: Optional[str],
+        gensettings: Optional[dict | BaseModel] = None,
+        return_dict: bool = False,
+    ) -> str | dict[str, Any]:
         """Generate a response from the ModelProvider's endpoint asynchronously.
 
         :param context: The context to use.
@@ -172,27 +205,18 @@ class ModelProvider(ABC):
         """
         raise NotImplementedError("Abstract base class was called ;_;")
 
-    def tokenize(self, text: str, return_ids: bool = False) -> list[int | str]:
-        """Tokenize a string and return it.
-
-        :param text: The text to tokenize.
-        :type text: str
-        :return: The tokenized text.
-        :raises NotImplementedError: If the tokenize method is not implemented.
-        """
-        raise NotImplementedError("Abstract base class was called ;_;")
+    @wraps(PreTrainedTokenizerBase.batch_encode_plus)
+    def tokenize(self, text: str, *args, **kwargs) -> BatchEncoding:
+        return self.tokenizer.batch_encode_plus([text], *args, **kwargs)
 
 
 class OobaModel(ModelProvider):
-    """Abstract class for model providers that provide access to generative AI models."""
-
     def __init__(
         self,
         endpoint_url: str,
         default_args: OobaGenRequest,
         *,
         tokenizer: Optional[Tokenizer] = None,
-        api_v2: bool = True,
         **kwargs,
     ):
         """Constructor for ModelProvider.
@@ -202,7 +226,6 @@ class OobaModel(ModelProvider):
         """
         super().__init__(endpoint_url, default_args, **kwargs)
         self.default_args: OobaGenRequest
-        self.api_v2 = api_v2
 
         if isinstance(tokenizer, Tokenizer):
             self.tokenizer: Tokenizer = tokenizer
@@ -212,56 +235,45 @@ class OobaModel(ModelProvider):
             self.tokenizer: LlamaTokenizerFast = Llama()
 
     @property
-    def _api_path(self):
-        if self.api_v2:
-            return "v1/completions"
-        return "api/v1/generate"
+    def headers(self):
+        return {
+            "Content-Type": "application/json",
+            "Content-Encoding": "utf-8",
+            "Accept": "application/json",
+            "Accept-Encoding": "utf-8",
+        }
 
-    @property
-    def _result_key(self):
-        if self.api_v2:
-            return "choices"
-        return "results"
-
-    def generate(self, args: OobaGenRequest) -> str:
+    def generate(self, args: OobaGenRequest, return_dict: bool = False) -> str:
         payload = args.dict(exclude_none=True)
-        if self.api_v2 and "max_tokens" not in payload:
-            payload["max_tokens"] = payload.pop("max_new_tokens", 1024)
 
         if self.debug:
             logger.debug(f"Sending request: {json.dumps(payload, default=str, ensure_ascii=False)}")
 
         resp, err_resp = None, None
         try:
-            resp = requests.post(
-                f"{self.endpoint_url}/{self._api_path}",
-                headers={"Content-Type": "application/json"},
-                json=payload,
-            )
+            resp = requests.post(f"{self.endpoint_url}/v1/completions", headers=self.headers, json=payload)
             resp.encoding = "utf-8"
         except Exception as e:
             raise e
         if resp.status_code == 200:
-            return resp.json()[self._result_key][0]["text"]
+            return resp.json() if return_dict else resp.json()["choices"][0]["text"]
         else:
             err_resp = resp.json() if hasattr(resp, "json") else None
             raise Exception(f"Could not generate text with text-generation-webui. Error: {err_resp}")
 
-    async def generate_async(self, args: OobaGenRequest) -> str:
+    async def generate_async(self, args: OobaGenRequest, return_dict: bool = False) -> str:
         payload = args.dict(exclude_none=True)
-        if self.api_v2 and "max_tokens" not in payload:
-            payload["max_tokens"] = payload.pop("max_new_tokens", 1024)
 
         if self.debug:
             logger.debug(f"Sending request: {json.dumps(payload, default=str, ensure_ascii=False)}")
 
         resp, err_resp = None, None
         try:
-            async with aiohttp.ClientSession(base_url=self.endpoint_url) as session:
-                async with session.post(f"/{self._api_path}", json=payload) as resp:
+            async with aiohttp.ClientSession(base_url=self.endpoint_url, headers=self.headers) as session:
+                async with session.post("/v1/completions", json=payload) as resp:
                     if resp.status == 200:
                         ret = await resp.json(encoding="utf-8")
-                        return ret[self._result_key][0]["text"]
+                        return ret if return_dict else ret["choices"][0]["text"]
                     else:
                         resp.raise_for_status()
         except Exception as e:
@@ -269,66 +281,12 @@ class OobaModel(ModelProvider):
                 err_resp = await resp.text(encoding="utf-8")
             raise Exception(f"Could not generate response. Error: {err_resp}") from e
 
-    def should_respond(self, context, name: str, prefix: str = "") -> bool:
-        """
-        Determine if the Ooba endpoint predicts that the name should respond to the given context.
-        :param context: The context to use.
-        :type context: str
-        :param name: The name to check.
-        :type name: str
-        :return: Whether or not the name should respond to the given context.
-        :rtype: bool
-        """
-
-        args: OobaGenRequest = copy.deepcopy(self.default_args)
-        args.prompt = f"{context}{prefix}"
-        args.temperature = 0.7
-        args.temperature_last = False
-        args.top_p = 1.0
-        args.min_p = 0.1
-        args.top_k = 25
-        args.repetition_penalty = 1.2
-        args.repetition_penalty_range = 32
-        args.do_sample = True
-        args.max_tokens = 24
-        args.min_length = 0
-        response = self.generate(args)
-        logger.debug(f"Response: {response.strip()}")
-        if response.strip().startswith((name, prefix + name, prefix + " " + name)):
-            return True
-        else:
-            return False
-
-    async def should_respond_async(self, context, name: str, prefix: str = "") -> bool:
-        """Determine if the Ooba endpoint predicts that the name should respond to the given context asynchronously.
-        :param context: The context to use.
-        :type context: str
-        :param name: The name to check.
-        :type name: str
-        :return: Whether or not the name should respond to the given context.
-        :rtype: bool
-        """
-
-        args: OobaGenRequest = copy.deepcopy(self.default_args)
-        args.prompt = f"{context}{prefix}"
-        args.temperature = 0.7
-        args.temperature_last = False
-        args.top_p = 1.0
-        args.min_p = 0.1
-        args.top_k = 25
-        args.repetition_penalty = 1.2
-        args.repetition_penalty_range = 32
-        args.do_sample = True
-        args.max_tokens = 24
-        args.min_length = 0
-        response = await self.generate_async(args)
-        logger.debug(f"Response: {response.strip()}")
-        if response.strip().startswith((name, prefix + name, prefix + ": " + name)):
-            return True
-        else:
-            return False
-
-    def response(self, context: str = None, gensettings: Optional[OobaGenRequest] = None) -> str:
+    def response(
+        self,
+        context: Optional[str] = None,
+        gensettings: Optional[TabbyGenRequest] = None,
+        return_dict: bool = False,
+    ) -> str:
         # error if neither argument is provided
         if gensettings is None and context is None:
             raise ValueError("I can't generate a response without a prompt!")
@@ -343,9 +301,14 @@ class OobaModel(ModelProvider):
         if gensettings.prompt is None or gensettings.prompt == "":
             raise ValueError("I can't generate a response without a prompt!")
 
-        return self.generate(gensettings)
+        return self.generate(gensettings, return_dict=return_dict)
 
-    async def response_async(self, context: str = None, gensettings: Optional[OobaGenRequest] = None) -> str:
+    async def response_async(
+        self,
+        context: Optional[str] = None,
+        gensettings: Optional[TabbyGenRequest] = None,
+        return_dict: bool = False,
+    ) -> str:
         # error if neither argument is provided
         if gensettings is None and context is None:
             raise ValueError("I can't generate a response without a prompt!")
@@ -360,4 +323,4 @@ class OobaModel(ModelProvider):
         if gensettings.prompt is None or gensettings.prompt == "":
             raise ValueError("I can't generate a response without a prompt!")
 
-        return await self.generate_async(gensettings)
+        return await self.generate_async(gensettings, return_dict=return_dict)
