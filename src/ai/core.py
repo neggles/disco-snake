@@ -500,8 +500,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         def wrap_message(content: str, role: str = "user") -> dict[str, str]:
             return {"role": role.strip(), "content": content.strip()}
 
-        chain: list[dict[str, str]] = []
+        skip = []  # cache for replies we've reordered
+        chain: list[dict[str, str]] = []  # the context chain
         for msg in reversed(messages):
+            if msg.id in skip:
+                continue  # skip messages we've already reordered for reply-chasing
             if msg.author.id in self.tos_reject_ids:
                 continue  # skip users who rejected the privacy policy
             if msg.content is not None:
@@ -763,11 +766,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
                 # replace "<USER>" with user mention, same for "<BOT>"
                 response = self.fixup_bot_user_tokens(response, message).lstrip()
+                # Clean response - trim left whitespace and fix emojis and pings
+                response = self.restore_mentions_emoji(text=response, message=message)
                 if self.params.force_lowercase:
                     if response.isupper() is False:  # only force lowercase if we are not yelling
                         response = response.lower()
-                # Clean response - trim left whitespace and fix emojis and pings
-                response = self.restore_mentions_emoji(text=response, message=message)
                 # Unescape markdown
                 response = re_unescape_md.sub(r"\1", response)
                 # Clean up multiple non-word characters at the end of the response
@@ -1132,7 +1135,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if isinstance(message, Message):
             content: Optional[str] = self.get_msg_content_clean(message)
         elif isinstance(message, str):
-            content: str = message.lower()
+            content: str = message
         else:
             raise ValueError("take_pic got an unexpected message type (not str or Message)")
 
