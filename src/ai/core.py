@@ -223,13 +223,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     @property
     def n_prompt_tokens(self):
+        if self.prompt.disco_mode:
+            # no prompt tokens in disco mode
+            self._n_prompt_tokens = 0
         if self._n_prompt_tokens is None:
-            prompt_str = self.get_prompt()
-            if isinstance(prompt_str, list):
-                prompt_str = "\n".join(prompt_str)
+            prompt_str = self.get_prompt(ensure_str=True)
             encoded: BatchEncoding = self.tokenizer.batch_encode_plus([prompt_str], return_length=True)
-            n_tokens = encoded.get("length", [0])[0]
-            self._n_prompt_tokens = max(n_tokens + 64, 512)
+            n_tokens = encoded.get("length", [0]).pop(0) + 64
+            self._n_prompt_tokens = max(n_tokens, 512)
         return self._n_prompt_tokens
 
     @property
@@ -264,16 +265,17 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         )
 
         logger.info("Initializing Model Provider...")
-        if self.model_provider_name == "ooba":
-            self.model_provider = OobaModel(
-                endpoint_url=self.provider_config.endpoint,
-                default_args=self.lm_gensettings,
-                tokenizer=self.tokenizer,
-                api_v2=self.provider_config.api_v2,
-                debug=self.params.debug,
-            )
-        else:
-            raise ValueError(f"Unknown model provider type: {self.model_provider_name}")
+        match self.model_provider_name:
+            case "ooba":
+                self.model_provider = OobaModel(
+                    endpoint_url=self.provider_config.endpoint,
+                    default_args=self.lm_gensettings,
+                    tokenizer=self.tokenizer,
+                    api_v2=self.provider_config.api_v2,
+                    debug=self.params.debug,
+                )
+            case _:
+                raise ValueError(f"Unknown model provider type: {self.model_provider_name}")
 
         logger.info("Initializing ChatBot object")
         self.chatbot = ChatBot(
@@ -439,7 +441,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             self.debug_dir.joinpath(err_filename).write_text(exc_desc)
 
     # retrieve the LM prompt and inject name, time, etc.
-    def get_prompt(self, ctx: Optional[MessageInteraction] = None) -> str:
+    def get_prompt(self, ctx: Optional[MessageInteraction] = None, ensure_str: bool = False) -> str:
         if ctx is None:
             location_context = "and friends in a Discord server"
         elif hasattr(ctx, "guild") and ctx.guild is not None:
@@ -463,6 +465,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         }
         for token, replacement in replace_tokens.items():
             prompt = prompt.replace(f"{{{token}}}", replacement)
+        if ensure_str and isinstance(prompt, list):
+            prompt = "\n".join(prompt)
         return prompt
 
     # get the last N messages in a channel, up to and including the message that triggered the response
@@ -780,8 +784,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 response = response.replace("\\u00a0", "\n")
 
                 if self.prompt.disco_mode:
-                    logger.debug("Prepending prompt to response (disco mode)")
-                    response = f"{context} {response}"
+                    if response == "":
+                        logger.warning("Response was empty in disco mode, giving up")
+                    else:
+                        logger.debug("Prepending prompt to response (disco mode)")
+                        response = f"{context} {response}"
 
                 response_file = None
                 if len(response) > 1900:
@@ -812,7 +819,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                             await message.channel.send(response, file=response_image)
                 elif response == "":
                     logger.info("Response was empty.")
-                    await message.add_reaction("🤷‍♀️")
+                    await message.add_reaction(self.config.empty_react)
                 else:
                     if response_file is not None:
                         content = " ".join(response.split(" ")[:20]) + "... (too long, attached)"

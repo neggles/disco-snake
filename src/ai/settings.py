@@ -286,6 +286,7 @@ class AiSettings(BaseSettings):
     model_provider: LMApiConfig
     gradio: GradioConfig
     vision: Optional[VisionConfig] = None
+    empty_react: str = "🤷‍♀️"
     strip: list[str] = Field([])
     bad_words: list[str] = Field([])
 
