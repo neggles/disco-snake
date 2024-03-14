@@ -711,7 +711,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
                 for attempt in range(self.max_retries):
                     attempt = attempt + 1  # deal with range() starting from 0
-                    response: str = await self.chatbot.respond_async(context)
+                    try:
+                        response: str = await self.chatbot.respond_async(context)
+                    except Exception as e:
+                        logger.exception(e)
+                        await message.add_reaction("❌")
+                        return
+
                     bad_words = self.find_bad_words(response)
                     if any([response.lower() == x for x in self.bad_words]):
                         logger.info(f"Response {attempt} contained bad words: {response}\nRetrying...")
