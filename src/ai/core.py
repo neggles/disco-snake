@@ -107,7 +107,7 @@ re_consecutive_newline = re.compile(r"(\n[\s\n]*\n\s*)", re.M + re.I)
 
 # capture mentions and emojis
 re_mention = re.compile(r"<@(\d+)>", re.I)
-re_emoji = re.compile(r"<:([^:]+):(\d+)>", re.I)
+re_emoji = re.compile(r"<a?:([^:]+):(\d+)>", re.I)
 
 
 def re_match_lower(match: re.Match):
@@ -1010,7 +1010,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
         response = re_user_token.sub(f"@{author_name}", response)
         response = re_bot_token.sub(f"@{self.name}", response)
-        response = re_unescape_md.sub(r"\1", response)
         response = response.replace("</s>", "").strip()
         return response
 
