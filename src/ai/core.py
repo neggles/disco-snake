@@ -90,13 +90,17 @@ logger = logging.getLogger(__name__)
 re_angle_bracket = re.compile(r"\<(.*)\>", re.M)
 re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<bot>|{{bot}}|<char>|{{char}}|<assistant>|{{assistant}})", re.I)
-re_unescape_md = re.compile(r"\\([*_~`])")
+re_unescape_md = re.compile(r"\\([*_~`\"])")
 re_nonword = re.compile(r"[^a-zA-Z0-9]+", re.M + re.I)
 re_nonword_end = re.compile(r"([^a-zA-Z0-9])[^a-zA-Z0-9()]+$", re.M + re.I)
 
-re_linebreak_name = re.compile(r"(\n|\r|\r\n)(\S+): ", re.M)
+# find a line that looks like the bot talking for another user
+re_linebreak_name = re.compile(r"(\n|\r)*(\S+): ", re.M)
+# find a line that starts with a star or a parenthesis, followed by a word, followed by a star or a parenthesis
 re_start_expression = re.compile(r"^\s*[(\*]\w+[)\*]\s*", re.I + re.M)
+# find a line that starts with a capital letter and an optional space, followed by a lowercase letter
 re_upper_first = re.compile(r"^([A-Z]\s?[^A-Z])")
+# find URLs
 re_detect_url = re.compile(
     r"[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)",
     re.M + re.I,
@@ -105,9 +109,8 @@ re_detect_url = re.compile(
 # find consecutive newlines (at least 2) optionally with spaces in between (blank lines)
 re_consecutive_newline = re.compile(r"(\n[\s\n]*\n\s*)", re.M + re.I)
 
-# capture mentions and emojis
+# capture mentions
 re_mention = re.compile(r"<@(\d+)>", re.I)
-re_emoji = re.compile(r"<a?:([^:]+):(\d+)>", re.I)
 
 
 def re_match_lower(match: re.Match):
@@ -778,9 +781,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 response = self.fixup_bot_user_tokens(response, message).lstrip()
                 # Clean response - trim left whitespace and fix emojis and pings
                 response = self.restore_mentions_emoji(text=response, message=message)
-                if self.params.force_lowercase:
-                    if response.isupper() is False:  # only force lowercase if we are not yelling
-                        response = response.lower()
+                # check if we should force lowercase, only enforce if we are not yelling
+                if self.params.force_lowercase and (response.isupper() is False):
+                    response = response.lower()
                 # Unescape markdown
                 response = re_unescape_md.sub(r"\1", response)
                 # Clean up multiple non-word characters at the end of the response

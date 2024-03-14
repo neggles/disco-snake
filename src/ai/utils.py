@@ -18,7 +18,7 @@ re_spaces = re.compile(r"\s+")
 
 # capture mentions and emojis
 re_mention = re.compile(r"<@(\d+)>", re.I)
-re_emoji = re.compile(r"<a?:([^:]+):\d+>", re.I)
+re_emoji = re.compile(r"<(a)?(:[^:]+:)(\d+)>", re.I)
 
 # capture mentions in bot responses
 re_mention_resp = re.compile(r"(@\w+)\b", re.I)
@@ -71,7 +71,11 @@ def _stringify_mentions(
     for mention in re_mention.finditer(text):
         user_mention = f"{mention.group(0)}"
         user_id = int(mention.group(1))
-        user = bot.get_user(user_id) if guild is None else guild.get_member(user_id)
+        if guild is not None:
+            user = guild.get_member(user_id)
+        if user is None:
+            user = bot.get_user(user_id)
+
         name_string = "@deleted-user" if user is None else f"@{user.display_name}"
         # store mention in dict
         mentions[name_string] = user_mention
@@ -92,17 +96,18 @@ def _restore_mentions(text: str, mentions: dict[str, str]) -> str:
 def _stringify_emoji(text: str) -> Tuple[str, dict[str, str]]:
     emojis = {}
     for match in re_emoji.finditer(text):
-        emoji_tag = f"{match.group(0)}"
-        emoji_name = f":{match.group(1)}:"
-        emojis[emoji_name] = emoji_tag
-        text = text.replace(emoji_tag, emoji_name)
+        anim_flag, emoji_name, emoji_id = match.groups()
+        emojis[emoji_name] = anim_flag, emoji_id
+        text = text.replace(match.group(), emoji_name)
     return text, emojis
 
 
 def _restore_emoji(text: str, emojis: dict[str, str]) -> str:
-    for emoji_name, emoji_tag in emojis.items():
+    for emoji_name, (anim_flag, emoji_id) in emojis.items():
         # restore emoji from LRU dict
-        text = text.replace(emoji_name, emoji_tag)
+        if anim_flag is None:
+            anim_flag = ""
+        text = text.replace(emoji_name, f"<{anim_flag}{emoji_name}{emoji_id}>")
     return text
 
 
