@@ -1,31 +1,20 @@
 {
     "editor.insertSpaces": true,
     "editor.tabSize": 4,
+    "files.trimTrailingWhitespace": true,
     "editor.rulers": [100, 120],
     "editor.trimAutoWhitespace": true,
+
     "editor.formatOnSaveMode": "file",
 
-    "files.trimTrailingWhitespace": true,
     "files.trimFinalNewlines": true,
     "files.associations": {
-        ".clang-format": "yaml",
-        ".config": "shellscript",
         ".gitignore": "gitignore",
         ".vscode/*.json": "jsonc",
-        "*.sh.tmpl": "jinja-shell",
         "*.txt": "plaintext",
-        "requirements*.txt": "pip-requirements",
         "setup.cfg": "ini",
-        "ssh_config": "ssh_config"
-    },
-    "files.exclude": {
-        "**/.git": true,
-        "**/.svn": true,
-        "**/.hg": true,
-        "**/CVS": true,
-        "**/.DS_Store": true,
-        "**/Thumbs.db": true,
-        "**/__pycache__": true
+        "ssh_config": "ssh_config",
+        "*.yaml": "yaml"
     },
 
     "search.exclude": {
@@ -36,27 +25,34 @@
         "**/__pycache__": true
     },
 
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/.ruff_cache": true,
+        "**/__pycache__": true,
+        "**/*.egg-info": true
+    },
+
+    "[shellscript]": {
+        "files.eol": "\n",
+        "editor.tabSize": 4,
+        "editor.detectIndentation": false
+    },
+
     "[python]": {
         "editor.wordBasedSuggestions": "off",
         "editor.formatOnSave": true,
-        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.codeActionsOnSave": {
             "source.organizeImports": "always"
         }
     },
-    "ruff.lint.args": ["--line-length=110", "--extend-ignore=F401,F841,E501"],
-    "ruff.fixAll": true,
-    "ruff.organizeImports": true,
-    "black-formatter.args": ["--line-length=110"],
-    "python.analysis.ignore": ["/usr/lib/python3.10"],
-    "python.analysis.diagnosticMode": "openFilesOnly",
+    "python.analysis.include": ["./src", "./scripts", "./tests"],
     "python.analysis.autoFormatStrings": true,
-    "python.analysis.fixAll": ["source.convertImportFormat"],
-    "python.analysis.exclude": [
-        "**/node_modules",
-        "**/__pycache__",
-        "**/.venv"
-    ],
 
     "[json]": {
         "editor.codeActionsOnSave": {
