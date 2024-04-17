@@ -79,7 +79,7 @@ re_eyes_hair = re.compile(
 )
 
 
-re_image_description = re.compile(r"\[\s*image:? ([^\]]+)\s*\]?", re.I + re.M)
+re_image_description = re.compile(r"\[\s*(image:|picture:|picture of|photo of)? ([^\]]+)\s*\]?", re.I + re.M)
 re_send_image = re.compile(r"[\[(].?(?:send|sends|sending) a? ?([^)\]]+)[)\]]", re.I + re.M)
 send_pic_regexes = [re_image_description, re_send_image]
 
