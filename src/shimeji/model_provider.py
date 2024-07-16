@@ -145,12 +145,16 @@ class ModelProvider(ABC):
         self,
         endpoint_url: str,
         default_args: Optional[dict | BaseModel] = None,
+        api_key: Optional[str] = None,
+        auth_header: str = "X-Api-Key",
         *,
         debug: bool = False,
         **kwargs,
     ):
         self.tokenizer: PreTrainedTokenizerBase
         self.endpoint_url = endpoint_url
+        self.api_key = api_key
+        self.auth_header = auth_header
         self.debug = debug
         if not hasattr(self, "default_args"):
             self.default_args = default_args or kwargs.get("args", None)
@@ -215,8 +219,10 @@ class OobaModel(ModelProvider):
         self,
         endpoint_url: str,
         default_args: OobaGenRequest,
+        api_key: Optional[str] = None,
+        auth_header: str = "X-Api-Key",
         *,
-        tokenizer: Optional[Tokenizer] = None,
+        tokenizer: Optional[Tokenizer | PathLike] = None,
         **kwargs,
     ):
         """Constructor for ModelProvider.
@@ -224,7 +230,7 @@ class OobaModel(ModelProvider):
         :param endpoint_url: The URL of the endpoint.
         :type endpoint_url: str
         """
-        super().__init__(endpoint_url, default_args, **kwargs)
+        super().__init__(endpoint_url, default_args, api_key, auth_header, **kwargs)
         self.default_args: OobaGenRequest
 
         if isinstance(tokenizer, Tokenizer):
@@ -236,12 +242,15 @@ class OobaModel(ModelProvider):
 
     @property
     def headers(self):
-        return {
+        headers = {
             "Content-Type": "application/json",
             "Content-Encoding": "utf-8",
             "Accept": "application/json",
             "Accept-Encoding": "utf-8",
         }
+        if self.api_key is not None:
+            headers[self.auth_header] = self.api_key
+        return headers
 
     def generate(self, args: OobaGenRequest, return_dict: bool = False) -> str:
         payload = args.dict(exclude_none=True)

@@ -262,6 +262,8 @@ class WebuiConfig(BaseModel):
 
 class LMApiConfig(BaseModel):
     endpoint: str = Field(...)
+    api_key: Optional[str] = Field(None)
+    auth_header: str = Field("X-Api-Key")
     provider: str = "ooba"
     modeltype: str = Field(...)
     gensettings: OobaGenRequest = Field(...)
