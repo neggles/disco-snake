@@ -95,7 +95,7 @@ re_nonword = re.compile(r"[^a-zA-Z0-9]+", re.M + re.I)
 re_nonword_end = re.compile(r"([^a-zA-Z0-9])[^a-zA-Z0-9()]+$", re.M + re.I)
 
 # find a line that looks like the bot talking for another user
-re_linebreak_name = re.compile(r"(\n|\r)*(\S+): ", re.M)
+re_linebreak_name = re.compile(r"[\n\r]*(\S+):\s", re.I + re.M)
 # find a line that starts with a star or a parenthesis, followed by a word, followed by a star or a parenthesis
 re_start_expression = re.compile(r"^\s*[(\*]\w+[)\*]\s*", re.I + re.M)
 # find a line that starts with a capital letter and an optional space, followed by a lowercase letter
@@ -775,9 +775,17 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
                 debug_data["response_raw"] = response
 
-                # if bot did a "\n<someusername:" cut it off
-                if bool(re_linebreak_name.match(response)):
+                # if bot did a "\nsomeusername:" cut it off
+                if len(re_linebreak_name.findall(response)) > 0:
                     response = response.splitlines()[0]
+
+                # detect if we're trying to send multiple messages and don't do that
+                resp_temp = []
+                for line in response.splitlines():
+                    if line.lower().startswith(self.name.lower() + ":"):
+                        break
+                    resp_temp.append(line)
+                response = "\n".join(resp_temp)
 
                 # replace "<USER>" with user mention, same for "<BOT>"
                 response = self.fixup_bot_user_tokens(response, message).lstrip()
