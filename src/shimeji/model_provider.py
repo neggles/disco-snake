@@ -44,7 +44,7 @@ class OobaGenParams(BaseModel):
     top_k: int = 0
     repetition_penalty: float = 1
     repetition_penalty_range: int = 1024
-    typical_p: float = 1
+    typical_p: Optional[float] = None
     tfs: float = 1
     top_a: float = 0
     epsilon_cutoff: float = 0
@@ -184,7 +184,7 @@ class ModelProvider(ABC):
     def response(
         self,
         context: Optional[str],
-        gensettings: Optional[dict | BaseModel] = None,
+        gensettings: Optional[BaseModel] = None,
         return_dict: bool = False,
     ) -> str | dict[str, Any]:
         """Generate a response from the ModelProvider's endpoint.
@@ -270,7 +270,7 @@ class OobaModel(ModelProvider):
             err_resp = resp.json() if hasattr(resp, "json") else None
             raise Exception(f"Could not generate text with text-generation-webui. Error: {err_resp}")
 
-    async def generate_async(self, args: OobaGenRequest, return_dict: bool = False) -> str:
+    async def generate_async(self, args: OobaGenRequest, return_dict: bool = False) -> str | dict[str, Any]:
         payload = args.dict(exclude_none=True)
 
         if self.debug:
@@ -284,10 +284,10 @@ class OobaModel(ModelProvider):
                         ret = await resp.json(encoding="utf-8")
                         return ret if return_dict else ret["choices"][0]["text"]
                     else:
+                        if resp is not None:
+                            err_resp = await resp.text(encoding="utf-8")
                         resp.raise_for_status()
         except Exception as e:
-            if resp is not None:
-                err_resp = await resp.text(encoding="utf-8")
             raise Exception(f"Could not generate response. Error: {err_resp}") from e
 
     def response(
