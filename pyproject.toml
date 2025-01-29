@@ -5,14 +5,6 @@ requires = ["setuptools>=64", "wheel", "setuptools_scm>=8"]
 [tool.setuptools_scm]
 write_to = "src/disco_snake/_version.py"
 
-[tool.black]
-line-length = 110
-target-version = ['py310']
-ignore = [
-    'F841', # local variable assigned but never used
-    'E501', # line too long (black fixes this so why does it complain?)
-]
-
 [tool.ruff]
 line-length = 110
 target-version = 'py310'
@@ -43,6 +35,12 @@ known-third-party = ["alembic", "disnake"]
 include = ['src/**']
 exclude = ['/usr/lib/**']
 stubPath = './typings'
-
-[tool.mypy]
-plugins = "disnake.ext.mypy_plugin"
+analyzeUnannotatedFunctions = true
+reportAttributeAccessIssue = false
+reportAssignmentType = false
+reportOptionalMemberAccess = false
+reportRedeclaration = false
+reportIncompatibleVariableOverride = false
+reportIncompatibleMethodOverride = false
+reportReturnType = false
+reportArgumentType = false

@@ -51,7 +51,6 @@
             "source.organizeImports": "always"
         }
     },
-    "python.analysis.include": ["./src", "./scripts", "./tests"],
     "python.analysis.autoFormatStrings": true,
 
     "[json]": {
