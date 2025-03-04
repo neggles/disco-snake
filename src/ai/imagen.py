@@ -141,6 +141,7 @@ class Imagen:
         payload = request.dict(exclude_none=True)
         logger.debug(f"Sending request: {json.dumps(payload, default=str, ensure_ascii=False)}")
 
+        resp = None
         try:
             async with aiohttp.ClientSession(base_url=self.lm_api_host) as session:
                 async with session.post("/v1/completions", json=payload) as resp:
@@ -243,16 +244,17 @@ class Imagen:
         if self._lock.locked():
             raise RuntimeError("Cannot submit request while another request is in progress")
         async with self._lock:  # one at a time, people
+            response = {}
             async with aiohttp.ClientSession(base_url=self.sd_api_host) as session:
                 async with session.post(self.SD_API_PATH, json=request) as r:
                     if r.status == 200:
                         response: dict = await r.json()
                     else:
-                        r.raise_for_status()
+                        r.raise_for_status()  # will alwayse raise if response is not valid
                     try:
                         # throw an exception if we got no image
                         if response["images"] is None or len(response["images"]) == 0:
-                            raise ValueError("No image data returned from Imagen API", args=response)
+                            raise ValueError("No image data returned from Imagen API", response)
 
                         # glue the LLM prompt onto the response
                         response["llm_prompt"] = self._last_request
@@ -284,7 +286,7 @@ class Imagen:
 
                         # work out the path to save the image to, then save it and the job info
                         imagefile_path = IMAGES_DIR.joinpath(
-                            f'{response["info"]["job_timestamp"]}_{response["info"]["seed"]}_{req_string}.png'
+                            f"{response['info']['job_timestamp']}_{response['info']['seed']}_{req_string}.png"
                         )
                         image.save(imagefile_path, format="PNG", pnginfo=pnginfo)
 
@@ -318,7 +320,7 @@ class Imagen:
                 return True
         return False
 
-    def find_image_desc(self, message: str) -> tuple[str | Any, str] | None:
+    def find_image_desc(self, message: str) -> tuple[str | Any, str] | tuple[None, str]:
         for regex in send_pic_regexes:
             matches = regex.search(message)
             if matches is not None:

@@ -217,6 +217,10 @@ class DiscoEyes:
             return None
 
         # get width and height of attachment image
+        if attachment.width is None or attachment.height is None:
+            logger.debug("Attachment has no width or height")
+            return None
+
         width, height = attachment.width, attachment.height
         # scale max dimension to IMAGE_MAX_PX
         is_portrait = height > width

@@ -213,7 +213,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     @property
     def context_size(self) -> int:
         if self.params.context_size < 0:
-            return self.lm_gensettings.truncation_length - self.lm_gensettings.max_tokens - 32
+            return self.lm_gensettings.truncation_length - (self.lm_gensettings.max_tokens or 0) - 32
         return self.params.context_size
 
     @property
@@ -634,7 +634,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         contextmgr.add_entry(prompt_entry)
 
         conversation_entry = ContextEntry(
-            text=conversation + f"\n<|im_start|>assistant\n{self.name}:",
+            text=conversation + f"\n<|im_start|>assistant\n{self.name}:",  # type: ignore
             prefix="",
             suffix="",
             reserved_tokens=1024,
@@ -695,7 +695,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             }
             # make conversation be a top level key
             if isinstance(conversation[0], dict):
-                debug_data["conversation"] = [f'{x["content"]}' for x in conversation]
+                debug_data["conversation"] = [f"{x['content']}" for x in conversation]
             else:
                 debug_data["conversation"] = conversation
 
@@ -709,8 +709,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             context = context.rstrip()
             debug_data["context"] = context.splitlines()
             debug_data["n_prompt_tokens"] = self.n_prompt_tokens
-            ctokens = self.tokenizer.batch_encode_plus([context], return_length=True)
-            debug_data["n_context_tokens"] = ctokens.get("length")[0]
+            ctokens: BatchEncoding = self.tokenizer.batch_encode_plus([context], return_length=True)
+            debug_data["n_context_tokens"] = ctokens.get("length").pop(0)
 
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
@@ -748,12 +748,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         response = ""  # we have a pic to send, so send it without a comment
                     else:
                         logger.warn(
-                            f"Final response contained bad words: {response}\nBad words: {bad_words}\nRetrying..."
+                            f"Final response contained bad words: {response}\nBad words: {bad_words}\nRetrying..."  # type: ignore  # bad_words must exist here
                         )
                         response = ""
 
                 # see if there's an image description in the response
-                description, response = self.imagen.find_image_desc(response)
+                description, response = self.imagen.find_image_desc(response)  # type: ignore
                 if description is not None and "loading error" not in description.lower():
                     # there is, so we should reply with the image
                     logger.info("i'm feeling creative, let's make an image...")
@@ -829,13 +829,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         if should_reply:
                             await message.reply(file=response_image)
                         else:
-                            await message.channel.send(file=response_image)
+                            await message.channel.send(content=None, file=response_image)  # type: ignore  # bad type hint in disnake
                     else:
                         logger.info(f"Responding with image, response: {response}")
                         if should_reply:
                             await message.reply(response, file=response_image)
                         else:
-                            await message.channel.send(response, file=response_image)
+                            await message.channel.send(response, file=response_image)  # type: ignore  # bad type hint in disnake
                 elif response == "":
                     logger.info("Response was empty.")
                     await message.add_reaction(self.config.empty_react)
@@ -1125,11 +1125,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             pass  # no attachments or embeds
 
         # check if we're watching this channel
-        if not self.eyes.watching(message.channel, False):
+        if not self.eyes.watching(message.channel):
             return  # not watching this channel (no recent activity)
 
         for embed in message.embeds:
-            if embed.type == "image":
+            if embed.type == "image" and embed.thumbnail.height and embed.thumbnail.width:
                 try:
                     if embed.thumbnail.height < 100 or embed.thumbnail.width < 100:
                         continue  # too small to caption, probably an emoji, just skip it
