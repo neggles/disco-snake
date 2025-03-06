@@ -791,7 +791,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         response = response[len(f"{self.name}:") :].strip()
                     else:
                         logger.warn(
-                            "CoT response did not start with bot name after <think>, this is probably bad"
+                            "CoT response did not start with bot name after </think>, this is probably bad"
                         )
 
                 # if bot did a "\nsomeusername:" cut it off
