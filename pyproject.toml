@@ -116,7 +116,7 @@ ignore = [
     "E501", # line too long - will be fixed in format
 ]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 combine-as-imports = true
 force-wrap-aliases = true
 known-local-folder = ["src"]
