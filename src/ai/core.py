@@ -388,17 +388,20 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if guild_settings.channel_enabled(message.channel.id) is False:
                 # logger.debug(f"Got message in disabled channel {message.channel=}")
                 return  # ignore messages from channels that have the bot disabled
-            elif message.channel.permissions_for(message.guild.me).send_messages is False:
+            if message.channel.permissions_for(message.guild.me).send_messages is False:
                 # channel is enabled but we don't have permission to respond
                 logger.info(f"Got message in {message.channel} but don't have permission to respond.")
                 return
 
-        # Check if the user has accepted the ToS
-        tos_accepted = await self.user_accepted_tos(message.author)
+        if message.author.bot is True:
+            # bots can't and don't need to accept the ToS
+            tos_accepted = True
+        else:
+            # Check if the user has accepted the ToS
+            tos_accepted = await self.user_accepted_tos(message.author)
+
         if tos_accepted is False:
             return  # ignore messages from users who have rejected the ToS
-        if message.author.bot is True:
-            tos_accepted = True  # ignore ToS check for bots
 
         # Now that we've filtered out messages we don't care about, let's get the message content
         content = self.get_msg_content_clean(message)
@@ -540,7 +543,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 author_name = f"{self.name}:"
             else:
                 msg_role = "user"
-                author_name = f"{msg.author.display_name.strip()}:"
+                author_name = msg.author.nick if message.author.nick else message.author.global_name
+                author_name = f"{author_name.strip()}:"
 
             if len(msg.embeds) > 0:
                 nitro_bs = self.handle_stupid_fucking_embed(message)
@@ -634,7 +638,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         contextmgr.add_entry(prompt_entry)
 
         conversation_entry = ContextEntry(
-            text=conversation + f"\n<|im_start|>assistant\n{self.name}:",  # type: ignore
+            # text=conversation + f"\n<|im_start|>assistant\n{self.name}:",  # type: ignore  # it's a string by now
+            text=conversation + "\n<|im_start|>assistant\n<think>\n",  # type: ignore  # it's a string by now
             prefix="",
             suffix="",
             reserved_tokens=1024,
@@ -773,7 +778,21 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         logger.exception("Failed to generate image response")
                         pass
 
-                debug_data["response_raw"] = response
+                debug_data["response_raw"] = response.splitlines(keepends=True)
+                # check for <think> tag and trim
+                if "</think>" in response:
+                    logger.debug("Found chain of thought in response")
+                    thoughts, response = response.rsplit("</think>", 1)
+                    # debug log thought lines
+                    debug_data["thoughts"] = [x.strip() for x in thoughts.splitlines() if x != ""]
+                    # strip whitespace from response
+                    response = response.strip()
+                    if response.startswith(f"{self.name}:"):
+                        response = response[len(f"{self.name}:") :].strip()
+                    else:
+                        logger.warn(
+                            "CoT response did not start with bot name after <think>, this is probably bad"
+                        )
 
                 # if bot did a "\nsomeusername:" cut it off
                 if len(re_linebreak_name.findall(response)) > 0:
@@ -1020,7 +1039,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         """
         Fix <USER>, <BOT>, etc tokens in the response, and unescape any escaped markdown formatting
         """
-        author_name = message.author.display_name.encode("utf-8").decode("ascii", errors="ignore").strip()
+        author_name = message.author.nick if message.author.nick is not None else message.author.global_name
+        author_name = author_name.encode("utf-8").decode("ascii", errors="ignore").strip()
         response = re_user_token.sub(f"@{author_name}", response)
         response = re_bot_token.sub(f"@{self.name}", response)
         response = response.replace("</s>", "").strip()
@@ -1152,7 +1172,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     logger.exception(f"Error processing image {attachment.url}")
 
     ## Image generation stuff
-    async def take_pic(self, message: Union[Message, str]) -> Optional[Tuple[File, dict]]:
+    async def take_pic(self, message: Message | str) -> Optional[Tuple[File, dict]]:
         """
         hold up, let me take a selfie
         """

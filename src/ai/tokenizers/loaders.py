@@ -3,7 +3,9 @@ from importlib import resources
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, LlamaTokenizer, Qwen2Tokenizer
+
+from .yi.tokenization_yi import YiTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,7 @@ def extract_tokenizer(name: str, target_dir: Path):
         raise e
 
 
-def get_tokenizer(name: str = "llama", **kwargs) -> PreTrainedTokenizerBase:
+def get_tokenizer(name: str = "llama", **kwargs) -> LlamaTokenizer | Qwen2Tokenizer | YiTokenizer:
     """Get a tokenizer by extracting it from package data files and loading it"""
     # pop these kwargs if present to avoid accidental overrides
     _, _ = kwargs.pop("pretrained_model_name_or_path", None), kwargs.pop("local_files_only", None)

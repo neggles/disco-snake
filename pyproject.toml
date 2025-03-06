@@ -27,6 +27,7 @@ dependencies = [
     "disnake >= 2.8.1",
     "ftfy >= 6.1.1",
     "gradio >= 3.32.0",
+    "hf-transfer",
     "humanize >= 4.2.1, < 5.0.0",
     "levenshtein >= 0.21.0, < 0.22.0",
     "lru-dict >= 1.2.0, < 2.0.0",
