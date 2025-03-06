@@ -3,7 +3,7 @@ name = "disco-snake"
 authors = [
     { name = "Andi Powers-Holmes", email = "aholmes@omnom.net" },
 ]
-description = "A neural network trainer (for weebs)"
+description = "A discord chatbot (for weebs)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE.md" }

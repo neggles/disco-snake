@@ -543,8 +543,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 author_name = f"{self.name}:"
             else:
                 msg_role = "user"
-                author_name = msg.author.nick if message.author.nick else message.author.global_name
-                author_name = f"{author_name.strip()}:"
+                if message.author.nick is not None:
+                    author_name = f"{message.author.nick.strip()}:"
+                elif message.author.global_name is not None:
+                    author_name = f"{message.author.global_name.strip()}:"
+                elif message.author.display_name is not None:
+                    author_name = f"{message.author.display_name.strip()}:"
+                else:
+                    author_name = f"{message.author.name.strip()}:"
 
             if len(msg.embeds) > 0:
                 nitro_bs = self.handle_stupid_fucking_embed(message)

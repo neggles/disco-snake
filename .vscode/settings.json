@@ -46,6 +46,7 @@
     "[python]": {
         "editor.wordBasedSuggestions": "off",
         "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "file",
         "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.codeActionsOnSave": {
             "source.organizeImports": "always"
@@ -54,42 +55,58 @@
     "python.analysis.autoFormatStrings": true,
 
     "[json]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.detectIndentation": false,
+        "editor.formatOnSaveMode": "file",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2,
         "editor.codeActionsOnSave": {
             "source.fixAll.sortJSON": "never"
-        },
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
-        "editor.formatOnSave": true,
-        "editor.tabSize": 4
+        }
     },
     "[jsonc]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.detectIndentation": false,
+        "editor.formatOnSaveMode": "file",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2,
         "editor.codeActionsOnSave": {
             "source.fixAll.sortJSON": "never"
-        },
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
-        "editor.formatOnSave": true,
-        "editor.tabSize": 4
+        }
     },
     "json.format.keepLines": true,
 
     "[toml]": {
+        "editor.tabSize": 2,
+        "editor.detectIndentation": false,
         "editor.formatOnSave": true,
-        "editor.tabSize": 2
+        "editor.formatOnSaveMode": "file",
+        "editor.defaultFormatter": "tamasfe.even-better-toml",
+        "editor.rulers": [80, 100]
     },
+    "evenBetterToml.formatter.columnWidth": 88,
+    "evenBetterToml.formatter.allowedBlankLines": 2,
+    "evenBetterToml.formatter.arrayAutoCollapse": false,
+    "evenBetterToml.formatter.arrayAutoExpand": true,
+    "evenBetterToml.formatter.arrayTrailingComma": true,
 
     "[markdown]": {
         "files.trimTrailingWhitespace": false,
         "files.trimFinalNewlines": true
     },
 
-    "[makefile]": {
-        "editor.insertSpaces": false,
-        "editor.tabSize": 8
-    },
-
     "[yaml]": {
-        "editor.insertSpaces": true,
-        "editor.tabSize": 2
+        "editor.detectIndentation": false,
+        "editor.tabSize": 2,
+        "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "file",
+        "diffEditor.ignoreTrimWhitespace": false,
+        "editor.defaultFormatter": "redhat.vscode-yaml"
     },
+    "yaml.format.bracketSpacing": true,
+    "yaml.format.proseWrap": "preserve",
+    "yaml.format.singleQuote": false,
+    "yaml.format.printWidth": 110,
 
     "[dockercompose]": {
         "editor.insertSpaces": true,
@@ -104,11 +121,6 @@
     },
     "docker.dockerComposeBuild": false,
 
-    // "remote.autoForwardPorts": true,
-    "remote.autoForwardPortsSource": "hybrid",
-    "[json][jsonc]": {
-        "editor.codeActionsOnSave": {
-            "source.fixAll.sortJSON": "never"
-        }
-    }
+    "remote.autoForwardPorts": false,
+    "remote.autoForwardPortsSource": "process"
 }
