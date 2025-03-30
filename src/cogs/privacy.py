@@ -1,3 +1,5 @@
+# pyright: reportArgumentType=false
+# pyright: reportAssignmentType=false
 import logging
 from typing import Optional, Union
 
@@ -7,6 +9,7 @@ from disnake import (
     Colour,
     Embed,
     Guild,
+    InteractionContextTypes,
     Invite,
     Member,
     Message,
@@ -142,14 +145,15 @@ class PrivacyView(View):
 
         self.reject.disabled = True
         self.reject.style = ButtonStyle.grey
-        self.message = await self.message.edit(
-            content="Interaction timed out."
-            + "\nPlease invoke /privacy if you wish to change your privacy settings."
-            + "\nThis message will be deleted in 5 minutes.",
-            view=self,
-            embed=None,
-            delete_after=300,
-        )
+        if self.message:
+            self.message = await self.message.edit(
+                content="Interaction timed out."
+                + "\nPlease invoke /privacy if you wish to change your privacy settings."
+                + "\nThis message will be deleted in 5 minutes.",
+                view=self,
+                embed=None,
+                delete_after=300,
+            )
 
 
 class Privacy(commands.Cog, name=COG_UID):
@@ -160,7 +164,7 @@ class Privacy(commands.Cog, name=COG_UID):
     @commands.slash_command(
         name="privacy",
         description="View the privacy policy",
-        dm_permission=True,
+        contexts=InteractionContextTypes(bot_dm=True, guild=True, private_channel=True),
     )
     @checks.not_blacklisted()
     async def privacy(self, ctx: ApplicationCommandInteraction):

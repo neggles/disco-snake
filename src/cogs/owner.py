@@ -3,6 +3,7 @@ import logging
 from disnake import (
     Colour,
     Embed,
+    InteractionContextTypes,
     Message,
     MessageCommandInteraction,
     ModalInteraction,
@@ -10,7 +11,6 @@ from disnake import (
 )
 from disnake.ext import commands
 from disnake.ui import Modal, TextInput
-
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class Owner(commands.Cog, name="owner"):
 
     @commands.message_command(
         name="Edit Message",
-        dm_permission=True,
+        contexts=InteractionContextTypes(bot_dm=True, guild=True, private_channel=True),
     )
     @commands.default_member_permissions(manage_messages=True)
     @commands.is_owner()
