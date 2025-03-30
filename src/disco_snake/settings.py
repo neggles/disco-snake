@@ -1,17 +1,15 @@
 import logging
+from collections.abc import Mapping
 from functools import lru_cache
+from os import PathLike
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, PostgresDsn
 from pydantic_extra_types.timezone_name import TimeZoneName, timezone_name_settings
-from pydantic_settings import (
-    BaseSettings,
-    JsonConfigSettingsSource,
-    PydanticBaseSettingsSource,
-    SettingsConfigDict,
-)
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings.sources import JsonConfigSettingsSource, PathType, PydanticBaseSettingsSource
 
 from disco_snake import DEF_DATA_PATH, per_config_name
 
@@ -22,6 +20,29 @@ logger = logging.getLogger(__name__)
 @timezone_name_settings(strict=False)
 class TZNonStrict(TimeZoneName):
     pass
+
+
+def update_recursive(d, u):
+    for k, v in u.items():
+        if isinstance(v, Mapping):
+            d[k] = update_recursive(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
+
+
+class MultiJsonConfigSettingsSource(JsonConfigSettingsSource):
+    def _read_files(self, files: PathType | None) -> dict[str, Any]:
+        if files is None:
+            return {}
+        if isinstance(files, (str, PathLike)):
+            files = [files]
+        vars: dict[str, Any] = {}
+        for file in files:
+            file_path = Path(file).expanduser()
+            if file_path.is_file():
+                update_recursive(vars, self._read_file(file_path))
+        return vars
 
 
 class JsonSettings(BaseSettings):
@@ -35,7 +56,7 @@ class JsonSettings(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         return (
-            JsonConfigSettingsSource(settings_cls),
+            MultiJsonConfigSettingsSource(settings_cls),
             init_settings,
             env_settings,
             dotenv_settings,

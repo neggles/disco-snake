@@ -2,7 +2,6 @@
 import logging
 from copy import deepcopy
 from enum import Enum
-from pathlib import Path
 from typing import Annotated, Iterator, Optional
 
 from pydantic import BaseModel, Field, RootModel
@@ -311,19 +310,8 @@ class AiSettings(JsonSettings):
     )
 
 
-def get_ai_settings(config_path: Optional[Path] = None) -> AiSettings:
-    if config_path is not None:
-        if config_path.is_file():
-            settings = AiSettings.model_validate_json(config_path.read_text())
-        elif config_path.is_dir():
-            settings = AiSettings.model_validate_json(
-                config_path.joinpath(per_config_name("config.json")).read_text()
-            )
-        else:
-            raise ValueError(f"Invalid config path: {config_path}")
-    else:
-        settings = AiSettings()  # type: ignore
-    return settings
+def get_ai_settings() -> AiSettings:
+    return AiSettings()  # type: ignore
 
 
 ## Imagen settings
@@ -485,14 +473,5 @@ class ImagenSettings(JsonSettings):
     )
 
 
-def get_imagen_settings(config_path: Optional[Path] = None) -> ImagenSettings:
-    if config_path is not None:
-        if config_path.is_file():
-            settings = ImagenSettings.model_validate_json(config_path.read_text())
-        elif config_path.is_dir():
-            settings = ImagenSettings.model_validate_json(config_path.joinpath("imagen.json").read_text())
-        else:
-            raise ValueError(f"Invalid config path: {config_path}")
-    else:
-        settings = ImagenSettings()  # type: ignore
-    return settings
+def get_imagen_settings() -> ImagenSettings:
+    return ImagenSettings()  # type: ignore

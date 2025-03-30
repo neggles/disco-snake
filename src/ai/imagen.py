@@ -155,7 +155,9 @@ class Imagen:
                     else:
                         resp.raise_for_status()
         except Exception as e:
-            raise Exception(f"Could not generate response. Error: {await resp.text()}") from e
+            if resp is not None:
+                raise Exception(f"Could not generate response. Error: {await resp.text()}") from e
+            raise Exception(f"Could not generate response. Error: {e}") from e
 
     def get_lm_stopping_strings(self) -> list[str]:
         return self.lm_prompt.gensettings.stop
