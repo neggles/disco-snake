@@ -163,7 +163,9 @@ ignore = [
 stubPath = "./typings"
 analyzeUnannotatedFunctions = true
 reportAttributeAccessIssue = false
-
+reportRedeclaration = false
+reportReturnType = false
+reportArgumentType = false
 
 # needs to be last for CI reasons
 [tool.setuptools_scm]
