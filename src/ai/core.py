@@ -91,6 +91,7 @@ re_bot_token = re.compile(r"(<bot>|{{bot}}|<char>|{{char}}|<assistant>|{{assista
 re_unescape_md = re.compile(r"\\([*_~`\"])")
 re_nonword = re.compile(r"[^a-zA-Z0-9]+", re.M + re.I)
 re_nonword_end = re.compile(r"([^a-zA-Z0-9])[^a-zA-Z0-9()]+$", re.M + re.I)
+re_firstword = re.compile(r"^\s*([a-zA-Z0-9]+)", re.M + re.I)
 
 # find a line that looks like the bot talking for another user
 re_linebreak_name = re.compile(r"[\n\r]*(\S+):\s", re.I + re.M)
@@ -303,7 +304,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.info("Starting DiscoEyes...")
             await self.eyes.start()
 
-        if not self.update_ignored.is_running():
+        if not self.update_ignored.is_running():  # type: ignore
             logger.debug("Starting update_ignored task...")
             self.update_ignored.start()
 
@@ -454,7 +455,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         elif hasattr(ctx, "guild") and ctx.guild is not None:
             location_context = f'and friends in the "{ctx.guild.name}" Discord server'
         elif hasattr(ctx, "author") and ctx.author is not None:
-            location_context = f"and {ctx.author.display_name} in a Discord DM"
+            location_context = f"and {ctx.author.name} in a Discord DM"
         else:
             location_context = "and a friend in a Discord DM"
 
@@ -542,17 +543,27 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 author_name = f"{self.name}:"
             else:
                 msg_role = "user"
-                if isinstance(message.author, Member) and message.author.nick is not None:
-                    author_name = f"{message.author.nick.strip()}:"
-                elif message.author.global_name is not None:
-                    author_name = f"{message.author.global_name.strip()}:"
-                elif message.author.display_name is not None:
-                    author_name = f"{message.author.display_name.strip()}:"
-                else:
-                    author_name = f"{message.author.name.strip()}:"
+                author_name = None
+
+                if isinstance(msg.author, Member) and msg.author.nick is not None:
+                    logger.debug(f"using nick for {msg.author}")
+                    # do a little cleanup
+                    if matches := re_firstword.match(msg.author.nick):
+                        clean_name = matches.group(1)
+                        author_name = f"{clean_name.strip()}:"
+                    else:
+                        logger.debug("failed to clean nick")
+
+                if author_name is None:
+                    if msg.author.display_name is not None:
+                        logger.debug(f"using display name for {msg.author}")
+                        author_name = f"{msg.author.display_name.strip()}:"
+                    else:
+                        logger.debug(f"using username for {msg.author}")
+                        author_name = f"{msg.author.name.strip()}:"
 
             if len(msg.embeds) > 0:
-                nitro_bs = self.handle_stupid_fucking_embed(message)
+                nitro_bs = self.handle_stupid_fucking_embed(msg)
                 if nitro_bs is not None:
                     chain.append(wrap_message(f"{author_name} {nitro_bs}", msg_role))
                     continue
@@ -648,7 +659,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         conversation_entry = ContextEntry(
             # text=conversation + f"\n<|im_start|>assistant\n{self.name}:",  # type: ignore  # it's a string by now
-            text=conversation + "\n<|im_start|>assistant\n<think>\n",  # type: ignore  # it's a string by now
+            text=conversation + "\n<|im_start|>assistant\n<think>",  # type: ignore  # it's a string by now
             prefix="",
             suffix="",
             reserved_tokens=1024,
@@ -683,7 +694,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             response = ""
             response_image = None
             should_reply = False
-            author_name = f"{message.author.display_name.strip()}:"
+            author_name = f"{message.author.name.strip()}:"
 
             msg_timestamp = message.created_at.astimezone(tz=self.bot.timezone).strftime(
                 "%Y-%m-%d-%H:%M:%S%z"
@@ -793,7 +804,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     logger.debug("Found chain of thought in response")
                     thoughts, response = response.rsplit("</think>", 1)
                     # debug log thought lines
-                    debug_data["thoughts"] = [x.strip() for x in thoughts.splitlines() if x != ""]
+                    debug_data["thoughts"] = [x.strip() for x in thoughts.splitlines() if x.strip() != ""]
+                    logger.debug(f"Thoughts: {debug_data['thoughts']}")
                     # strip whitespace from response
                     response = response.strip()
                     if response.startswith(f"{self.name}:"):

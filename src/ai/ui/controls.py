@@ -49,7 +49,9 @@ class AiStatusEmbed(Embed):
 
         self.description = self.description if self.description is not None else "**AI Status**"
         self.colour = PURPLE
-        self.set_author(name=cog.bot.user.name, icon_url=cog.bot.user.avatar.url)
+        self.set_author(
+            name=cog.bot.user.name, icon_url=cog.bot.user.avatar.url if cog.bot.user.avatar else None
+        )
 
         if verbose is True:
             self.add_field(name="Message Context", value=cog.params.context_messages)
@@ -86,4 +88,4 @@ class AiStatusEmbed(Embed):
             self.add_field(name="Skip Special Tokens", value=gensettings.ban_eos_token)
             self.add_field(name="Truncation Length", value=gensettings.truncation_length)
 
-        self.set_footer(text=f"Requested by {user.name}", icon_url=user.avatar.url)
+        self.set_footer(text=f"Requested by {user.name}", icon_url=user.avatar.url if user.avatar else None)
