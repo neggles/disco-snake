@@ -299,7 +299,7 @@ class AiSettings(BaseSettings):
 def get_ai_settings(config_path: Optional[Path] = None) -> AiSettings:
     if config_path is None:
         config_path = AI_DATA_DIR.joinpath(per_config_name("config.json"))
-    settings = AiSettings(json_config_path=config_path)
+    settings = AiSettings.parse_file(config_path)
     return settings
 
 
@@ -420,7 +420,7 @@ class ImagenSDPrompt(BaseModel):
 
     def wrap_prompt(self, prompt: str | list[str]) -> str:
         prompt = prompt if isinstance(prompt, list) else [prompt]
-        prompt = self.tag_sep.join(self.get_leading(join=False) + prompt + self.get_trailing(join=False))
+        prompt = self.tag_sep.join(self.get_leading(join=False) + prompt + self.get_trailing(join=False))  # type: ignore
         if self.word_sep != " ":
             prompt = prompt.replace(f",{self.word_sep}", self.tag_sep)
         return prompt
@@ -460,5 +460,5 @@ class ImagenSettings(BaseSettings):
 def get_imagen_settings(config_path: Optional[Path] = None) -> ImagenSettings:
     if config_path is None:
         config_path = AI_DATA_DIR.joinpath(per_config_name("imagen.json"))
-    settings = ImagenSettings(json_config_path=config_path)
+    settings = ImagenSettings.parse_file(config_path)
     return settings

@@ -885,7 +885,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     self.webui.lm_update(
                         prompt=context,
                         message=f"{author_name} {debug_data['message']['content']}",
-                        response=debug_data["response_raw"].lstrip(),
+                        response=str(debug_data["response_raw"]).lstrip(),
                     )
 
             except Exception as e:
