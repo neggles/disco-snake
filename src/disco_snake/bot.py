@@ -85,18 +85,18 @@ class DiscoSnake(commands.Bot):
 
     @property
     def support_guild(self) -> Guild:
-        return self.get_guild(self.config.support_guild)
+        return self.get_guild(self.config.support_guild)  # type: ignore
 
     @property
     def home_guild(self) -> Guild:
-        return self.get_guild(self.config.home_guild)
+        return self.get_guild(self.config.home_guild)  # type: ignore
 
     @property
     def support_channel(self) -> TextChannel:
         channel = self.get_channel(self.config.support_channel)
         if channel is None:
             channel = self.support_guild.rules_channel or self.support_guild.text_channels[0]
-        return channel
+        return channel  # type: ignore
 
     async def support_invite(self) -> Optional[Invite]:
         if self.support_channel is None:
@@ -120,6 +120,9 @@ class DiscoSnake(commands.Bot):
     def save_guild_metadata(self, guild_id: int):
         # get guild metadata (members, channels, etc.)
         guild = self.get_guild(guild_id)
+        if guild is None:
+            logger.warning(f"Guild {guild_id} not found")
+            return
         guild_data = {
             "id": guild.id,
             "name": guild.name,
@@ -220,43 +223,41 @@ class DiscoSnake(commands.Bot):
         await self.process_commands(message)
 
     async def on_slash_command(self, ctx: ApplicationCommandInteraction) -> None:
-        logger.info(
-            f"Executing {ctx.data.name} command in {ctx.guild.name} (ID: {ctx.guild.id}) by {ctx.author} (ID: {ctx.author.id})"
-        )
+        logger.info(f"Executing {ctx.data.name} command in {ctx} by {ctx.author} (ID: {ctx.author.id})")
 
-    async def on_slash_command_error(self, ctx: ApplicationCommandInteraction, error) -> None:
-        if isinstance(error, commands.CommandOnCooldown):
+    async def on_slash_command_error(self, interaction: ApplicationCommandInteraction, exception) -> None:
+        if isinstance(exception, commands.CommandOnCooldown):
             logger.info(
-                f"User {ctx.author} attempted to use {ctx.application_command.qualified_name} on cooldown."
+                f"User {interaction.author} attempted to use {interaction.application_command.qualified_name} on cooldown."
             )
-            embed = CooldownEmbed(error.retry_after + 1, ctx.author)
-            await ctx.send(embed=embed, ephemeral=True)
+            embed = CooldownEmbed(int(exception.retry_after + 1), interaction.author)
+            await interaction.send(embed=embed, ephemeral=True)
 
-        elif isinstance(error, exceptions.UserBlacklisted):
+        elif isinstance(exception, exceptions.UserBlacklisted):
             logger.info(
-                f"User {ctx.author} attempted to use {ctx.application_command.qualified_name}, but is blacklisted."
+                f"User {interaction.author} attempted to use {interaction.application_command.qualified_name}, but is blacklisted."
             )
-            embed = Embed(title="Error!", description=error.message, color=0xE02B2B)
-            await ctx.send(embed=embed, ephemeral=True)
+            embed = Embed(title="Error!", description=exception.message, color=0xE02B2B)
+            await interaction.send(embed=embed, ephemeral=True)
 
-        elif isinstance(error, commands.MissingPermissions):
-            logger.warn(
-                f"User {ctx.author} attempted to execute {ctx.application_command.qualified_name} without authorization."
+        elif isinstance(exception, commands.MissingPermissions):
+            logger.warning(
+                f"User {interaction.author} attempted to execute {interaction.application_command.qualified_name} without authorization."
             )
-            embed = MissingPermissionsEmbed(ctx.author, error.missing_permissions)
-            await ctx.send(embed=embed, ephemeral=True)
+            embed = MissingPermissionsEmbed(interaction.author, exception)
+            await interaction.send(embed=embed, ephemeral=True)
 
-        elif isinstance(error, exceptions.UserNotAdmin):
-            logger.warn(
-                f"User {ctx.author} attempted to execute {ctx.application_command.qualified_name}, but is not an admin."
+        elif isinstance(exception, exceptions.UserNotAdmin):
+            logger.warning(
+                f"User {interaction.author} attempted to execute {interaction.application_command.qualified_name}, but is not an admin."
             )
-            embed = NotAdminEmbed(ctx.author, error.message)
-            await ctx.send(embed=embed, delete_after=30.0)
+            embed = NotAdminEmbed(interaction.author, exception.message)
+            await interaction.send(embed=embed, delete_after=30.0)
 
         else:
             # that covers all the usual errors, so let's catch the rest
             # first work out if we've deferred the response so we can send an ephemeral message if we need to
-            ctx_rtype = getattr(ctx.response, "_response_type", None)
+            ctx_rtype = getattr(interaction.response, "_response_type", None)
             ctx_ephemeral = (
                 True
                 if (ctx_rtype == InteractionResponseType.deferred_channel_message)
@@ -269,77 +270,80 @@ class DiscoSnake(commands.Bot):
                 description="An unknown error occurred while executing this command. Please try again later or contact the bot owner if the problem persists.",
                 color=0xE02B2B,
             )
-            await ctx.send(
-                embed=embed, ephemeral=ctx_ephemeral, delete_after=30.0 if not ctx_ephemeral else None
+            await interaction.send(
+                embed=embed,
+                ephemeral=ctx_ephemeral,
+                delete_after=30.0 if not ctx_ephemeral else None,  # type: ignore
             )
-            logger.warn(f"Unhandled error in slash command {ctx}: {error}")
-            raise error
+            logger.warning(f"Unhandled error in slash command {interaction}: {exception}")
+            raise exception
 
     async def on_command_completion(self, ctx: commands.Context) -> None:
         """
         The code in this event is executed every time a normal command has been *successfully* executed
         :param ctx: The ctx of the command that has been executed.
         """
-        full_command_name = ctx.command.qualified_name
-        split = full_command_name.split(" ")
+        full_command_name = ctx.command.qualified_name if ctx.command else ctx.invoked_with
+        split = full_command_name.split(" ") if full_command_name else ["Unknown"]
         executed_command = str(split[0])
         logger.info(
-            f"Executed {executed_command} command in {ctx.guild.name} (ID: {ctx.message.guild.id}) by {ctx.message.author} (ID: {ctx.message.author.id})"
+            f"Executed {executed_command} command in {ctx} by {ctx.message.author} (ID: {ctx.message.author.id})"
         )
 
-    async def on_command_error(self, ctx: commands.Context, error) -> None:
+    async def on_command_error(self, context: commands.Context, exception) -> None:
         """
         The code in this event is executed every time a normal valid command catches an error
-        :param ctx: The normal command that failed executing.
-        :param error: The error that has been faced.
+        :param interaction: The normal command that failed executing.
+        :param exception: The exception that has been faced.
         """
-        if isinstance(error, commands.CommandOnCooldown):
-            logger.info(f"User {ctx.author} attempted to use {ctx.command.qualified_name} on cooldown.")
-            embed = CooldownEmbed(error.retry_after + 1, ctx.author)
-            return await ctx.send(embed=embed, ephemeral=True)
-
-        elif isinstance(error, exceptions.UserBlacklisted):
-            logger.info(
-                f"User {ctx.author} attempted to use {ctx.command.qualified_name}, but is blacklisted."
-            )
-            embed = Embed(
-                title="Error!",
-                description="You have been blacklisted and cannot use this bot. If you think this is a mistake, please contact the bot owner.",
-                color=0xE02B2B,
-            )
-            return await ctx.send(embed=embed, ephemeral=True)
-
-        elif isinstance(error, exceptions.UserNotOwner):
-            embed = Embed(
-                title="Error!",
-                description="This command requires admin permissions. soz bb xoxo <3",
-                color=0xE02B2B,
-            )
-            logger.warn(
-                f"User {ctx.author} attempted to execute {ctx.command.qualified_name} without authorization."
-            )
-            return await ctx.send(embed=embed, ephemeral=True)
-
-        elif isinstance(error, commands.MissingPermissions):
-            logger.warn(
-                f"User {ctx.author} attempted to execute {ctx.command.qualified_name} without authorization."
-            )
-            embed = MissingPermissionsEmbed(ctx.author, error.missing_permissions)
-            return await ctx.send(embed=embed, ephemeral=True)
-        elif isinstance(error, commands.MissingRequiredArgument):
-            logger.info(
-                f"User {ctx.author} attempted to execute {ctx.command.qualified_name} without the required arguments"
-            )
-            embed = MissingRequiredArgumentEmbed(ctx.author, error.param.name)
-            return await ctx.send(embed=embed)
-        elif isinstance(error, commands.CommandNotFound):
-            # This is actually fine so lets just pretend everything is okay.
-            logger.info(
-                f"User {ctx.author} attempted to execute a non-existent command: {ctx.message.content}"
-            )
+        if context.command is None:
+            logger.warning(f"Command not found for {context}: {exception}")
             return
-        logger.warn(f"Unhandled error in command {ctx}: {error}")
-        raise error
+
+        embed = None
+        match exception:
+            case commands.CommandOnCooldown():
+                logger.info(f"User {context.author} attempted to use {context.command.name} on cooldown.")
+                embed = CooldownEmbed(int(exception.retry_after + 1), context.author)
+            case exceptions.UserBlacklisted():
+                logger.info(
+                    f"User {context.author} attempted to use {context.command.qualified_name}, but is blacklisted."
+                )
+                embed = Embed(
+                    title="Error!",
+                    description="You have been blacklisted and cannot use this bot. If you think this is a mistake, please contact the bot owner.",
+                    color=0xE02B2B,
+                )
+            case exceptions.UserNotOwner():
+                embed = Embed(
+                    title="Error!",
+                    description="This command requires admin permissions. soz bb xoxo <3",
+                    color=0xE02B2B,
+                )
+                logger.warning(
+                    f"User {context.author} attempted to execute {context.command.qualified_name} without authorization."
+                )
+            case commands.MissingPermissions():
+                logger.warning(
+                    f"User {context.author} attempted to execute {context.command.qualified_name} without authorization."
+                )
+                embed = MissingPermissionsEmbed(context.author, exception)
+            case commands.MissingRequiredArgument():
+                logger.info(
+                    f"User {context.author} attempted to execute {context.command.qualified_name} without the required arguments"
+                )
+                embed = MissingRequiredArgumentEmbed(context.author, exception)
+            case commands.CommandNotFound():
+                logger.info(
+                    f"User {context.author} attempted to execute a non-existent command: {context.message.content}"
+                )
+            case _:
+                logger.warning(f"Unhandled exception in command {context}: {exception}")
+                raise exception
+
+        if embed is not None:
+            await context.send(embed=embed)
+        return
 
     @tasks.loop(minutes=1.5)
     async def status_task(self) -> None:

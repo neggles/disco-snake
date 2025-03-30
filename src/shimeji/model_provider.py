@@ -1,4 +1,4 @@
-import copy
+# pyright: reportIncompatibleMethodOverride=false
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -9,8 +9,7 @@ from typing import Any, Optional
 import aiohttp
 import requests
 from pydantic import BaseModel, Field
-from tokenizers import Tokenizer
-from transformers import AutoTokenizer, BatchEncoding, LlamaTokenizerFast, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, BatchEncoding, PreTrainedTokenizerBase
 
 from shimeji.tokenizers import Llama
 
@@ -79,11 +78,11 @@ class OobaCompletionParams(BaseModel):
     prompt: str | list[str]
     echo: bool = False
     stream: bool = False
-    frequency_penalty: Optional[float] = None
+    frequency_penalty: float = 0.0
     logit_bias: Optional[dict] = None
     logprobs: Optional[int] = None
     max_tokens: Optional[int] = None
-    presence_penalty: Optional[float] = None
+    presence_penalty: float = 0.0
     stop: Optional[str | list[str]] = None
     suffix: Optional[str] = None
     temperature: Optional[float] = None
@@ -162,7 +161,11 @@ class ModelProvider(ABC):
             raise ValueError("default args is required")
 
     @abstractmethod
-    def generate(self, args: dict | BaseModel, return_dict: bool = False) -> str | dict[str, Any]:
+    def generate(
+        self,
+        args: dict | BaseModel,
+        return_dict: bool = False,
+    ) -> str | dict[str, Any]:
         """Generate a response from the ModelProvider's endpoint.
 
         :param args: The arguments to pass to the endpoint.
@@ -171,7 +174,11 @@ class ModelProvider(ABC):
         """
         raise NotImplementedError("Abstract base class was called ;_;")
 
-    async def generate_async(self, args: dict | BaseModel, return_dict: bool = False) -> str | dict[str, Any]:
+    async def generate_async(
+        self,
+        args: dict | BaseModel,
+        return_dict: bool = False,
+    ) -> str | dict[str, Any]:
         """Generate a response from the ModelProvider's endpoint asynchronously.
 
         :param args: The arguments to pass to the endpoint.
@@ -195,7 +202,7 @@ class ModelProvider(ABC):
         """
         raise NotImplementedError("Abstract base class was called ;_;")
 
-    def response_async(
+    async def response_async(
         self,
         context: Optional[str],
         gensettings: Optional[dict | BaseModel] = None,
@@ -222,7 +229,7 @@ class OobaModel(ModelProvider):
         api_key: Optional[str] = None,
         auth_header: str = "X-Api-Key",
         *,
-        tokenizer: Optional[Tokenizer | PathLike] = None,
+        tokenizer: Optional[PreTrainedTokenizerBase | PathLike] = None,
         **kwargs,
     ):
         """Constructor for ModelProvider.
@@ -233,12 +240,12 @@ class OobaModel(ModelProvider):
         super().__init__(endpoint_url, default_args, api_key, auth_header, **kwargs)
         self.default_args: OobaGenRequest
 
-        if isinstance(tokenizer, Tokenizer):
-            self.tokenizer: Tokenizer = tokenizer
+        if isinstance(tokenizer, PreTrainedTokenizerBase):
+            self.tokenizer: PreTrainedTokenizerBase = tokenizer
         elif isinstance(tokenizer, (str, PathLike)):
-            self.tokenizer: Tokenizer = AutoTokenizer.from_pretrained(tokenizer)
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)
         elif tokenizer is None:
-            self.tokenizer: LlamaTokenizerFast = Llama()
+            self.tokenizer = Llama()
 
     @property
     def headers(self):
@@ -252,7 +259,11 @@ class OobaModel(ModelProvider):
             headers[self.auth_header] = self.api_key
         return headers
 
-    def generate(self, args: OobaGenRequest, return_dict: bool = False) -> str:
+    def generate(
+        self,
+        args: OobaGenRequest | TabbyGenRequest,
+        return_dict: bool = False,
+    ) -> str:
         payload = args.dict(exclude_none=True)
 
         if self.debug:
@@ -270,7 +281,11 @@ class OobaModel(ModelProvider):
             err_resp = resp.json() if hasattr(resp, "json") else None
             raise Exception(f"Could not generate text with text-generation-webui. Error: {err_resp}")
 
-    async def generate_async(self, args: OobaGenRequest, return_dict: bool = False) -> str | dict[str, Any]:
+    async def generate_async(
+        self,
+        args: OobaGenRequest | TabbyGenRequest,
+        return_dict: bool = False,
+    ) -> str | dict[str, Any]:
         payload = args.dict(exclude_none=True)
 
         if self.debug:
@@ -287,6 +302,7 @@ class OobaModel(ModelProvider):
                         if resp is not None:
                             err_resp = await resp.text(encoding="utf-8")
                         resp.raise_for_status()
+                        raise SystemError()  # raise_for_status will have raised an error
         except Exception as e:
             raise Exception(f"Could not generate response. Error: {err_resp}") from e
 
@@ -295,13 +311,13 @@ class OobaModel(ModelProvider):
         context: Optional[str] = None,
         gensettings: Optional[TabbyGenRequest] = None,
         return_dict: bool = False,
-    ) -> str:
+    ) -> str | dict[str, Any]:
         # error if neither argument is provided
         if gensettings is None and context is None:
             raise ValueError("I can't generate a response without a prompt!")
         # otherwise copy default gensettings if no gensettings are provided
         elif gensettings is None:
-            gensettings = copy.deepcopy(self.default_args)
+            gensettings = TabbyGenRequest.model_validate(self.default_args.model_dump(), strict=False)
 
         # if context is provided, set the prompt to it
         if context is not None:
@@ -317,13 +333,13 @@ class OobaModel(ModelProvider):
         context: Optional[str] = None,
         gensettings: Optional[TabbyGenRequest] = None,
         return_dict: bool = False,
-    ) -> str:
+    ) -> str | dict[str, Any]:
         # error if neither argument is provided
         if gensettings is None and context is None:
             raise ValueError("I can't generate a response without a prompt!")
         # otherwise copy default gensettings if no gensettings are provided
         elif gensettings is None:
-            gensettings = copy.deepcopy(self.default_args)
+            gensettings = TabbyGenRequest.model_validate(self.default_args.model_dump(), strict=False)
 
         # if context is provided, set the prompt to it
         if context is not None:

@@ -4,7 +4,7 @@ import re
 from base64 import b64encode
 from datetime import datetime
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 from zoneinfo import ZoneInfo
 
 from aiohttp import ClientError, ClientSession
@@ -50,15 +50,15 @@ class CaptionResponse(BaseModel):
 class DiscoEyes:
     def __init__(self, cog: "Ai") -> None:
         self.cog: "Ai" = cog
-        self.config: VisionConfig = cog.config.vision
+        self.config: VisionConfig = cog.config.vision  # type: ignore
         self.timezone: ZoneInfo = cog.bot.timezone
-        self.web_client: ClientSession = None
-        self.api_client: ClientSession = None
-        self.db_client: SessionType = None
+        self.web_client: ClientSession = None  # type: ignore
+        self.api_client: ClientSession = None  # type: ignore
+        self.db_client: SessionType = None  # type: ignore
 
         # this tracks which channels we've recently responded in, so the caption engine can
         # proactively caption images in those channels without waiting for a prompt
-        self.attention: TimestampStore = None
+        self.attention: TimestampStore = None  # type: ignore
 
     async def start(self) -> None:
         self.web_client: ClientSession = ClientSession(
@@ -100,17 +100,17 @@ class DiscoEyes:
         return self.config.token
 
     @property
-    def api_info(self) -> Optional[InfoResponse]:
+    def api_info(self) -> InfoResponse:
         return self._api_info
 
     async def _fetch_api_info(self) -> None:
         async with self.api_client.get("/api/v1/info") as resp:
             resp.raise_for_status()
             data = await resp.json(encoding="utf-8")
-        self._api_info = InfoResponse.parse_obj(data)
+        self._api_info = InfoResponse.model_validate(data)
         logger.debug(f"Received API info: {self._api_info}")
 
-    async def submit_request(self, image: ImageOrBytes, return_obj: bool = False) -> str:
+    async def submit_request(self, image: ImageOrBytes, return_obj: bool = False) -> str | CaptionResponse:
         logger.info("Processing image")
         if not isinstance(image, Image.Image):
             image = Image.open(BytesIO(image), formats=IMAGE_FORMATS)
@@ -139,7 +139,7 @@ class DiscoEyes:
         logger.info(f"Received caption: {caption}")
         return response if return_obj else caption
 
-    async def perceive_url(self, url: str, id: Optional[int] = None) -> Optional[str]:
+    async def perceive_url(self, url: str, id: Optional[int] = None) -> str | CaptionResponse | None:
         if id is not None:
             image_caption = await self.db_client_get_caption(id)
             if image_caption is not None:
@@ -153,7 +153,11 @@ class DiscoEyes:
 
     # Returns the caption for an image attachment from the db_client if it exists, otherwise
     # submits the image to the api_client for captioning and saves the result to the db_client.
-    async def perceive_attachment(self, attachment: Attachment) -> str:
+    async def perceive_attachment(self, attachment: Attachment) -> str | CaptionResponse | None:
+        if attachment.content_type is None:
+            logger.debug("Attachment has no content type")
+            return None
+
         if not attachment.content_type.startswith("image/"):
             logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
             return None
@@ -191,7 +195,10 @@ class DiscoEyes:
         return image_caption.caption
 
     # Submits the image to the api_client for captioning
-    async def _submit_attachment(self, attachment: Attachment) -> Optional[str | dict[str, Any]]:
+    async def _submit_attachment(self, attachment: Attachment) -> str | CaptionResponse | None:
+        if attachment.content_type is None:
+            logger.debug("Attachment has no content type")
+            return None
         if attachment.size > IMAGE_MAX_BYTES:
             logger.debug(f"got attachment larger than 20MB: {attachment.size}, skipping")
             return None
@@ -209,9 +216,15 @@ class DiscoEyes:
             data = await self._get_thumbnail(attachment)
         else:
             data = await attachment.read()
+        if not isinstance(data, ImageOrBytes):
+            logger.debug("Attachment is not a bytes object")
+            return None
         return await self.submit_request(data)
 
     async def _get_thumbnail(self, attachment: Attachment) -> Optional[Image.Image]:
+        if attachment.content_type is None:
+            logger.debug("Attachment has no content type")
+            return None
         if not attachment.content_type.startswith("image/"):
             logger.debug(f"got non-image attachment: Content-Type {attachment.content_type}")
             return None

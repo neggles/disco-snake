@@ -1,5 +1,3 @@
-from typing import Optional
-
 from shimeji.model_provider import ModelProvider
 from shimeji.postprocessor import Postprocessor
 from shimeji.preprocessor import Preprocessor
@@ -10,8 +8,8 @@ class ChatBot:
         self,
         name: str,
         model_provider: ModelProvider,
-        preprocessors: list[Preprocessor | None] = [],
-        postprocessors: list[Postprocessor | None] = [],
+        preprocessors: list[Preprocessor] = [],
+        postprocessors: list[Postprocessor] = [],
         **kwargs,
     ):
         self.name = name
@@ -32,19 +30,10 @@ class ChatBot:
 
         return text.rstrip(" ")
 
-    def should_respond(self, text: str):
-        text = self.preprocess(text, is_respond=False)
-        return self.model_provider.should_respond(text, self.name)
-
-    async def should_respond_async(self, text: str):
-        text = self.preprocess(text, is_respond=False)
-
-        return await self.model_provider.should_respond_async(text, self.name)
-
     def respond(self, text: str) -> str:
         text = self.preprocess(text, is_respond=False)
 
-        response = self.model_provider.response(text)
+        response: str = self.model_provider.response(text, return_dict=False)  # type: ignore
 
         text = self.postprocess(text)
 
@@ -53,14 +42,8 @@ class ChatBot:
     async def respond_async(self, text: str, is_respond: bool = True) -> str:
         text = self.preprocess(text, is_respond=False)
 
-        response = await self.model_provider.response_async(text)
+        response: str = await self.model_provider.response_async(text, return_dict=False)  # type: ignore
 
         text = self.postprocess(text)
 
         return response
-
-    def conditional_response(self, text: str) -> Optional[str]:
-        if self.should_respond(text):
-            return self.respond(text, False)
-        else:
-            return None

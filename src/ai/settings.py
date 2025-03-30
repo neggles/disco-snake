@@ -1,13 +1,15 @@
+# pyright: reportArgumentType=false
 import logging
 from copy import deepcopy
 from enum import Enum
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Annotated, Iterator, Optional
 
-from pydantic import BaseModel, BaseSettings, Field
+from pydantic import BaseModel, Field, RootModel
+from pydantic_settings import SettingsConfigDict
 
 from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, per_config_name
-from disco_snake.settings import JsonConfig
+from disco_snake.settings import JsonSettings
 from shimeji.model_provider import OobaGenRequest
 
 AI_DATA_DIR = PACKAGE_ROOT.parent.joinpath("data", "ai")
@@ -49,21 +51,23 @@ class NamedSnowflake(BaseModel):
     note: Optional[str] = Field(None)
 
 
-class SnowflakeList(BaseModel):
-    __root__: list[NamedSnowflake] = []
+class SnowflakeList(RootModel):
+    """A list of NamedSnowflake objects. Used for storing lists of users and roles."""
 
-    def __iter__(self) -> Iterator[NamedSnowflake]:
-        return iter(self.__root__)
+    root: list[NamedSnowflake]
+
+    def __iter__(self) -> Iterator[NamedSnowflake]:  # type: ignore
+        return self.root.__iter__()
 
     def __getitem__(self, key) -> NamedSnowflake:
-        return self.__root__[key]
+        return self.root.__getitem__(key)
 
     @property
     def ids(self) -> list[int]:
-        return [x.id for x in self.__root__]
+        return [x.id for x in self.root]
 
     def get_id(self, id: int) -> Optional[NamedSnowflake]:
-        for item in self.__root__:
+        for item in self.root:
             if item.id == id:
                 return item
         return None
@@ -72,8 +76,8 @@ class SnowflakeList(BaseModel):
 class PermissionList(BaseModel):
     """A list of users and roles used for permission gating"""
 
-    users: SnowflakeList = Field([])
-    roles: SnowflakeList = Field([])
+    users: Annotated[SnowflakeList, Field(default_factory=SnowflakeList)]
+    roles: Annotated[SnowflakeList, Field(default_factory=SnowflakeList)]
 
     @property
     def user_ids(self) -> list[int]:
@@ -89,7 +93,7 @@ class ChannelSettings(NamedSnowflake):
 
     respond: Optional[ResponseMode] = Field(None)
     bot_action: Optional[BotMode] = Field(None)
-    imagen: Optional[bool] = True
+    imagen: bool = True
     idle_enable: bool = False
     idle_interval: int = Field(300)
 
@@ -118,13 +122,16 @@ class GuildSettings(NamedSnowflake):
         return self.respond != ResponseMode.NoRespond  # guild default
 
     def channel_respond_mode(self, channel_id: int) -> ResponseMode:
-        return next((x.respond for x in self.channels if x.id == channel_id), self.respond)
+        respond_mode = next((x.respond for x in self.channels if x.id == channel_id), self.respond)
+        return respond_mode if respond_mode is not None else self.respond
 
     def channel_bot_mode(self, channel_id: int) -> BotMode:
-        return next((x.bot_action for x in self.channels if x.id == channel_id), self.bot_action)
+        bot_mode = next((x.bot_action for x in self.channels if x.id == channel_id), self.bot_action)
+        return bot_mode if bot_mode is not None else self.bot_action
 
     def channel_imagen(self, channel_id: int) -> bool:
-        return next((x.imagen for x in self.channels if x.id == channel_id), self.imagen)
+        imagen_enable = next((x.imagen for x in self.channels if x.id == channel_id), self.imagen)
+        return imagen_enable if imagen_enable is not None else self.imagen
 
     def channel_idle_mode(self, channel_id: int) -> tuple[bool, int]:
         return next(
@@ -133,21 +140,23 @@ class GuildSettings(NamedSnowflake):
         )
 
 
-class GuildSettingsList(BaseModel):
-    __root__: list[GuildSettings]
+class GuildSettingsList(RootModel):
+    """A list of guild settings. Used to store settings for multiple guilds."""
 
-    def __iter__(self) -> Iterator[GuildSettings]:
-        return iter(self.__root__)
+    root: list[GuildSettings]
+
+    def __iter__(self) -> Iterator[GuildSettings]:  # type: ignore # pylance doesn't like RootModels
+        return iter(self.root)
 
     def __getitem__(self, key) -> GuildSettings:
-        return self.__root__[key]
+        return self.root[key]
 
     @property
     def guild_ids(self) -> list[int]:
         return [x.id for x in self]
 
     def get_id(self, guild_id: int) -> Optional[GuildSettings]:
-        for guild in self.__root__:
+        for guild in self.root:
             if guild.id == guild_id:
                 return guild
         return None
@@ -166,10 +175,10 @@ class BotParameters(BaseModel):
     memory_enable: bool = False
     max_retries: int = 3
     ctxbreak_restrict: bool = True
-    ctxbreak: PermissionList = Field(default_factory=PermissionList)
-    guilds: GuildSettingsList = Field(default_factory=GuildSettingsList)
-    dm_users: SnowflakeList = Field(default_factory=SnowflakeList)
-    siblings: SnowflakeList = Field(default_factory=SnowflakeList)
+    ctxbreak: Annotated[PermissionList, Field(default_factory=PermissionList)]
+    guilds: Annotated[GuildSettingsList, Field(default_factory=GuildSettingsList)]
+    dm_users: Annotated[SnowflakeList, Field(default_factory=SnowflakeList)]
+    siblings: Annotated[SnowflakeList, Field(default_factory=SnowflakeList)]
 
     @property
     def guild_ids(self) -> list[int]:
@@ -188,7 +197,7 @@ class BotParameters(BaseModel):
 
     def get_idle_channels(self) -> list[int]:
         return [
-            channel
+            channel.id
             for guild in self.guilds
             if guild.idle_enable
             for channel in guild.channels
@@ -203,7 +212,7 @@ class PromptElement(BaseModel):
     concat: str = Field("")
 
     @property
-    def full(self) -> str:
+    def full(self) -> str | None:
         prompt = self.elem_string(self.prompt)
         if prompt is None:
             return None
@@ -214,7 +223,7 @@ class PromptElement(BaseModel):
             prompt = self.concat.join([prompt, self.elem_string(self.suffix)])
         return prompt
 
-    def elem_string(self, elem: Optional[str | list[str]]) -> str:
+    def elem_string(self, elem: str | list[str] | None) -> str | None:
         match elem:
             case [_, *_]:
                 return self.concat.join(elem)
@@ -261,15 +270,15 @@ class WebuiConfig(BaseModel):
 
 
 class LMApiConfig(BaseModel):
-    endpoint: str = Field(...)
-    api_key: Optional[str] = Field(None)
-    auth_header: str = Field("X-Api-Key")
+    endpoint: str
+    api_key: Annotated[str | None, Field(None)]
+    auth_header: Annotated[str, Field("X-Api-Key")]
     provider: str = "ooba"
-    modeltype: str = Field(...)
-    gensettings: OobaGenRequest = Field(...)
+    modeltype: str
+    gensettings: OobaGenRequest
     api_v2: bool = False
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: Annotated[Optional[str], Field(None)]
+    password: Annotated[Optional[str], Field(None)]
 
 
 class VisionConfig(BaseModel):
@@ -281,7 +290,7 @@ class VisionConfig(BaseModel):
     channel_ttl: int = 90  # monitor channel for this many seconds after last response
 
 
-class AiSettings(BaseSettings):
+class AiSettings(JsonSettings):
     name: str
     prompt: Prompt
     params: BotParameters
@@ -292,14 +301,28 @@ class AiSettings(BaseSettings):
     strip: list[str] = Field([])
     bad_words: list[str] = Field([])
 
-    class Config(JsonConfig):
-        json_config_path = AI_DATA_DIR.joinpath("config.json")
+    model_config = SettingsConfigDict(
+        json_file=[
+            AI_DATA_DIR.joinpath("config.json"),
+            AI_DATA_DIR.joinpath(per_config_name("config.json")),
+        ],
+        json_file_encoding="utf-8",
+        nested_model_default_partial_update=True,
+    )
 
 
 def get_ai_settings(config_path: Optional[Path] = None) -> AiSettings:
-    if config_path is None:
-        config_path = AI_DATA_DIR.joinpath(per_config_name("config.json"))
-    settings = AiSettings.parse_file(config_path)
+    if config_path is not None:
+        if config_path.is_file():
+            settings = AiSettings.model_validate_json(config_path.read_text())
+        elif config_path.is_dir():
+            settings = AiSettings.model_validate_json(
+                config_path.joinpath(per_config_name("config.json")).read_text()
+            )
+        else:
+            raise ValueError(f"Invalid config path: {config_path}")
+    else:
+        settings = AiSettings()  # type: ignore
     return settings
 
 
@@ -387,11 +410,11 @@ class ImagenLMPrompt(BaseModel):
 
     @property
     def default_prompt(self) -> str:
-        return (
-            self.gensettings.prompt
-            if len(self.gensettings.prompt) > 0
-            else "a cute girl looking out her apartment window"
-        )
+        prompt = self.gensettings.prompt
+        if isinstance(prompt, list):
+            prompt = " ".join(prompt)
+        prompt = prompt.strip()
+        return prompt if len(prompt) > 0 else "a cute girl looking out her apartment window"
 
     def wrap_prompt(self, user_message: Optional[str] = None) -> str:
         if user_message is None or len(user_message) == 0:
@@ -405,7 +428,7 @@ class ImagenLMPrompt(BaseModel):
         gensettings = deepcopy(self.gensettings)
         if prompt is not None and prompt != "":
             gensettings.prompt = prompt
-        return OobaGenRequest.parse_obj(gensettings)
+        return OobaGenRequest.model_validate(gensettings)
 
 
 class ImagenSDPrompt(BaseModel):
@@ -447,18 +470,29 @@ class ImagenSDPrompt(BaseModel):
         return self.tag_sep.join(trailing) if join else trailing
 
 
-class ImagenSettings(BaseSettings):
+class ImagenSettings(JsonSettings):
     params: ImagenParams = Field(...)
     api_params: ImagenApiParams = Field(...)
     lm_prompt: ImagenLMPrompt = Field(...)
     sd_prompt: ImagenSDPrompt = Field(...)
 
-    class Config(JsonConfig):
-        json_config_path = AI_DATA_DIR.joinpath("imagen.json")
+    model_config = SettingsConfigDict(
+        json_file=[
+            AI_DATA_DIR.joinpath("imagen.json"),
+            AI_DATA_DIR.joinpath(per_config_name("imagen.json")),
+        ],
+        json_file_encoding="utf-8",
+    )
 
 
 def get_imagen_settings(config_path: Optional[Path] = None) -> ImagenSettings:
-    if config_path is None:
-        config_path = AI_DATA_DIR.joinpath(per_config_name("imagen.json"))
-    settings = ImagenSettings.parse_file(config_path)
+    if config_path is not None:
+        if config_path.is_file():
+            settings = ImagenSettings.model_validate_json(config_path.read_text())
+        elif config_path.is_dir():
+            settings = ImagenSettings.model_validate_json(config_path.joinpath("imagen.json").read_text())
+        else:
+            raise ValueError(f"Invalid config path: {config_path}")
+    else:
+        settings = ImagenSettings()  # type: ignore
     return settings

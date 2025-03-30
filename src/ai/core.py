@@ -5,7 +5,6 @@ import logging
 import re
 from asyncio import Lock
 from datetime import datetime, timedelta, timezone
-from io import StringIO
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
@@ -50,7 +49,6 @@ from ai.settings import (
     get_ai_settings,
 )
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
-from ai.tokenizers.yi.tokenization_yi import YiTokenizer
 from ai.types import LruDict
 from ai.ui import AiParam, AiStatusEmbed, set_choices, settable_params
 from ai.utils import (
@@ -127,8 +125,8 @@ def convert_param(ctx: ApplicationCommandInteraction, input: str) -> AiParam:
 
 
 class Ai(MentionMixin, commands.Cog, name=COG_UID):
-    _mention_cache: LruDict
-    _emoji_cache: LruDict
+    _mention_cache: LruDict  # type: ignore
+    _emoji_cache: LruDict  # type: ignore
 
     def __init__(self, bot: DiscoSnake):
         self.bot: DiscoSnake = bot
@@ -162,12 +160,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.tos_reject_ids: set[int] = set()
 
         # we will populate these later during async init
-        self.model_provider: OobaModel = None
+        self.model_provider: OobaModel = None  # type: ignore
         self.model_provider_name: str = self.provider_config.provider
-        self.chatbot: ChatBot = None
-        self.logging_channel: Optional[TextChannel] = None
+        self.chatbot: ChatBot = None  # type: ignore
+        self.logging_channel: Optional[TextChannel | DMChannel] = None
         self.tokenizer_type = self.provider_config.modeltype
-        self.tokenizer: PreTrainedTokenizerBase = None
+        self.tokenizer: PreTrainedTokenizerBase = None  # type: ignore
         self.bad_words: list[str] = self.config.bad_words
 
         # database client (async init)
@@ -185,13 +183,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.debug_dir.mkdir(parents=True, exist_ok=True)
         self.debug_dir.joinpath("dm").mkdir(parents=True, exist_ok=True)
         self._last_debug_log: dict[str, Any] = {}
-        self.logging_channel_id: int = self.params.logging_channel_id
+        self.logging_channel_id: int = self.params.logging_channel_id  # type: ignore
 
         # cache dicts and props
         self._trigger_cache: LruDict = LruDict(max_size=100)
-        self._mention_cache: dict[int, Any] = {}
-        self._emoji_cache: dict[int, Any] = {}
-        self._n_prompt_tokens: int = None
+        self._mention_cache: dict[int, Any] = {}  # type: ignore
+        self._emoji_cache: dict[int, Any] = {}  # type: ignore
+        self._n_prompt_tokens: int = None  # type: ignore
         # other cached vars
         self.j2_env: j2.Environment = j2.Environment(
             keep_trailing_newline=False,
@@ -218,7 +216,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     @property
     def siblings(self) -> list[NamedSnowflake]:
-        return self.params.siblings
+        return [x for x in self.params.siblings]
 
     @property
     def sibling_ids(self) -> list[int]:
@@ -259,7 +257,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if not tokenizer_dir.joinpath("tokenizer.json").is_file():
             extract_tokenizer(name=self.tokenizer_type, target_dir=tokenizer_dir)
 
-        self.tokenizer: YiTokenizer = AutoTokenizer.from_pretrained(
+        self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path=tokenizer_dir,
             local_files_only=True,
             trust_remote_code=True,
@@ -335,7 +333,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     @commands.Cog.listener("on_ready")
     async def on_ready(self):
         if self.logging_channel is None and self.logging_channel_id is not None:
-            self.logging_channel = self.bot.get_channel(self.logging_channel_id)
+            self.logging_channel = self.bot.get_channel(self.logging_channel_id)  # type: ignore
             logger.info(f"Logging channel: {self.logging_channel}")
 
         logger.debug("DMs are enabled for the following users:")
@@ -388,10 +386,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if guild_settings.channel_enabled(message.channel.id) is False:
                 # logger.debug(f"Got message in disabled channel {message.channel=}")
                 return  # ignore messages from channels that have the bot disabled
-            if message.channel.permissions_for(message.guild.me).send_messages is False:
-                # channel is enabled but we don't have permission to respond
-                logger.info(f"Got message in {message.channel} but don't have permission to respond.")
-                return
+            if message.guild is not None:
+                if message.channel.permissions_for(message.guild.me).send_messages is False:
+                    # channel is enabled but we don't have permission to respond
+                    logger.info(f"Got message in {message.channel} but don't have permission to respond.")
+                    return
 
         if message.author.bot is True:
             # bots can't and don't need to accept the ToS
@@ -409,7 +408,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             return  # ignore empty messages
 
         trigger: Optional[str] = None  # response trigger reason (tfw no StrEnum in 3.10)
-        conversation: Optional[list[str]] = None  # message's conversation context
+        conversation = None  # message's conversation context
         append = None  # optional masked message to append to the response
 
         try:
@@ -449,7 +448,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             self.debug_dir.joinpath(err_filename).write_text(exc_desc)
 
     # retrieve the LM prompt and inject name, time, etc.
-    def get_prompt(self, ctx: Optional[MessageInteraction] = None, ensure_str: bool = False) -> str:
+    def get_prompt(self, ctx: Optional[MessageInteraction | Message] = None, ensure_str: bool = False) -> str:
         if ctx is None:
             location_context = "and friends in a Discord server"
         elif hasattr(ctx, "guild") and ctx.guild is not None:
@@ -484,7 +483,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         *,
         guild_settings: Optional[GuildSettings] = None,
         max_messages: Optional[int] = None,
-    ) -> Union[str, list[str]]:
+    ) -> list[str] | list[dict[str, str]]:
         if max_messages is None:
             max_messages = self.params.context_messages
 
@@ -543,7 +542,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 author_name = f"{self.name}:"
             else:
                 msg_role = "user"
-                if message.author.nick is not None:
+                if isinstance(message.author, Member) and message.author.nick is not None:
                     author_name = f"{message.author.nick.strip()}:"
                 elif message.author.global_name is not None:
                     author_name = f"{message.author.global_name.strip()}:"
@@ -560,7 +559,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 for embed in msg.embeds:
                     if embed.type == "image":
                         try:
-                            caption = await self.eyes.perceive_url(embed.thumbnail.url, msg.id)
+                            caption = await self.eyes.perceive_url(embed.thumbnail.url, msg.id)  # type: ignore
                             if caption is not None:
                                 chain.append(wrap_message(f"{author_name} [image: {caption}]", msg_role))
                         except Exception as e:
@@ -593,6 +592,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
             for attachment in msg.attachments:
                 try:
+                    if attachment.content_type is None:
+                        logger.debug(f"got no content-type for attachment: '{attachment.filename}', skipping")
+                        continue
                     if not attachment.content_type.startswith("image/"):
                         logger.debug(f"got non-image content-type: '{attachment.content_type}', skipping")
                         continue
@@ -610,7 +612,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return chain
 
     # assemble a prompt/context for the model
-    async def process_context(self, conversation: list[str | dict[str, str]], message: Message):
+    async def process_context(self, conversation: list[str] | list[dict[str, str]], message: Message):
         if self.prompt.disco_mode:
             logger.debug("Disco mode enabled, returning only the message that triggered the response")
             context = message.content
@@ -621,11 +623,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.debug(f"building context from {len(conversation)} messages")
 
         if isinstance(conversation[0], dict):
-            conversation = self.apply_chat_template(conversation, add_generation_prompt=False).splitlines()
+            conversation = self.apply_chat_template(conversation, add_generation_prompt=False).splitlines()  # type: ignore
             logger.debug(f"applied chat template:\n{conversation}")
 
         if isinstance(conversation, list):
-            conversation = "\n".join([x.strip() for x in conversation])
+            # must be a list of strings by now (applied chat template)
+            conversation = "\n".join([x.strip() for x in conversation])  # type: ignore
 
         prompt_entry = ContextEntry(
             text=self.get_prompt(message),
@@ -669,11 +672,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     # actual response logic
     async def do_response(
         self,
-        conversation: list[str],
+        conversation: list[str] | list[dict[str, str]],
         message: Message,
         trigger: Optional[str] = None,
         append: Optional[str] = None,
-    ) -> str:
+    ) -> str | None:
         async with message.channel.typing():
             debug_data: dict[str, Any] = {}
 
@@ -706,7 +709,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             }
             # make conversation be a top level key
             if isinstance(conversation[0], dict):
-                debug_data["conversation"] = [f"{x['content']}" for x in conversation]
+                debug_data["conversation"] = [f"{x['content']}" for x in conversation]  # type: ignore
             else:
                 debug_data["conversation"] = conversation
 
@@ -721,14 +724,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             debug_data["context"] = context.splitlines()
             debug_data["n_prompt_tokens"] = self.n_prompt_tokens
             ctokens: BatchEncoding = self.tokenizer.batch_encode_plus([context], return_length=True)
-            debug_data["n_context_tokens"] = ctokens.get("length").pop(0)
+            debug_data["n_context_tokens"] = ctokens.get("length", [-1]).pop(0)
 
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
                 for attempt in range(self.max_retries):
                     attempt = attempt + 1  # deal with range() starting from 0
                     try:
-                        response: str = await self.chatbot.respond_async(context)
+                        response = await self.chatbot.respond_async(context)
                     except Exception as e:
                         logger.exception(e)
                         await message.add_reaction("❌")
@@ -838,7 +841,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 if len(response) > 1900:
                     if self.prompt.disco_mode:
                         logger.debug("Overlength response in disco mode, will send as file")
-                        response_file = File(StringIO(response), filename="story.txt")
+                        response_file = File(response.encode("utf-8"), filename="story.txt")
                     else:
                         logger.debug("Response is too long, trimming...")
                         response = response[:1900].strip() + "-"
@@ -877,7 +880,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
                 # update timestamp for this channel in the image caption engine
                 if self.eyes.enabled and self.eyes.background:
-                    self.eyes.watch(message.channel)
+                    self.eyes.watch(message.channel)  # type: ignore  # bad type hint in disnake
 
                 # update webui state if it's enabled
                 if self.webui is not None:
@@ -956,17 +959,17 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 .with_only_columns(DiscordUser.id, DiscordUser.tos_accepted, DiscordUser.tos_rejected)
             )
             results = await session.scalars(query)
-            users: list[DiscordUser] = results.all()
+            users: list[DiscordUser] = results.all()  # type: ignore
         self.tos_reject_ids = set([x.id for x in users])
 
     # Check if a user has accepted the ToS
-    async def user_accepted_tos(self, user: Union[User, Member, int]) -> Optional[bool]:
+    async def user_accepted_tos(self, user: Union[User, Member, int]) -> Optional[bool]:  # type: ignore
         """Checks if a user has accepted the ToS, rejected, or not completed the process.
         Returns True if accepted, False if rejected, None if not completed.
         """
         user_id = user.id if isinstance(user, (User, Member)) else user
         async with self.db_client.begin() as session:
-            user: DiscordUser = await session.get(DiscordUser, user_id)
+            user: DiscordUser = await session.get(DiscordUser, user_id)  # type: ignore
             if user is None:
                 logger.debug(f"User {user_id} has not completed the ToS process.")
                 return None
@@ -980,8 +983,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         async with self.db_client.begin() as session:
             query = (
                 select(DiscordUser)
-                .options(load_only("id", "tos_accepted", "tos_rejected", raiseload=True))
-                .filter(DiscordUser.tos_accepted is True)
+                .options(load_only("id", "tos_accepted", "tos_rejected", raiseload=True))  # type: ignore
+                .filter(DiscordUser.tos_accepted is True)  # type: ignore
             )
             result = await session.scalars(query)
             users = result.all()
@@ -992,7 +995,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.debug(f"Checking ToS for {message.author} ({message.author.id})")
         try:
             async with self.db_client.begin() as session:
-                user: DiscordUser = await session.get(DiscordUser, message.author.id)
+                user: DiscordUser = await session.get(DiscordUser, message.author.id)  # type: ignore
                 if user is None:
                     logger.info(f"User {message.author} not found in database, creating entry")
                     user = DiscordUser.from_discord(message.author)
@@ -1046,16 +1049,16 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         Fix <USER>, <BOT>, etc tokens in the response, and unescape any escaped markdown formatting
         """
         author_name = message.author.nick if message.author.nick is not None else message.author.global_name
-        author_name = author_name.encode("utf-8").decode("ascii", errors="ignore").strip()
+        author_name = author_name.encode("utf-8").decode("ascii", errors="ignore").strip()  # type: ignore
         response = re_user_token.sub(f"@{author_name}", response)
         response = re_bot_token.sub(f"@{self.name}", response)
         response = response.replace("</s>", "").strip()
         return response
 
     # search for bad words in a message
-    def find_bad_words(self, input: str) -> str:
+    def find_bad_words(self, input: str) -> list[str]:
         found_words: list[str] = []
-        input_words: str = input.split()
+        input_words: str = input.split()  # type: ignore
 
         for word in input_words:
             word_stripped: str = re_nonword.sub("", word).lower()
@@ -1102,7 +1105,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             return True  # people can always break context in DMs
         if message.author.id in list(self.ctxbreak.user_ids + self.bot.config.admin_ids):
             return True  # admins and ctxbreak users can always break context
-        if member_in_any_role(message.author, self.ctxbreak.role_ids):
+        if member_in_any_role(message.author, self.ctxbreak.role_ids):  # type: ignore
             return True  # ctxbreak role havers can always break context
         return False  # otherwise, no
 
@@ -1151,7 +1154,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             pass  # no attachments or embeds
 
         # check if we're watching this channel
-        if not self.eyes.watching(message.channel):
+        if not self.eyes.watching(message.channel):  # type: ignore
             return  # not watching this channel (no recent activity)
 
         for embed in message.embeds:
@@ -1160,7 +1163,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     if embed.thumbnail.height < 100 or embed.thumbnail.width < 100:
                         continue  # too small to caption, probably an emoji, just skip it
                     logger.debug(f"Captioning embed from {message.id=}")
-                    caption = await self.eyes.perceive_url(embed.thumbnail.url, message.id)
+                    caption = await self.eyes.perceive_url(embed.thumbnail.url, message.id)  # type: ignore
                     logger.info(f"Success: {message.id=}, {caption=}")
                 except Exception:
                     logger.exception(f"Error processing image {embed.thumbnail.url}")
@@ -1169,7 +1172,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             break  # only caption one image per embed. limitations of how i key the DB :/
 
         for attachment in message.attachments:
-            if attachment.content_type.startswith("image"):
+            if attachment.content_type is None:
+                logger.debug(f"got no content-type for attachment: '{attachment.filename}', skipping")
+                continue
+            if attachment.content_type.startswith("image"):  # type: ignore
                 try:
                     logger.debug(f"Captioning attachment {attachment.id=} from {message.id=}")
                     caption = await self.eyes.perceive_attachment(attachment)
@@ -1184,7 +1190,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         """
         # get the message content
         if isinstance(message, Message):
-            content: Optional[str] = self.get_msg_content_clean(message)
+            content: Optional[str] = self.get_msg_content_clean(message)  # type: ignore
         elif isinstance(message, str):
             content: str = message
         else:
@@ -1224,7 +1230,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     self.webui.imagen_update(lm_trigger, lm_tag_string, result_path)
                 except Exception as e:
                     logger.exception(e)
-            return result_file
+            return result_file  # type: ignore  # bad type hint in disnake
         except RuntimeError as e:
             logger.exception(e)
             raise e

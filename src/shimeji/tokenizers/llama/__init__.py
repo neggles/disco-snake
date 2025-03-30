@@ -1,9 +1,12 @@
 from functools import partial
 from pathlib import Path
+from typing import Callable
 
 from transformers import LlamaTokenizerFast
 
-tokenizer: LlamaTokenizerFast = partial(
+tokenizer_path: Path = Path(__file__).parent
+
+tokenizer: Callable[..., LlamaTokenizerFast] = partial(
     LlamaTokenizerFast.from_pretrained,
-    str(Path(__file__).parent),
+    str(tokenizer_path),
 )

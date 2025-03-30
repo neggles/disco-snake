@@ -52,12 +52,6 @@
         }
     },
     "python.analysis.autoFormatStrings": true,
-    "python.analysis.exclude": [
-        "**/.venv",
-        "**/__pycache__",
-        "**/.ruff_cache",
-        "**/*.egg-info"
-    ],
 
     "[json]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode",

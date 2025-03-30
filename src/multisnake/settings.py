@@ -1,10 +1,11 @@
 import logging
 from enum import Enum
-from typing import Iterator
+from typing import Annotated, Iterator
 
-from pydantic import BaseModel, BaseSettings, Field
+from pydantic import BaseModel, Field, RootModel
+from pydantic_settings import SettingsConfigDict
 
-from disco_snake.settings import DEF_DATA_PATH, JsonConfig
+from disco_snake.settings import DEF_DATA_PATH, JsonSettings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,19 +16,19 @@ class ConfigInfo(BaseModel):
     config: str = Field(...)
 
 
-class ConfigList(BaseModel):
-    __root__: list[ConfigInfo] = []
+class ConfigList(RootModel):
+    root: list[ConfigInfo] = []
 
-    def __iter__(self) -> Iterator[ConfigInfo]:
-        return iter(self.__root__)
+    def __iter__(self) -> Iterator[ConfigInfo]:  # type: ignore
+        return self.root.__iter__()
 
     def __getitem__(self, key) -> ConfigInfo:
-        return self.__root__[key]
+        return self.root.__getitem__(key)
 
-    def get_enum(self) -> Enum:
+    def get_enum(self) -> type[Enum]:
         """Create an enum from the list of settings"""
         # make a dict of config names to config values, backwards Because Click
-        configs = {info.config: info.name for info in self.__root__}
+        configs = {info.config: info.name for info in self.root}
         # add an "all" option to the enum
         configs.update({"all": "All"})
         return Enum(
@@ -38,12 +39,13 @@ class ConfigList(BaseModel):
         )
 
 
-class MultisnakeSettings(BaseSettings):
-    configs: ConfigList = Field(...)
+class MultisnakeSettings(JsonSettings):
+    configs: Annotated[ConfigList, Field(default_factory=ConfigList)]
 
-    class Config(JsonConfig):
-        json_config_path = DEF_DATA_PATH.joinpath("multisnake.json")
+    model_config = SettingsConfigDict(
+        json_file=DEF_DATA_PATH.joinpath("multisnake.json"),
+    )
 
 
-settings: MultisnakeSettings = MultisnakeSettings()
-ConfigName: Enum = settings.configs.get_enum()
+settings: MultisnakeSettings = MultisnakeSettings()  # type: ignore
+ConfigName: type[Enum] = settings.configs.get_enum()

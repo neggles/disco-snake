@@ -37,8 +37,9 @@ dependencies = [
     "psycopg-binary >= 3.1.0, < 3.2.0",
     "psycopg-pool >= 3.1.0, < 3.2.0",
     "pgvector >= 0.1.8, <1.0.0",
-    "pydantic >= 2.11.0",
-    "pydantic-settings >= 2.8.0",
+    "pydantic>=2.11.0",
+    "pydantic-extra-types>=2.10.3",
+    "pydantic-settings>=2.8.0",
     "PyNaCl >= 1.5.0",
     "python-dotenv >= 1.0.0",
     "rich >= 13.0.0",
@@ -47,27 +48,32 @@ dependencies = [
     "sqlalchemy[asyncio] >= 2.0.13, < 2.1.0",
     "supervisor >= 4.2.5, < 5.0.0",
     "tokenizers >= 0.13.3",
-    "torch >= 2.0.0, < 2.2.0",
+    "torch >= 2.6.0, < 3.0.0",
+    "torchvision>=0.21.0",
     "transformers >= 4.37.0, < 5.0.0",
-    "typer >= 0.9.0, < 1.0.0",
+    "typer >= 0.15.0, < 1.0.0",
     "uvloop >= 0.17.0, < 0.18.0",
+    "cachetools>=5.5.2",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "ruff >= 0.9.0",
+    "ruff >= 0.11.0",
     "setuptools-scm >= 8.0.0",
     "pre-commit >= 3.0.0",
+    "ipython >= 8.0.0",
 ]
 docs = [
     "sphinx >= 6.2.0",
     "sphinx-rtd-theme >= 1.0.0",
 ]
-all = [
-    "disco-snake[dev]",
-    "disco-snake[docs]",
-]
 
+
+[tool.uv]
+default-groups = [
+    "dev",
+    "docs",
+]
 
 [project.scripts]
 disco-snake = "disco_snake.cli:cli"
@@ -150,16 +156,14 @@ exclude = [
     "**/__pycache__", # cache directories
     "./typings",      # generated type stubs
 ]
+ignore = [
+    "./.venv/**", # virtualenv
+    "/usr/**",    # system libraries
+]
 stubPath = "./typings"
 analyzeUnannotatedFunctions = true
 reportAttributeAccessIssue = false
-reportAssignmentType = false
-reportOptionalMemberAccess = false
-reportRedeclaration = false
-reportIncompatibleVariableOverride = false
-reportIncompatibleMethodOverride = false
-reportReturnType = false
-reportArgumentType = false
+
 
 # needs to be last for CI reasons
 [tool.setuptools_scm]

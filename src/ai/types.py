@@ -6,7 +6,7 @@ from typing import Any, Optional, TypeAlias, Union
 from cachetools import TTLCache
 from disnake import DMChannel, GroupChannel, Member, TextChannel, Thread, User
 from PIL.Image import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 ListOfUsers: TypeAlias = Union[list[Union[User, Member]], list[User], list[Member]]
 
@@ -61,5 +61,6 @@ class AiResponseLog(BaseModel):
     response_raw: str = Field(...)
     response: str = Field(...)
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(
+        from_attributes=True,
+    )

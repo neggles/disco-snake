@@ -41,7 +41,7 @@ def cli(
         typer.Argument(help="Action to perform"),
     ],
     configs: Annotated[
-        Optional[list[ConfigName]],
+        Optional[list[ConfigName]],  # type: ignore
         typer.Argument(
             help="List of instances to act on",
             show_choices=True,
@@ -50,8 +50,7 @@ def cli(
     ] = None,
 ) -> None:
     """Manage multiple DiscoSnake instances"""
-
-    if len(configs) == 0:
+    if configs is None or len(configs) == 0:
         pprint(":warning:  [bold yellow]no config specified[/] :warning:")
         raise typer.Exit(1)
 
