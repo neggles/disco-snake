@@ -1,6 +1,5 @@
 import logging
 from asyncio import sleep
-from typing import Union
 
 import disnake
 from disnake import (
@@ -9,9 +8,9 @@ from disnake import (
     DMChannel,
     Embed,
     GroupChannel,
+    InteractionContextTypes,
     StageChannel,
     TextChannel,
-    Thread,
 )
 from disnake.ext import commands
 
@@ -41,7 +40,11 @@ class Admin(commands.Cog, name=COG_NAME):
         await ctx.send(embed=embed, ephemeral=True)
         await self.bot.close()
 
-    @commands.slash_command(name="clear", dm_permission=True, guild_ids=[])
+    @commands.slash_command(
+        name="clear",
+        guild_ids=[],
+        contexts=InteractionContextTypes(guild=True, bot_dm=True, private_channel=True),
+    )
     @checks.is_admin()
     async def clear_messages(
         self,
@@ -71,12 +74,10 @@ class Admin(commands.Cog, name=COG_NAME):
         count = int(count)
 
         # get channel info
-        channel: Union[DMChannel, TextChannel, GroupChannel, StageChannel] = await self.bot.fetch_channel(
-            ctx.channel.id
-        )
-        if isinstance(channel, Thread):
+        channel = await self.bot.fetch_channel(ctx.channel.id)
+        if not isinstance(channel, (DMChannel, TextChannel, GroupChannel, StageChannel)):
             # don't even bother
-            await ctx.send("I can't delete messages in threads, sorry.", ephemeral=True)
+            await ctx.send("I can't delete messages in this channel type, sorry.", ephemeral=True)
             return
         elif isinstance(channel, (DMChannel, GroupChannel)):
             clear_all = False
@@ -197,28 +198,27 @@ class Admin(commands.Cog, name=COG_NAME):
         :param interaction: The application command interaction.
         :param user: The user that should be removed from the blacklist.
         """
+        embed = disnake.Embed(
+            title="Error!",
+            description="Unknown command error. Please try again.",
+            color=0xE02B2B,
+        )
+
         try:
             try:
                 self.blacklist.remove_id(user.id)
+                embed = disnake.Embed(
+                    title="User removed from blacklist",
+                    description=f"**{user.global_name}** has been successfully removed from the blacklist",
+                    color=0x9C84EF,
+                )
             except KeyError as e:
-                raise ValueError("User ID not found in blacklist") from e
+                embed.description = f"**{user.global_name}** is not in the blacklist."
 
-            embed = disnake.Embed(
-                title="User removed from blacklist",
-                description=f"**{user.name}** has been successfully removed from the blacklist",
-                color=0x9C84EF,
-            )
             embed.set_footer(text=f"There are now {len(self.blacklist)} users in the blacklist")
-            await ctx.send(embed=embed, ephemeral=True)
-        except ValueError:
-            embed = disnake.Embed(
-                title="Error!", description=f"**{user.name}** is not in the blacklist.", color=0xE02B2B
-            )
         except Exception:
-            embed = disnake.Embed(
-                title="Error!",
-                description=f"An unknown error occurred when trying to add **{user.name}** to the blacklist.",
-                color=0xE02B2B,
+            embed.description = (
+                f"An error occurred when trying to remove **{user.global_name}** from the blacklist."
             )
         finally:
             await ctx.send(embed=embed, ephemeral=True)
