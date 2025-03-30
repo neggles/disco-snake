@@ -38,7 +38,7 @@ def config_suffix(daemon_path: bool = False) -> Optional[str | Path]:
 
     passing daemon_path=True will return the path to the daemonocle prefix directory instead of the string suffix.
     """
-    if __config_suffix is not None:
+    if __config_suffix is not None and daemon_path is False:
         # if we've already set the suffix, we can just return it
         return __config_suffix
 
@@ -51,14 +51,19 @@ def config_suffix(daemon_path: bool = False) -> Optional[str | Path]:
 
     # if we're using the default config, we can return now
     if config_name is None:
-        __config_suffix = DEF_DAEMON_PATH if daemon_path is True else None
+        if daemon_path:
+            return DEF_DAEMON_PATH
+
+        __config_suffix = None
     else:
         # otherwise we need to check if the config file exists
         config_path = DEF_DATA_PATH.joinpath(f"config-{config_name}.json")
         if not config_path.is_file():
             raise FileNotFoundError(f"Config file {config_path} does not exist!")
-        # and return either the name or the daemonocle prefix path
-        __config_suffix = DEF_DAEMON_PATH.joinpath(f"{config_name}") if daemon_path is True else config_name
+        if daemon_path:
+            return DEF_DAEMON_PATH.joinpath(f"{config_name}")
+
+        __config_suffix = config_name
 
     # then either way we go turn ourselves in to the police
     return __config_suffix

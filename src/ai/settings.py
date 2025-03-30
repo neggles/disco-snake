@@ -18,7 +18,6 @@ AI_LOG_FORMAT = LOG_FORMAT
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-IMAGEN_CFG_PATH = AI_DATA_DIR.joinpath(per_config_name("imagen.json"))
 IMAGES_DIR = AI_DATA_DIR.joinpath(per_config_name("images"))
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
