@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import gradio as gr
+from gradio.components import Component
+from gradio.themes import Base, GoogleFont
 from gradio.themes.utils import colors
 
 from ai.settings import GradioConfig
@@ -25,12 +27,12 @@ class GradioUi:
         self.config = config
 
         if self.config.theme is None or self.config.theme == "default":
-            self.theme = gr.themes.Base(
+            self.theme = Base(
                 primary_hue=colors.violet,
                 secondary_hue=colors.indigo,
                 neutral_hue=colors.slate,
-                font=[gr.themes.GoogleFont("Fira Sans"), "ui-sans-serif", "system-ui", "sans-serif"],
-                font_mono=[gr.themes.GoogleFont("Fira Code"), "ui-monospace", "Consolas", "monospace"],
+                font=[GoogleFont("Fira Sans"), "ui-sans-serif", "system-ui", "sans-serif"],
+                font_mono=[GoogleFont("Fira Code"), "ui-monospace", "Consolas", "monospace"],
             ).set(
                 slider_color_dark="*primary_500",
             )
@@ -53,7 +55,7 @@ class GradioUi:
             css=self.css,
         )
 
-        self.dynamic_elements: list[gr.components.Component] = []
+        self.dynamic_elements: list[Component] = []
 
         # Last text prompts
         self.lm_last_prompt = ""
@@ -87,6 +89,7 @@ class GradioUi:
             def evt_reload():
                 ret = []
                 for elem in self.dynamic_elements:
+                    elem_val = None
                     try:
                         elem_val = getattr(elem, "value", None)
                         if not hasattr(self.cog.provider_config.gensettings, elem.elem_id):
@@ -104,7 +107,7 @@ class GradioUi:
 
             def evt_set_param(element, evt: gr.EventData):
                 try:
-                    input_name = evt.target.elem_id
+                    input_name = evt.target.elem_id  # type: ignore
                     input_value = element
                     logger.debug(f"Setting '{input_name}' to {input_value}")
                     setattr(self.cog.provider_config.gensettings, input_name, input_value)
@@ -113,18 +116,17 @@ class GradioUi:
                     logger.exception("Failed to set parameter")
 
             def get_self_attr(element, *args, **kwargs):
+                target_id = getattr(element, "elem_id", element)
                 try:
-                    target_id = getattr(element, "elem_id", element)
                     value = getattr(self, target_id, None)
                 except Exception as e:
                     logger.exception(f"Failed to get self attr {target_id}")
-                    raise f"Failed to get self attr {target_id}" from e
-                finally:
-                    return value
+                    raise e
+                return value
 
             def get_ai_attr_json(element, *args, **kwargs):
+                target_id = getattr(element, "elem_id", element)
                 try:
-                    target_id = getattr(element, "elem_id", element)
                     value = getattr(self.cog, target_id, None)
                     if value is None:
                         value = {"error": f"Attribute {self.cog}.{target_id} is None"}
@@ -134,12 +136,11 @@ class GradioUi:
                         value = value.json()
                 except Exception as e:
                     logger.exception(f"Failed to get AI cog attr {target_id}")
-                    raise f"Failed to get AI cog attr {target_id}" from e
-                finally:
-                    return value
+                    raise e
+                return value
 
             # title bar
-            with gr.Row().style(equal_height=True):
+            with gr.Row(equal_height=True):
                 with gr.Column(scale=12, elem_id="header_col"):
                     self.header_title = gr.Markdown(
                         f"## {self.cog.name} webui",
@@ -148,19 +149,17 @@ class GradioUi:
                 with gr.Column(scale=1, min_width=90, elem_id="button_col"):
                     with gr.Row(elem_id="button_row"):
                         self.reload_btn = gr.Button(
-                            label="refresh",
                             elem_id="refresh_btn",
-                            type="button",
                             value="🔄",
                             variant="primary",
                         )
 
             # Language model settings
             with gr.Tab(label="LM Settings"):
-                with gr.Row(variant="panel").style(equal_height=True):
+                with gr.Row(variant="panel", equal_height=True):
                     # Column 1
                     with gr.Column():
-                        with gr.Box():
+                        with gr.Row():
                             with gr.Column():
                                 gr.Markdown("### Main parameters")
                                 seed = gr.Number(
@@ -294,7 +293,7 @@ class GradioUi:
 
                     # Column 2
                     with gr.Column():
-                        with gr.Box():
+                        with gr.Row():
                             with gr.Column():
                                 gr.Markdown("### Extra parameters")
 
@@ -353,7 +352,7 @@ class GradioUi:
                                     [do_sample, penalty_alpha, num_beams, length_penalty, early_stopping]
                                 )
 
-                        with gr.Box():
+                        with gr.Row():
                             with gr.Column():
                                 gr.Markdown("### Input/output parameters")
                                 min_length = gr.Slider(
@@ -429,9 +428,9 @@ class GradioUi:
 
             # Prompt info and imagen info
             with gr.Tab(label="Status"):
-                with gr.Row(variant="panel").style(equal_height=True):
+                with gr.Row(variant="panel", equal_height=True):
                     with gr.Column(elem_id="lm_messages"):
-                        with gr.Box():
+                        with gr.Row():
                             with gr.Column():
                                 gr.Markdown("### LM Messages")
                                 self.gr_last_message = gr.Textbox(
@@ -463,7 +462,7 @@ class GradioUi:
                                 )
 
                     with gr.Column(elem_id="imagen_status"):
-                        with gr.Box():
+                        with gr.Row():
                             with gr.Column():
                                 gr.Markdown("### Imagen")
                                 with gr.Group():
@@ -481,7 +480,8 @@ class GradioUi:
                                         label="Last image",
                                         elem_id="img_last_image",
                                         every=4.0,
-                                    ).style(height=640)
+                                        height=640,
+                                    )
                                     self.imagen_last_tags = gr.Textbox(
                                         value=partial(get_self_attr, "img_last_tags"),
                                         max_lines=10,
@@ -491,7 +491,7 @@ class GradioUi:
                                         every=4.0,
                                     )
 
-                with gr.Row(variant="panel").style(equal_height=True):
+                with gr.Row(variant="panel", equal_height=True):
                     with gr.Column(elem_id="lm_debug"):
                         self._ai_trigger_cache = gr.JSON(
                             value=partial(get_ai_attr_json, "_last_debug_log"),
@@ -529,7 +529,6 @@ class GradioUi:
                     width=self.config.width,
                     prevent_thread_lock=True,
                     show_error=True,
-                    enable_queue=True,
                     root_path=self.config.root_path,
                     **kwargs,
                 )
