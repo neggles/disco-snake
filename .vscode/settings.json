@@ -4,7 +4,6 @@
     "files.trimTrailingWhitespace": true,
     "editor.rulers": [100, 120],
     "editor.trimAutoWhitespace": true,
-
     "editor.formatOnSaveMode": "file",
 
     "files.trimFinalNewlines": true,
@@ -12,9 +11,9 @@
         ".gitignore": "gitignore",
         ".vscode/*.json": "jsonc",
         "*.txt": "plaintext",
-        "setup.cfg": "ini",
-        "ssh_config": "ssh_config",
-        "*.yaml": "yaml"
+        "*.yaml": "yaml",
+        "*.yml": "yaml",
+        "pyproject.toml": "toml"
     },
 
     "search.exclude": {
@@ -53,6 +52,12 @@
         }
     },
     "python.analysis.autoFormatStrings": true,
+    "python.analysis.exclude": [
+        "**/.venv",
+        "**/__pycache__",
+        "**/.ruff_cache",
+        "**/*.egg-info"
+    ],
 
     "[json]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode",
@@ -109,7 +114,6 @@
     "yaml.format.printWidth": 110,
 
     "[dockercompose]": {
-        "editor.insertSpaces": true,
         "editor.detectIndentation": false,
         "editor.tabSize": 2,
         "editor.autoIndent": "advanced",
@@ -119,8 +123,5 @@
             "strings": true
         }
     },
-    "docker.dockerComposeBuild": false,
-
-    "remote.autoForwardPorts": false,
-    "remote.autoForwardPortsSource": "process"
+    "docker.dockerComposeBuild": false
 }
