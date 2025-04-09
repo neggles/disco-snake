@@ -546,20 +546,15 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 author_name = None
 
                 if isinstance(msg.author, Member) and msg.author.nick is not None:
-                    logger.debug(f"using nick for {msg.author}")
                     # do a little cleanup
                     if matches := re_firstword.match(msg.author.nick):
                         clean_name = matches.group(1)
                         author_name = f"{clean_name.strip()}:"
-                    else:
-                        logger.debug("failed to clean nick")
 
                 if author_name is None:
                     if msg.author.display_name is not None:
-                        logger.debug(f"using display name for {msg.author}")
                         author_name = f"{msg.author.display_name.strip()}:"
                     else:
-                        logger.debug(f"using username for {msg.author}")
                         author_name = f"{msg.author.name.strip()}:"
 
             if len(msg.embeds) > 0:
@@ -807,7 +802,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     debug_data["thoughts"] = [x.strip() for x in thoughts.splitlines() if x.strip() != ""]
                     logger.debug(f"Thoughts: {debug_data['thoughts']}")
                     # strip whitespace from response
-                    response = response.strip()
+                    response = response.strip().lstrip('"*_-`')
                     if response.startswith(f"{self.name}:"):
                         response = response[len(f"{self.name}:") :].strip()
                     else:
