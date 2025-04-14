@@ -5,6 +5,7 @@ import logging
 import re
 from asyncio import Lock
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
@@ -18,8 +19,10 @@ from disnake import (
     Embed,
     File,
     GroupChannel,
+    InteractionContextTypes,
     Member,
     Message,
+    MessageCommandInteraction,
     MessageInteraction,
     TextChannel,
     Thread,
@@ -520,7 +523,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if msg.author.id in self.tos_reject_ids:
                 continue  # skip users who rejected the privacy policy
             if msg.content is not None:
-                if any((msg.content.startswith(x) for x in ["-", "/", ", "])):
+                if any((msg.content.startswith(x) for x in ["/", ", "])):
                     continue  # skip messages that start with a command prefix or a comma-space
                 if "```" in msg.content:
                     continue  # skip messages with code blocks
@@ -528,6 +531,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if msg.author.id == self.bot.user.id:
                 if msg.content.startswith("This is an AI chatbot made by"):
                     continue  # this is a TOS message in a DM so lets skip it
+                if msg.content.startswith("-# Analysis:"):
+                    continue
+                if msg.embeds and msg.embeds[0].type == "rich":
+                    continue
             elif msg.author.bot is True:  # bots who aren't us
                 if bot_mode == BotMode.Strip:
                     logger.debug(f"Stripping bot message {msg.id} from context chain")
@@ -921,6 +928,39 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         except Exception:
             logger.exception("Failed to log response to database, continuing anyway")
 
+    @commands.message_command(
+        name="Get Chain of Thought",
+        contexts=InteractionContextTypes(bot_dm=True, guild=True, private_channel=True),
+    )
+    async def get_response_cot(self, ctx: MessageCommandInteraction):
+        """Get the chain of thought behind a message we sent"""
+        if ctx.target.author.id != self.bot.user.id:
+            await ctx.send("I didn't send this message and I'm not psychic", ephemeral=True)
+            return
+        try:
+            thoughts = await self.get_response_thoughts(ctx.target.id)
+            if thoughts is None or len(thoughts) == 0:
+                await ctx.send("Didn't find any thoughts for this message", ephemeral=True)
+                return
+
+            thoughts_file = None
+            thoughts_str = "\n".join(["-# Analysis:"] + [f"> {x}" for x in thoughts])
+
+            if len(thoughts_str) > 2000:
+                buf = BytesIO("\n".join(thoughts).encode("utf-8"))
+                thoughts_file = File(buf, filename=f"thoughts-{ctx.target.id}.txt")
+                thoughts_str = "-# Analysis:\n" + thoughts[0][:40] + "... (too long, attached)"
+
+            # thoughts_embed = Embed(title="Chain of Thought", description=thoughts_str, color=0x8D56EE)
+            if thoughts_file:
+                await ctx.send(thoughts_str, file=thoughts_file)
+            else:
+                await ctx.send(thoughts_str)
+
+        except Exception as e:
+            logger.exception(e)
+            raise e
+
     # Idle loop, broken rn, need to factor on_message logic out into functions or smth
     @tasks.loop(seconds=21)
     async def idle_loop(self) -> None:
@@ -1028,6 +1068,20 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         except Exception as e:
             logger.exception("error checking tos")
             return False
+
+    # Get the chain of thought behind a message we sent
+    async def get_response_thoughts(self, response_id: int) -> list[str] | None:
+        """Get the chain of thought for a message ID"""
+        async with self.db_client.begin() as session:
+            session.get
+            query = select(AiResponseLog).where(AiResponseLog.response_id == response_id).limit(1)
+            result = await session.scalars(query)
+            response: AiResponseLog | None = result.first()
+            if response is None:
+                logger.debug(f"No chain of thought found for message ID {response_id}")
+                return None
+
+            return response.thoughts
 
     # clean up a message's content
     def get_msg_content_clean(self, message: Message, content: Optional[str] = None) -> Optional[str]:
