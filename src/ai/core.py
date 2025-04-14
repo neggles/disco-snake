@@ -767,7 +767,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     if response_image is not None:
                         response = ""  # we have a pic to send, so send it without a comment
                     else:
-                        logger.warn(
+                        logger.warning(
                             f"Final response contained bad words: {response}\nBad words: {bad_words}\nRetrying..."  # type: ignore  # bad_words must exist here
                         )
                         response = ""
@@ -806,7 +806,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     if response.startswith(f"{self.name}:"):
                         response = response[len(f"{self.name}:") :].strip()
                     else:
-                        logger.warn(
+                        logger.warning(
                             "CoT response did not start with bot name after </think>, this is probably bad"
                         )
 
@@ -1074,7 +1074,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     if lev_distance(word_stripped, bad_word) <= threshold:
                         found_words.append(f"{word} (like {bad_word})")
         if len(found_words) > 0:
-            logger.warn(f"Found bad words: {' | '.join(found_words)}")
+            logger.warning(f"Found bad words: {' | '.join(found_words)}")
         return found_words
 
     # check if the bot's name or a nickname is in the message
