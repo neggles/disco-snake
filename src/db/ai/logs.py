@@ -40,7 +40,7 @@ class AiResponseLog(Base):
     context: Mapped[Optional[list[str]]] = mapped_column(pg.ARRAY(sa.String), nullable=True)
     response: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
     response_raw: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
-    response_id: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True)
+    response_id: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True, index=True, unique=True)
     thoughts: Mapped[Optional[list[str]]] = mapped_column(pg.ARRAY(sa.String), nullable=True)
     n_prompt_tokens: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
     n_context_tokens: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
