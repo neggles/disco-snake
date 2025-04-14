@@ -858,30 +858,27 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 debug_data["response"] = response
 
                 # Send response if not empty
+                response_msg: Message | None = None
                 if response_image is not None:
-                    if response == "":
-                        logger.info("Response was empty, sending image only.")
-                        if should_reply:
-                            await message.reply(file=response_image)
-                        else:
-                            await message.channel.send(content=None, file=response_image)  # type: ignore  # bad type hint in disnake
+                    response = response if len(response) > 0 else None
+                    if should_reply:
+                        response_msg = await message.reply(response, file=response_image)
                     else:
-                        logger.info(f"Responding with image, response: {response}")
-                        if should_reply:
-                            await message.reply(response, file=response_image)
-                        else:
-                            await message.channel.send(response, file=response_image)  # type: ignore  # bad type hint in disnake
+                        response_msg = await message.channel.send(response, file=response_image)  # type: ignore
                 elif response == "":
                     logger.info("Response was empty.")
                     await message.add_reaction(self.config.empty_react)
                 else:
                     if response_file is not None:
                         content = " ".join(response.split(" ")[:20]) + "... (too long, attached)"
-                        await message.channel.send(content=content, file=response_file)
+                        response_msg = await message.channel.send(content, file=response_file)
                         logger.info(f"Response: {content} (with file)")
                     else:
-                        await message.channel.send(response)
+                        response_msg = await message.channel.send(response)
                         logger.info(f"Response: {response}")
+
+                if isinstance(response_msg, Message):
+                    debug_data["response_id"] = response_msg.id
 
                 self.last_response = datetime.now(timezone.utc)
 
@@ -911,6 +908,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     with dump_file.open("w", encoding="utf-8") as f:
                         json.dump(debug_data, f, indent=4, skipkeys=True, default=str, ensure_ascii=False)
                     logger.debug(f"Dumped message debug data to {dump_file.name}")
+
         await self.log_response(debug_data)
 
     async def log_response(self, debug_data: dict) -> None:
@@ -1002,7 +1000,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.debug(f"Checking ToS for {message.author} ({message.author.id})")
         try:
             async with self.db_client.begin() as session:
-                user: DiscordUser = await session.get(DiscordUser, message.author.id)  # type: ignore
+                user: DiscordUser | None = await session.get(DiscordUser, message.author.id)
                 if user is None:
                     logger.info(f"User {message.author} not found in database, creating entry")
                     user = DiscordUser.from_discord(message.author)
