@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from alembic.environment import EnvironmentContext
 from alembic.script import ScriptDirectory
+from pydantic import PostgresDsn
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -23,7 +24,7 @@ target_metadata = Base.metadata
 
 # Try to load the bot config object from the application code
 try:
-    bot_settings: BotSettings = get_settings()
+    bot_settings: BotSettings | None = get_settings()
 except Exception as e:
     bot_settings = None
 
@@ -32,13 +33,14 @@ x_args = context.get_x_argument(as_dictionary=True)
 
 # pull db_uri from bot config file, if available
 if bot_settings is not None:
-    pg_uri = bot_settings.db_uri
+    pg_dsn: PostgresDsn = bot_settings.db_uri
+    pg_uri: str = pg_dsn.unicode_string()
 
     # optional port override from command line
     x_port = x_args.get("port", None)
     if x_port is not None:
         print(f"DB port overriden: -x port={x_port}")
-        pg_uri = pg_uri.replace(pg_uri.port, x_port)
+        pg_uri = pg_uri.replace(pg_dsn.hosts()[0].port, x_port)
 
     config.set_main_option("sqlalchemy.url", pg_uri)
     print(f"Using db_uri from bot config: {pg_uri}")
