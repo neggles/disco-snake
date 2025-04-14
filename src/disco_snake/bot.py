@@ -43,8 +43,7 @@ from helpers import get_package_root
 
 PACKAGE_ROOT = get_package_root()
 
-BOT_INTENTS = Intents.all()
-BOT_INTENTS.typing = False
+BOT_INTENTS = Intents.default()
 BOT_INTENTS.presences = False
 BOT_INTENTS.members = True
 BOT_INTENTS.message_content = True
