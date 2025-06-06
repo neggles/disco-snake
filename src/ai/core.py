@@ -855,7 +855,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 if len(response) > 1900:
                     if self.prompt.disco_mode:
                         logger.debug("Overlength response in disco mode, will send as file")
-                        response_file = File(response.encode("utf-8"), filename="story.txt")
+                        buf = BytesIO(response.encode("utf-8"))
+                        response_file = File(buf, filename="story.txt")
                     else:
                         logger.debug("Response is too long, trimming...")
                         response = response[:1900].strip() + "-"
