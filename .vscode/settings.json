@@ -2,13 +2,12 @@
     "editor.insertSpaces": true,
     "editor.tabSize": 4,
     "files.trimTrailingWhitespace": true,
+    "files.trimFinalNewlines": true,
     "editor.rulers": [100, 120],
     "editor.trimAutoWhitespace": true,
     "editor.formatOnSaveMode": "file",
 
-    "files.trimFinalNewlines": true,
     "files.associations": {
-        ".gitignore": "gitignore",
         ".vscode/*.json": "jsonc",
         "*.txt": "plaintext",
         "*.yaml": "yaml",
