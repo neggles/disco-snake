@@ -3,14 +3,14 @@
     "configurations": [
         {
             "name": "Py: Attach to PID",
-            "type": "python",
+            "type": "debugpy",
             "request": "attach",
             "processId": "${command:pickProcess}",
             "justMyCode": true
         },
         {
             "name": "Py: module disco_snake",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "disco_snake",
             "args": ["start", "--debug"],
