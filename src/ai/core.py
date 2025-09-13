@@ -1108,7 +1108,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         """
         Fix <USER>, <BOT>, etc tokens in the response, and unescape any escaped markdown formatting
         """
-        author_name = message.author.nick if message.author.nick is not None else message.author.global_name
+        if hasattr(message.author, "nick"):
+            author_name = (
+                message.author.nick if message.author.nick is not None else message.author.global_name
+            )
+        else:
+            author_name = getattr(message.author, "global_name")
         author_name = author_name.encode("utf-8").decode("ascii", errors="ignore").strip()  # type: ignore
         response = re_user_token.sub(f"@{author_name}", response)
         response = re_bot_token.sub(f"@{self.name}", response)
