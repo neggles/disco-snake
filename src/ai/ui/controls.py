@@ -41,13 +41,17 @@ class AiStatusEmbed(Embed):
         super().__init__(*args, **kwargs)
         gensettings: OobaGenRequest = cog.provider_config.gensettings
 
-        vision_enabled = cog.eyes.enabled if cog.eyes is not None else False
-        vision_model = cog.eyes.api_info.model_type if vision_enabled else "N/A"
+        if cog.eyes is not None:
+            vision_enabled = cog.eyes.enabled or False
+            vision_model = getattr(cog.eyes, ".model_type", "N/A")
+        else:
+            vision_enabled = False
+            vision_model = "N/A"
 
-        imagen_enabled = cog.imagen.enabled if cog.imagen is not None else False
+        imagen_enabled = cog.imagen.enabled if cog.imagen else False
         imagen_model = cog.imagen.config.api_params.checkpoint if imagen_enabled else "N/A"
 
-        self.description = self.description if self.description is not None else "**AI Status**"
+        self.description = self.description if self.description else "**AI Status**"
         self.colour = PURPLE
         self.set_author(
             name=cog.bot.user.name, icon_url=cog.bot.user.avatar.url if cog.bot.user.avatar else None

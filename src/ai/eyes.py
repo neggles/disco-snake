@@ -72,7 +72,7 @@ class DiscoEyes:
         self.db_client = Session
         self.attention = TimestampStore(ttl=self.config.channel_ttl)
 
-        self._api_info: InfoResponse = None
+        self._api_info: InfoResponse | None = None
         await self._fetch_api_info()
 
     def shutdown(self) -> None:
@@ -100,8 +100,16 @@ class DiscoEyes:
         return self.config.token
 
     @property
-    def api_info(self) -> InfoResponse:
+    def api_info(self) -> InfoResponse | None:
         return self._api_info
+
+    @property
+    def model_name(self) -> str:
+        return self._api_info.model_name if self._api_info else "N/A"
+
+    @property
+    def model_type(self) -> str:
+        return self._api_info.model_type if self._api_info else "N/A"
 
     async def _fetch_api_info(self) -> None:
         async with self.api_client.get("/api/v1/info") as resp:
@@ -187,7 +195,7 @@ class DiscoEyes:
             proxy_url=attachment.proxy_url,
             height=attachment.height or 0,
             width=attachment.width or 0,
-            captioned_with=f"{self.api_info.model_type} {self.api_info.model_name}",
+            captioned_with=f"{self.model_type} {self.model_name}",
             caption=caption_text,
             captioned_at=datetime.now(tz=self.timezone),
         )
