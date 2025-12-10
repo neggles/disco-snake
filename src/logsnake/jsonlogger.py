@@ -14,6 +14,7 @@ import traceback
 from collections import OrderedDict
 from datetime import date, datetime, time
 from inspect import istraceback
+from typing import Type
 
 if sys.version_info >= (3,):
     from datetime import timezone
@@ -71,28 +72,28 @@ class JsonEncoder(json.JSONEncoder):
     A custom encoder extending the default JSONEncoder
     """
 
-    def default(self, obj):
-        if isinstance(obj, (date, datetime, time)):
-            return self.format_datetime_obj(obj)
+    def default(self, o):
+        if isinstance(o, (date, datetime, time)):
+            return self.format_datetime_obj(o)
 
-        elif istraceback(obj):
-            return "".join(traceback.format_tb(obj)).strip()
+        elif istraceback(o):
+            return "".join(traceback.format_tb(o)).strip()
 
-        elif type(obj) == Exception or isinstance(obj, Exception) or type(obj) == type:
-            return str(obj)
+        elif issubclass(o, Exception) or isinstance(o, Exception) or isinstance(o, Type):
+            return str(o)
 
         try:
-            return super(JsonEncoder, self).default(obj)
+            return super(JsonEncoder, self).default(o)
 
         except TypeError:
             try:
-                return str(obj)
+                return str(o)
 
             except Exception:
                 return None
 
-    def format_datetime_obj(self, obj):
-        return obj.isoformat()
+    def format_datetime_obj(self, o):
+        return o.isoformat()
 
 
 class JsonFormatter(logging.Formatter):
@@ -168,7 +169,7 @@ class JsonFormatter(logging.Formatter):
         to include in all log messages.
         """
         standard_formatters = re.compile(r"\((.+?)\)", re.IGNORECASE)
-        return standard_formatters.findall(self._fmt)
+        return standard_formatters.findall(self._fmt)  # type: ignore
 
     def add_fields(self, log_record, record, message_dict):
         """
