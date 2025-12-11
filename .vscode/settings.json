@@ -20,7 +20,8 @@
         "**/bower_components": true,
         "**/*.code-search": true,
         "**/.venv": true,
-        "**/__pycache__": true
+        "**/__pycache__": true,
+        "**/src/ai/tokenizers/**/*.json": true
     },
 
     "files.exclude": {
@@ -116,5 +117,6 @@
             "strings": true
         }
     },
-    "docker.dockerComposeBuild": false
+    "docker.dockerComposeBuild": false,
+    "containers.composeBuild": false
 }
