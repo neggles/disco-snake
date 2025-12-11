@@ -54,6 +54,7 @@ dependencies = [
     "uvloop>=0.22.0 ",
     "cachetools>=5.5.2",
     "audioop-lts;python_version>='3.13'",
+    "wrapt>=2.0.1",
 ]
 
 [dependency-groups]

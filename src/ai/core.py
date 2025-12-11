@@ -233,18 +233,20 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     def chat_template(self) -> j2.Template | None:
         return self.tokenizer.get_chat_template()
 
+    # @wraps(PreTrainedTokenizerBase.apply_chat_template)
     def apply_chat_template(
         self,
-        messages: list[dict[str, str]],
+        conversation: list[dict[str, str]] | list[list[dict[str, str]]],
         **kwargs,
     ) -> str:
-        if not self.chat_template:
+        if not self.tokenizer.chat_template:
             raise ValueError("No chat template defined")
         try:
-            return self.chat_template.render(
-                messages=messages,
+            return self.tokenizer.apply_chat_template(
+                conversation=conversation,
                 add_generation_prompt=self.prompt.add_generation_prompt,
                 enable_thinking=self.prompt.thinking,
+                tokenize=False,
                 **kwargs,
             )
         except (j2.exceptions.TemplateError, AttributeError) as e:
