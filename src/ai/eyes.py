@@ -18,7 +18,7 @@ from ai.types import ImageOrBytes, MessageChannel, TimestampStore
 from db import ImageCaption, Session, SessionType
 
 if TYPE_CHECKING:
-    from ai import Ai
+    from . import Ai
 
 # setup cog logger
 logger = logging.getLogger(__name__)

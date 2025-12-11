@@ -18,12 +18,14 @@ from disnake import (
     DMChannel,
     Embed,
     File,
+    Forbidden,
     GroupChannel,
     InteractionContextTypes,
     Member,
     Message,
     MessageCommandInteraction,
     MessageInteraction,
+    NotFound,
     TextChannel,
     Thread,
     User,
@@ -52,8 +54,8 @@ from ai.settings import (
     get_ai_settings,
 )
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
-from ai.types import LruDict
-from ai.ui import AiParam, AiStatusEmbed, set_choices, settable_params
+from ai.types import AiResponse, LruDict
+from ai.ui import AiParam, AiStatusEmbed, convert_param, set_choices
 from ai.utils import (
     MentionMixin,
     get_prompt_datetime,
@@ -120,25 +122,19 @@ def re_match_lower(match: re.Match):
     return match.group(1).lower()
 
 
-def available_params(ctx: ApplicationCommandInteraction) -> list[str]:
-    return [param.name for param in settable_params]
-
-
-def convert_param(ctx: ApplicationCommandInteraction, input: str) -> AiParam:
-    return next((param for param in settable_params if param.name == input or param.id == input))
-
-
 class Ai(MentionMixin, commands.Cog, name=COG_UID):
     _mention_cache: LruDict  # type: ignore
     _emoji_cache: LruDict  # type: ignore
 
-    def __init__(self, bot: DiscoSnake):
+    def __init__(self, bot: DiscoSnake, *args, **kwargs):
         self.bot: DiscoSnake = bot
         self.timezone = self.bot.timezone
         self.last_response = datetime.now(timezone.utc) - timedelta(minutes=10)
 
         # init the MentionMixin cache
-        super(MentionMixin, self).__init__()
+        super().__init__(*args, **kwargs)
+        if self._mention_cache is None:
+            raise ValueError("Mention cache not initialized")
 
         # Load config file
         self.config = get_ai_settings()
@@ -195,12 +191,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self._emoji_cache: dict[int, Any] = {}  # type: ignore
         self._n_prompt_tokens: int = None  # type: ignore
         # other cached vars
-        self.j2_env: j2.Environment = j2.Environment(
-            keep_trailing_newline=False,
-            trim_blocks=True,
-            lstrip_blocks=True,
-            cache_size=10,
-        )
         self._chat_template: Optional[j2.Template] = None
 
     # Getters for config object sub-properties
@@ -232,30 +222,38 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             # no prompt tokens in disco mode
             self._n_prompt_tokens = 0
         if self._n_prompt_tokens is None:
-            prompt_str = self.get_prompt(ensure_str=True)
+            prompt = self.get_prompt()
+            prompt_str = prompt if isinstance(prompt, str) else self.apply_chat_template(prompt)
             encoded: BatchEncoding = self.tokenizer.batch_encode_plus([prompt_str], return_length=True)
             n_tokens = encoded.get("length", [0]).pop(0) + 64
             self._n_prompt_tokens = max(n_tokens, 512)
         return self._n_prompt_tokens
 
     @property
-    def chat_template(self) -> Optional[j2.Template]:
-        if self._chat_template is None and self.prompt.chat_template_str is not None:
-            logger.debug("Compiling chat template...")
-            self._chat_template = self.j2_env.from_string(self.prompt.chat_template_str)
-            logger.debug("Template compiled")
-        return self._chat_template
+    def chat_template(self) -> j2.Template | None:
+        return self.tokenizer.get_chat_template()
 
-    def apply_chat_template(self, messages: list[dict[str, str]], add_generation_prompt: bool = True) -> str:
-        if self.chat_template is None:
-            return "\n".join([x["content"] for x in messages])
-        rendered = self.chat_template.render(messages=messages, add_generation_prompt=add_generation_prompt)
-        return rendered
+    def apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        **kwargs,
+    ) -> str:
+        if not self.chat_template:
+            raise ValueError("No chat template defined")
+        try:
+            return self.chat_template.render(
+                messages=messages,
+                add_generation_prompt=self.prompt.add_generation_prompt,
+                enable_thinking=self.prompt.thinking,
+                **kwargs,
+            )
+        except (j2.exceptions.TemplateError, AttributeError) as e:
+            logger.exception(f"Error rendering chat template: {e}")
+            raise e
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
 
-        logger.info("Initializing Tokenizer...")
         tokenizer_dir = AI_DATA_DIR.joinpath(f"tokenizers/{self.tokenizer_type}")
         tokenizer_dir.mkdir(parents=True, exist_ok=True)
         if not tokenizer_dir.joinpath("tokenizer.json").is_file():
@@ -267,9 +265,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             trust_remote_code=True,
             use_fast=True,
             model_max_length=self.lm_gensettings.truncation_length,
+            chat_template=self.prompt.template_str,
         )
+        logger.info("Tokenizer initialized.")
 
-        logger.info("Initializing Model Provider...")
         match self.model_provider_name:
             case "ooba":
                 self.model_provider = OobaModel(
@@ -283,16 +282,16 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 )
             case _:
                 raise ValueError(f"Unknown model provider type: {self.model_provider_name}")
+        logger.info("Model Provider initialized.")
 
-        logger.info("Initializing ChatBot object")
         self.chatbot = ChatBot(
             name=self.name,
             model_provider=self.model_provider,
             preprocessors=[],
             postprocessors=[NewlinePrunerPostprocessor()],
         )
+        logger.info("ChatBot object initialized.")
 
-        logger.debug("Setting logging channel...")
         _logchannel = self.bot.get_channel(self.logging_channel_id)
         self.logging_channel = _logchannel if isinstance(_logchannel, (TextChannel, DMChannel)) else None
 
@@ -439,7 +438,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         await self.check_send_tos(message)
 
                     # actually respond
-                    await self.do_response(conversation, message, trigger, append=append)
+                    await self.generate_response(conversation, message, trigger, append=append)
                     return
 
         except Exception as e:
@@ -452,7 +451,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             self.debug_dir.joinpath(err_filename).write_text(exc_desc)
 
     # retrieve the LM prompt and inject name, time, etc.
-    def get_prompt(self, ctx: Optional[MessageInteraction | Message] = None, ensure_str: bool = False) -> str:
+    def get_prompt(
+        self, ctx: Optional[MessageInteraction | Message] = None, ensure_str: bool = False
+    ) -> str | list[dict[str, str]]:
         if ctx is None:
             location_context = "and friends in a Discord server"
         elif hasattr(ctx, "guild") and ctx.guild is not None:
@@ -462,23 +463,43 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         else:
             location_context = "and a friend in a Discord DM"
 
-        prompt = []
-        prompt.append(self.prompt.system.full)
-        prompt.append(self.prompt.character.full)
-
-        prompt = "\n".join([x for x in prompt if x is not None and len(x) > 0])
-
         replace_tokens = {
             "bot_name": self.name,
             "location_context": location_context,
             "current_time": get_prompt_datetime(with_date=self.prompt.with_date),
             "time_type": "time and date" if self.prompt.with_date else "time",
         }
-        for token, replacement in replace_tokens.items():
-            prompt = prompt.replace(f"{{{token}}}", replacement)
-        if ensure_str and isinstance(prompt, list):
-            prompt = "\n".join(prompt)
-        return prompt
+
+        if isinstance(self.prompt.system.full, str):
+            str_prompt = self.prompt.system.full
+            for token, replacement in replace_tokens.items():
+                str_prompt = str_prompt.replace(f"{{{token}}}", replacement)
+            return str_prompt
+
+        prompt: list[str] | list[dict[str, str]] = []
+        prompt.append(self.prompt.system.full)
+        prompt.append(self.prompt.character.full)
+
+        if isinstance(prompt[0], dict):
+
+            def apply_fn(msg_dict: dict[str, str]) -> dict[str, str]:
+                content = msg_dict.get("content", "")
+                for token, replacement in replace_tokens.items():
+                    content = content.replace(f"{{{token}}}", replacement)
+                msg_dict["content"] = content
+                return msg_dict
+
+            prompt = list(map(apply_fn, prompt))
+
+        elif isinstance(prompt[0], str):
+            for entry in prompt:
+                for token, replacement in replace_tokens.items():
+                    entry = entry.replace(f"{{{token}}}", replacement)
+                prompt[prompt.index(entry)] = entry
+            if ensure_str:
+                return "\n".join(prompt)
+
+        return prompt if prompt else ""
 
     # get the last N messages in a channel, up to and including the message that triggered the response
     async def get_message_context(
@@ -636,7 +657,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         logger.debug(f"building context from {len(conversation)} messages")
 
         if isinstance(conversation[0], dict):
-            conversation = self.apply_chat_template(conversation, add_generation_prompt=False).splitlines()  # type: ignore
+            conversation = self.apply_chat_template(conversation).splitlines()  # type: ignore
             logger.debug(f"applied chat template:\n{conversation}")
 
         if isinstance(conversation, list):
@@ -660,8 +681,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         contextmgr.add_entry(prompt_entry)
 
         conversation_entry = ContextEntry(
-            # text=conversation + f"\n<|im_start|>assistant\n{self.name}:",  # type: ignore  # it's a string by now
-            text=conversation + "\n<|im_start|>assistant\n<think>",  # type: ignore  # it's a string by now
+            text=conversation,  # type: ignore  # it's a string by now
             prefix="",
             suffix="",
             reserved_tokens=1024,
@@ -677,13 +697,18 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         contextmgr.add_entry(conversation_entry)
 
         context = contextmgr.context(self.context_size)
-        context = "\n".join([x.strip() for x in context.splitlines() if len(x.strip()) > 0])
+        context = [x.strip() for x in context.splitlines() if len(x.strip()) > 0]
+
+        while len(context) > 0 and (not context[0].strip().startswith("<|im_start|>")):
+            context = context[1:]  # trim off any leading text before the first im_start
+
+        context = "\n".join(context)
         context = re_consecutive_newline.sub("\n", context)  # yeet all consecutive newlines (empty lines)
         context = context.replace("|> ", "|>")  # remove any spurious whitespace from the roles
         return context
 
     # actual response logic
-    async def do_response(
+    async def generate_response(
         self,
         conversation: list[str] | list[dict[str, str]],
         message: Message,
@@ -694,7 +719,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             debug_data: dict[str, Any] = {}
 
             response = ""
-            response_image = None
+            resp_img = None
             should_reply = False
             author_name = f"{message.author.name.strip()}:"
 
@@ -728,7 +753,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
             try:
                 debug_data["parameters"] = self.lm_gensettings.dict()
-            except Exception as e:
+            except Exception:
                 logger.exception("Failed to get gensettings")
 
             # Build context
@@ -771,7 +796,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         )
                         continue
                 else:  # ran out of retries...
-                    if response_image is not None:
+                    if resp_img is not None:
                         response = ""  # we have a pic to send, so send it without a comment
                     else:
                         logger.warning(
@@ -785,7 +810,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     # there is, so we should reply with the image
                     logger.info("i'm feeling creative, let's make an image...")
                     try:
-                        response_image = await self.take_pic(message=description)
+                        resp_img = await self.take_pic(message=description)
                         should_reply = True
                     except Exception as e:
                         raise Exception("Failed to generate image response") from e
@@ -794,9 +819,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 elif self.imagen.should_take_pic(message.content):
                     logger.info("the people have spoken and they want catgirl selfies")
                     try:
-                        response_image = await self.take_pic(message=message)
+                        resp_img = await self.take_pic(message=message)
                         should_reply = True
-                    except Exception as e:
+                    except Exception:
                         logger.exception("Failed to generate image response")
                         pass
 
@@ -822,12 +847,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     response = response.splitlines()[0]
 
                 # detect if we're trying to send multiple messages and don't do that
-                resp_temp = []
+                rtemp = []
                 for line in response.splitlines():
                     if line.lower().startswith(self.name.lower() + ":"):
                         break
-                    resp_temp.append(line)
-                response = "\n".join(resp_temp)
+                    rtemp.append(line)
+                response = "\n".join(rtemp)
+                del rtemp
 
                 # replace "<USER>" with user mention, same for "<BOT>"
                 response = self.fixup_bot_user_tokens(response, message).lstrip()
@@ -851,12 +877,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         logger.debug("Prepending prompt to response (disco mode)")
                         response = f"{context} {response}"
 
-                response_file = None
+                resp = AiResponse(ctx=message, content=response, is_reply=should_reply)
+
                 if len(response) > 1900:
                     if self.prompt.disco_mode:
                         logger.debug("Overlength response in disco mode, will send as file")
                         buf = BytesIO(response.encode("utf-8"))
-                        response_file = File(buf, filename="story.txt")
+                        resp.file = File(buf, filename="story.txt")
                     else:
                         logger.debug("Response is too long, trimming...")
                         response = response[:1900].strip() + "-"
@@ -866,27 +893,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 debug_data["response"] = response
 
                 # Send response if not empty
-                response_msg: Message | None = None
-                if response_image is not None:
-                    response = response if len(response) > 0 else None
-                    if should_reply:
-                        response_msg = await message.reply(response, file=response_image)
-                    else:
-                        response_msg = await message.channel.send(response, file=response_image)  # type: ignore
-                elif response == "":
-                    logger.info("Response was empty.")
-                    await message.add_reaction(self.config.empty_react)
-                else:
-                    if response_file is not None:
-                        content = " ".join(response.split(" ")[:20]) + "... (too long, attached)"
-                        response_msg = await message.channel.send(content, file=response_file)
-                        logger.info(f"Response: {content} (with file)")
-                    else:
-                        response_msg = await message.channel.send(response)
-                        logger.info(f"Response: {response}")
-
-                if isinstance(response_msg, Message):
-                    debug_data["response_id"] = response_msg.id
+                sent = await self.send_response(resp)
+                if isinstance(sent, Message):
+                    debug_data["response_id"] = sent.id
 
                 self.last_response = datetime.now(timezone.utc)
 
@@ -917,7 +926,54 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         json.dump(debug_data, f, indent=4, skipkeys=True, default=str, ensure_ascii=False)
                     logger.debug(f"Dumped message debug data to {dump_file.name}")
 
-        await self.log_response(debug_data)
+                await self.log_response(debug_data)
+
+    async def send_response(
+        self, response: AiResponse, check: bool = True
+    ) -> tuple[AiResponse, Message | None]:
+        # check to see if the message was deleted or significantly edited before we could respond
+        if check is True:
+            message = await self.validate_message(response.ctx, strict=True)
+            if message is False:
+                logger.info("Context message was deleted before we could respond, aborting send")
+                return response, None
+            elif isinstance(message, Message):
+                logger.info("Context message was edited before we could respond, aborting send")
+                return response, None
+
+        log_msg = "Response: "
+        if response.content is not None:
+            if response.file:
+                # response was too long so we made it a file
+                response.content = " ".join(response.content.split(" ")[:20]) + "... <too long, attached>"
+            log_msg += f"{response.content}"
+        else:
+            log_msg += "<no text>"
+
+        if response.image is not None:
+            # if we have an image to send, send it
+            if not isinstance(response.image, File):
+                logger.warning("Response image is not a File object, will attempt to convert")
+                response.image = File(response.image, filename="image.png")
+            log_msg += " (with image)"
+
+        if response.file is not None:
+            # if we have a file to send, send it
+            if not isinstance(response.file, File):
+                logger.warning("Response file is not a File object, will attempt to convert")
+                response.file = File(response.file, filename="message.txt")
+            log_msg += " (with file)"
+
+            # short-circuit for empty responses
+        if not response.content and not response.file and not response.image:
+            # empty response, just react
+            logger.info(log_msg + " -- empty response, adding reaction only")
+            await response.ctx.add_reaction(self.config.empty_react)
+            return response, None
+        else:
+            logger.info(log_msg)
+            sent = await response.send()
+            return response, sent
 
     async def log_response(self, debug_data: dict) -> None:
         debug_data["timestamp"] = datetime.now(tz=self.bot.timezone)
@@ -928,6 +984,40 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.debug(f"Logged response to database: {log_entry.id}")
         except Exception:
             logger.exception("Failed to log response to database, continuing anyway")
+
+    async def validate_message(
+        self,
+        message: Message,
+        *,
+        threshold: float = 0.1,
+        strict: bool = False,
+    ) -> Message | bool:
+        """
+        Check if a message was deleted or edited.
+        Returns False if deleted, the new message if it was edited, or True if unchanged.
+        """
+        try:
+            new_msg = await message.channel.fetch_message(message.id)
+            if new_msg.edited_at != message.edited_at:
+                # ignore capitalization and leading/trailing whitespace when checking for edits
+                old_content = message.content.lower().strip()
+                new_content = new_msg.content.lower().strip()
+                # if threshold is 0.0 or less, any edit counts as significant
+                if threshold <= 0.0:
+                    return old_content == new_content  # return True if unchanged, False if edited
+                else:
+                    # use Levenshtein distance to determine if the edit was significant
+                    distance = lev_distance(old_content, new_content, weights=(1, 1, 1))
+                    if distance / max(len(old_content), 1) > threshold:
+                        return new_msg
+
+            return True  # message is unchanged
+        except (NotFound, Forbidden):
+            return False  # message was deleted or is otherwise inaccessible
+        except Exception:
+            logger.exception("Failed to check message status")
+            # strict=True means we assume the message was deleted on all fetch errors
+            return message
 
     @commands.message_command(
         name="Get Chain of Thought",
@@ -981,7 +1071,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     # if it's been more than <idle_interval> sec, send a response
                     async with self.lm_lock:
                         conversation = await self.get_message_context(message)
-                        await self.do_response(conversation, message)
+                        await self.generate_response(conversation, message)
         else:
             self.idle_loop.stop()
             return
@@ -1015,7 +1105,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         """
         user_id = user.id if isinstance(user, (User, Member)) else user
         async with self.db_client.begin() as session:
-            user: DiscordUser = await session.get(DiscordUser, user_id)  # type: ignore
+            user: DiscordUser | None = await session.get(DiscordUser, user_id)  # type: ignore
             if user is None:
                 logger.debug(f"User {user_id} has not completed the ToS process.")
                 return None
@@ -1066,7 +1156,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             else:
                 logger.debug(f"User {message.author} ({message.author.id}) has accepted ToS")
                 return True
-        except Exception as e:
+        except Exception:
             logger.exception("error checking tos")
             return False
 
@@ -1074,7 +1164,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     async def get_response_thoughts(self, response_id: int) -> list[str] | None:
         """Get the chain of thought for a message ID"""
         async with self.db_client.begin() as session:
-            session.get
             query = select(AiResponseLog).where(AiResponseLog.response_id == response_id).limit(1)
             result = await session.scalars(query)
             response: AiResponseLog | None = result.first()
@@ -1113,11 +1202,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 message.author.nick if message.author.nick is not None else message.author.global_name
             )
         else:
-            author_name = getattr(message.author, "global_name")
+            author_name = message.author.global_name or message.author.name
         author_name = author_name.encode("utf-8").decode("ascii", errors="ignore").strip()  # type: ignore
         response = re_user_token.sub(f"@{author_name}", response)
         response = re_bot_token.sub(f"@{self.name}", response)
-        response = response.replace("</s>", "").strip()
+        response = response.strip()
         return response
 
     # search for bad words in a message

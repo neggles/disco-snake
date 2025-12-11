@@ -99,11 +99,12 @@ class Admin(commands.Cog, name=COG_NAME):
                     await message.delete()
                     delet_other += 1
                     continue
-            except Exception as e:
+            except Exception:
                 continue
             finally:
                 if (delet_self + delet_other) >= count:
-                    break
+                    # this silences exceptions, but that's on purpose
+                    break  # noqa: B012
                 await sleep(0.75)
 
         deleted = delet_self + delet_other
@@ -212,7 +213,7 @@ class Admin(commands.Cog, name=COG_NAME):
                     description=f"**{user.global_name}** has been successfully removed from the blacklist",
                     color=0x9C84EF,
                 )
-            except KeyError as e:
+            except KeyError:
                 embed.description = f"**{user.global_name}** is not in the blacklist."
 
             embed.set_footer(text=f"There are now {len(self.blacklist)} users in the blacklist")

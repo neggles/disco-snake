@@ -141,7 +141,7 @@ def trim_tokens(tokens: list[int], trim_dir: TrimDir, limit: int):
 class ContextEntry:
     def __init__(
         self,
-        keys: list[str] = [""],
+        keys: list[str] | None = None,
         text: str = "",
         prefix: str = "",
         suffix: str = "",
@@ -156,7 +156,7 @@ class ContextEntry:
         cascading_activation: bool = False,
         tokenizer: PreTrainedTokenizerBase = None,
     ):
-        self.keys = keys  # key used to activate this context entry
+        self.keys = keys if keys is not None else [""]  # key used to activate this context entry
         self.text = prefix + text + suffix  # text associated with this context entry
         self.token_budget = token_budget  # max amount of tokens that this context entry can use
         self.reserved_tokens = reserved_tokens  # number of tokens that are reserved for this context entry

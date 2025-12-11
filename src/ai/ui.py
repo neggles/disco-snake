@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING, Callable
 
-from disnake import Colour, Embed, Member, OptionChoice, User
+from disnake import ApplicationCommandInteraction, Colour, Embed, Member, OptionChoice, User
 from pydantic import BaseModel
 
 from shimeji.model_provider import OobaGenRequest
@@ -34,6 +34,14 @@ settable_params: list[AiParam] = [
 ]
 
 set_choices = [OptionChoice(name=param.name, value=param.id) for param in settable_params]
+
+
+def available_params(ctx: ApplicationCommandInteraction) -> list[str]:
+    return [param.name for param in settable_params]
+
+
+def convert_param(ctx: ApplicationCommandInteraction, input: str) -> AiParam:
+    return next((param for param in settable_params if param.name == input or param.id == input))
 
 
 class AiStatusEmbed(Embed):

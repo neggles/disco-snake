@@ -191,7 +191,7 @@ class DiscoSnake(commands.Bot):
                 try:
                     self.load_extension(f"cogs.{cog}")
                     logger.info(f"Loaded cog '{cog}'")
-                except Exception as e:
+                except Exception:
                     etype, exc, tb = sys.exc_info()
                     exception = f"{etype}: {exc}"
                     logger.error(f"Failed to load cog {cog}:\n{exception}")

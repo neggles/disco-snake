@@ -8,15 +8,15 @@ class ChatBot:
         self,
         name: str,
         model_provider: ModelProvider,
-        preprocessors: list[Preprocessor] = [],
-        postprocessors: list[Postprocessor] = [],
+        preprocessors: list[Preprocessor] | None = None,
+        postprocessors: list[Postprocessor] | None = None,
         **kwargs,
     ):
         self.name = name
         self.model_provider: ModelProvider = model_provider
 
-        self.preprocessors: list[Preprocessor] = preprocessors
-        self.postprocessors: list[Postprocessor] = postprocessors
+        self.preprocessors: list[Preprocessor] = preprocessors if preprocessors is not None else []
+        self.postprocessors: list[Postprocessor] = postprocessors if postprocessors is not None else []
 
     def preprocess(self, text: str, is_respond: bool = True) -> str:
         for preprocessor in self.preprocessors:

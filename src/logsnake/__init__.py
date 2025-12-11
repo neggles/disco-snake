@@ -34,6 +34,7 @@ parameter `level`.
 
 See the documentation for more information: https://logzero.readthedocs.io
 """
+
 import functools
 import logging
 import os
@@ -126,6 +127,7 @@ def setup_logger(
     .. code-block:: python
 
         from logsnake import setup_logger
+
         logger = setup_logger()
         logger.info("hello")
 
@@ -335,6 +337,7 @@ def setup_default_logger(
     .. code-block:: python
 
         from logsnake import logger, setup_default_logger
+
         setup_default_logger(level=WARN)
         logger.info("hello")  # this will not be displayed anymore because minimum loglevel was set to WARN
 

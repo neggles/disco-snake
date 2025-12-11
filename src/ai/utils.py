@@ -71,6 +71,7 @@ def _stringify_mentions(
     for mention in re_mention.finditer(text):
         user_mention = f"{mention.group(0)}"
         user_id = int(mention.group(1))
+        user = None
         if guild is not None:
             user = guild.get_member(user_id)
         if user is None:
@@ -89,7 +90,7 @@ def _restore_mentions(text: str, mentions: dict[str, str]) -> str:
         if name_string == "@deleted-user":
             continue  # skip deleted users
         # restore mention from LRU dict
-        text = re.sub("@?" + re.escape(name_string), user_mention, text, flags=re.I)
+        text = re.sub(r"@?" + re.escape(name_string) + r"\b", user_mention, text, flags=re.I)
     return text
 
 
@@ -115,6 +116,8 @@ def _map_response_mentions(response: str, ctx: Message) -> str:
     for mention in re_mention_resp.finditer(response):
         user_mention = mention.group(0)
         user_name = user_mention.lstrip("@")
+        if ctx.guild is None:
+            continue
 
         user = ctx.guild.get_member_named(user_name)
         if user is None:

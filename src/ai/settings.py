@@ -2,9 +2,10 @@
 import logging
 from copy import deepcopy
 from enum import Enum
+from functools import cached_property
 from typing import Annotated, Iterator, Optional
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, Field, RootModel, field_validator
 from pydantic_settings import SettingsConfigDict
 
 from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, per_config_name
@@ -203,50 +204,99 @@ class BotParameters(BaseModel):
         ]
 
 
-class PromptElement(BaseModel):
-    prefix: Optional[str | list[str]] = Field(None)
-    prompt: Optional[str | list[str]] = Field(...)
-    suffix: Optional[str | list[str]] = Field(None)
-    concat: str = Field("")
+class ChatMessage(BaseModel):
+    role: str = Field("user")
+    content: str = Field(...)
 
-    @property
-    def full(self) -> str | None:
-        prompt = self.elem_string(self.prompt)
-        if prompt is None:
+    @field_validator("content", mode="before")
+    @classmethod
+    def validate_content(cls, v: str | list[str]) -> str:
+        if isinstance(v, list):
+            return "\n".join(v)
+        return v
+
+    def template_dump(self) -> dict[str, str]:
+        return {"role": self.role, "content": self.content}
+
+
+def is_chat_msg(obj: object) -> bool:
+    if not isinstance(obj, ChatMessage) and not isinstance(obj, dict):
+        return False
+    if isinstance(obj, ChatMessage):
+        return True
+    if isinstance(obj, dict) and "role" in obj and "content" in obj:
+        return True
+    return False
+
+
+def is_chat_msg_list(obj: object) -> bool:
+    if not isinstance(obj, list):
+        return False
+    if len(obj) == 0:
+        return False
+    if isinstance(obj[0], ChatMessage):
+        return True
+    if isinstance(obj[0], dict) and "role" in obj[0] and "content" in obj[0]:
+        return True
+    return False
+
+
+class PromptElement(BaseModel):
+    prompt: list[ChatMessage] | ChatMessage | str | None = Field(...)
+    prefix: list[ChatMessage] | ChatMessage | None = None
+    suffix: list[ChatMessage] | ChatMessage | None = None
+    concat: str = ""
+
+    @cached_property
+    def full(self) -> str | list[dict[str, str]] | None:
+        if isinstance(self.prompt, str) or self.prompt is None:
+            return self.prompt  # short-circuit for simple string/null prompts
+
+        if isinstance(self.prompt, list):
+            messages = self.prompt.copy()
+        elif isinstance(self.prompt, ChatMessage):
+            messages = [self.prompt]
+        else:
+            messages = []
+
+        if self.prefix is not None:
+            if isinstance(self.prefix, list):
+                messages = self.prefix.copy() + messages
+            else:
+                messages = [self.prefix] + messages
+
+        if self.suffix is not None:
+            if isinstance(self.suffix, list):
+                messages.extend(self.suffix)
+            else:
+                messages.append(self.suffix)  # type: ignore
+
+        if not messages:
+            # no messages collected
             return None
 
-        if self.prefix:
-            prompt = self.concat.join([self.elem_string(self.prefix), prompt])
-        if self.suffix:
-            prompt = self.concat.join([prompt, self.elem_string(self.suffix)])
-        return prompt
-
-    def elem_string(self, elem: str | list[str] | None) -> str | None:
-        match elem:
-            case [_, *_]:
-                return self.concat.join(elem)
-            case str():
-                return elem
-            case _:
-                return None
+        # convert to list of dicts
+        return [message.model_dump() for message in messages]
 
 
 class Prompt(BaseModel):
-    disco_mode: bool = Field(False)
-    inject_early: bool = Field(False)
-    with_date: bool = Field(False)
+    disco_mode: bool = False
+    thinking: bool = False
+    with_date: bool = False
+    add_generation_prompt: bool = True
+
     character: PromptElement = Field(...)
     system: PromptElement = Field(...)
-    prefix_bot: Optional[str] = None
-    prefix_user: str = "\n"
-    prefix_sep: str = "\n"
-    chat_template: Optional[list[str]] = None
+
+    template_file: str = Field("chat_template.j2")
 
     @property
-    def chat_template_str(self) -> Optional[str]:
-        if self.chat_template is not None and len(self.chat_template) > 0:
-            return "\n".join(self.chat_template)
-        return None
+    def template_str(self) -> str | None:
+        tpl_path = AI_DATA_DIR.joinpath(self.template_file)
+        if tpl_path.is_file():
+            return tpl_path.read_text(encoding="utf-8")
+        else:
+            logger.warning(f"Template file {tpl_path} does not exist or is not a file")
 
 
 class GradioConfig(BaseModel):

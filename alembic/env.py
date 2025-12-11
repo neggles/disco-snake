@@ -25,7 +25,7 @@ target_metadata = Base.metadata
 # Try to load the bot config object from the application code
 try:
     bot_settings: BotSettings | None = get_settings()
-except Exception as e:
+except Exception:
     bot_settings = None
 
 # retrieve -x arguments from the command line
