@@ -12,6 +12,7 @@ applyTo: "**/*.py"
 -   Ensure functions have descriptive names and include type hints.
 -   Provide docstrings following PEP 257 conventions.
 -   Do _not_ use the `typing` module for stdlib type annotations when unnecessary (e.g., use `list[str]` not `List[str]`, `dict[str, int]` not `Dict[str, int]`).
+-   Do _not_ use `Optional` from the `typing` module; use `X | None` instead of `Optional[X]`.
 -   Break down complex functions into smaller, more manageable functions.
 
 ## General Instructions
