@@ -43,8 +43,8 @@ class InfoResponse(BaseModel):
 
 class CaptionResponse(BaseModel):
     caption: str = Field(...)
-    info: Optional[InfoResponse] = Field(None)
-    error: Optional[str] = Field(None)
+    info: Optional[InfoResponse] = None
+    error: Optional[str] = None
 
 
 class DiscoEyes:
@@ -76,12 +76,15 @@ class DiscoEyes:
         await self._fetch_api_info()
 
     def shutdown(self) -> None:
-        logger.info("Closing web and API clients...")
-        close_tasks = [
-            asyncio.ensure_future(self.web_client.close()),
-            asyncio.ensure_future(self.api_client.close()),
-        ]
-        asyncio.get_event_loop().run_until_complete(asyncio.gather(*close_tasks))
+        try:
+            loop = asyncio.get_running_loop()
+            if self.web_client is not None:
+                _ = (loop.create_task(self.web_client.close(), name="close_web_client"),)
+            if self.api_client is not None:
+                _ = (loop.create_task(self.api_client.close(), name="close_api_client"),)
+            logger.info("Client close tasks scheduled.")
+        except RuntimeError:
+            logger.warning("No running event loop, cannot close clients properly.")
 
     @property
     async def enabled(self) -> bool:
@@ -112,11 +115,15 @@ class DiscoEyes:
         return self._api_info.model_type if self._api_info else "N/A"
 
     async def _fetch_api_info(self) -> None:
-        async with self.api_client.get("/api/v1/info") as resp:
-            resp.raise_for_status()
-            data = await resp.json(encoding="utf-8")
-        self._api_info = InfoResponse.model_validate(data)
-        logger.debug(f"Received API info: {self._api_info}")
+        try:
+            async with self.api_client.get("/api/v1/info") as resp:
+                resp.raise_for_status()
+                data = await resp.json(encoding="utf-8")
+                self._api_info = InfoResponse.model_validate(data)
+                logger.debug(f"Received API info: {self._api_info}")
+        except (ConnectionRefusedError, ClientError) as e:
+            logger.error(f"Failed to fetch API info: {e}")
+            return
 
     async def submit_request(self, image: ImageOrBytes, return_obj: bool = False) -> str | CaptionResponse:
         logger.info("Processing image")

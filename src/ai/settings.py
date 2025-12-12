@@ -3,6 +3,8 @@ import logging
 from copy import deepcopy
 from enum import Enum
 from functools import cached_property
+from os import PathLike
+from pathlib import Path
 from typing import Annotated, Iterator, Optional
 
 from pydantic import BaseModel, Field, RootModel, field_validator
@@ -47,7 +49,7 @@ class NamedSnowflake(BaseModel):
 
     id: int = Field(...)
     name: str = Field("")  # not actually used, just here so it can be in config
-    note: Optional[str] = Field(None)
+    note: Optional[str] = None
 
 
 class SnowflakeList(RootModel):
@@ -90,8 +92,8 @@ class PermissionList(BaseModel):
 class ChannelSettings(NamedSnowflake):
     """Settings for a specific channel in a guild. Overrides guild settings."""
 
-    respond: Optional[ResponseMode] = Field(None)
-    bot_action: Optional[BotMode] = Field(None)
+    respond: Optional[ResponseMode] = None
+    bot_action: Optional[BotMode] = None
     imagen: bool = True
     idle_enable: bool = False
     idle_interval: int = Field(300)
@@ -167,7 +169,7 @@ class BotParameters(BaseModel):
     idle_enable: bool = False
     force_lowercase: bool = False
     nicknames: list[str] = Field([])
-    context_size: int = 4096
+    context_size: int = -1
     context_messages: int = 100
     logging_channel_id: Optional[int] = None
     debug: bool = False
@@ -242,13 +244,37 @@ def is_chat_msg_list(obj: object) -> bool:
 
 
 class PromptElement(BaseModel):
-    prompt: list[ChatMessage] | ChatMessage | str | None = Field(...)
+    prompt: list[ChatMessage] | ChatMessage | str | None = None
     prefix: list[ChatMessage] | ChatMessage | None = None
     suffix: list[ChatMessage] | ChatMessage | None = None
-    concat: str = ""
+    prompt_path: PathLike[str] | None = None
+
+    _prompt_str: str | None = None  # cache for prompt string if file loaded
+    _prompt_mtime: float | None = None  # cache for prompt file mtime
 
     @cached_property
-    def full(self) -> str | list[dict[str, str]] | None:
+    def _prompt_path(self) -> Path | None:
+        if self.prompt_path is not None:
+            return AI_DATA_DIR.joinpath(self.prompt_path)
+        return None
+
+    def _load_prompt_file(self) -> None:
+        if self._prompt_path is not None:
+            contents = self._prompt_path.read_text(encoding="utf-8")
+            self._prompt_str = contents
+            self._prompt_mtime = self._prompt_path.stat().st_mtime
+
+    @property
+    def full(self) -> str | list[dict[str, str]]:
+        if self._prompt_path is not None:
+            prompt_mtime = self._prompt_path.stat().st_mtime
+            if self._prompt_mtime is None or prompt_mtime > self._prompt_mtime:
+                logger.debug(f"Prompt file {self._prompt_path} has changed, reloading")
+                self._load_prompt_file()
+            if self._prompt_str is None:
+                logger.warning(f"Prompt file {self._prompt_path} does not exist or is not a file")
+            return [{"role": "system", "content": self._prompt_str}]
+
         if isinstance(self.prompt, str) or self.prompt is None:
             return self.prompt  # short-circuit for simple string/null prompts
 
@@ -273,7 +299,7 @@ class PromptElement(BaseModel):
 
         if not messages:
             # no messages collected
-            return None
+            return []
 
         # convert to list of dicts
         return [message.model_dump() for message in messages]
@@ -285,8 +311,8 @@ class Prompt(BaseModel):
     with_date: bool = False
     add_generation_prompt: bool = True
 
-    character: PromptElement = Field(...)
     system: PromptElement = Field(...)
+    character: PromptElement = Field(...)
 
     template_file: str = Field("chat_template.j2")
 
@@ -319,14 +345,14 @@ class WebuiConfig(BaseModel):
 
 class LMApiConfig(BaseModel):
     endpoint: str
-    api_key: Annotated[str | None, Field(None)]
+    api_key: Annotated[str | None, None]
     auth_header: Annotated[str, Field("X-Api-Key")]
     provider: str = "ooba"
     modeltype: str
     gensettings: OobaGenRequest
     api_v2: bool = False
-    username: Annotated[Optional[str], Field(None)]
-    password: Annotated[Optional[str], Field(None)]
+    username: str | None = None
+    password: str | None = None
 
 
 class VisionConfig(BaseModel):

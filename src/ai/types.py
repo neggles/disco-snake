@@ -56,18 +56,20 @@ class AiMessageData(BaseModel):
 
     model_config = ConfigDict(
         from_attributes=True,
+        extra="allow",
     )
 
 
 class AiResponseLog(BaseModel):
-    message: AiMessageData = Field(...)
-    gensettings: dict = Field(...)
-    context: dict = Field(...)
-    response_raw: str = Field(...)
-    response: str = Field(...)
+    message: AiMessageData
+    gensettings: dict
+    context: dict
+    response_raw: str
+    response: str
 
     model_config = ConfigDict(
         from_attributes=True,
+        extra="allow",
     )
 
 
@@ -83,7 +85,17 @@ class AiResponse(BaseModel):
     )
 
     async def send(self):
-        return await self.ctx.send(**self.send_kwargs())
+        if self.content is None and self.image is None and self.file is None:
+            raise ValueError("Cannot send an response with no content, image, or file.")
+        if self.ctx is None:
+            raise ValueError("Cannot send an response with no context (ctx).")
+
+        if hasattr(self.ctx, "send"):
+            return await self.ctx.send(**self.send_kwargs())
+        elif hasattr(self.ctx, "channel") and hasattr(self.ctx.channel, "send"):
+            return await self.ctx.channel.send(**self.send_kwargs())
+        else:
+            raise ValueError(f"Context {self.ctx} does not support sending messages.")
 
     async def add_reaction(self, emoji: disnake.Emoji | disnake.PartialEmoji | str):
         return await self.ctx.add_reaction(emoji)
@@ -102,3 +114,36 @@ class AiResponse(BaseModel):
             args["reference"] = self.ctx.to_reference()
 
         return args
+
+
+class ModelParameterInfo(BaseModel):
+    max_seq_len: int = Field(...)
+    cache_size: int = -1
+    cache_mode: str | None = None
+    rope_scale: float | None = None
+    rope_alpha: float | None = None
+    max_batch_size: int = -1
+    chunk_size: int = -1
+    prompt_template: str | None = None
+    prompt_template_content: str | None = Field(None, repr=False)
+    use_vision: bool = False
+    draft: dict[str, Any] | None = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="allow",
+    )
+
+
+class ModelInfo(BaseModel):
+    id: str = Field(...)
+    object: str = Field(...)
+    created: int = Field(...)
+    owned_by: str = Field(...)
+    logging: dict[str, bool] | None = None
+    parameters: ModelParameterInfo = Field(...)
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="allow",
+    )

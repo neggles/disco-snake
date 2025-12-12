@@ -26,7 +26,7 @@ settable_params: list[AiParam] = [
     AiParam(name="Min P", id="min_p", kind=float),
     AiParam(name="Rep Penalty", id="repetition_penalty", kind=float),
     AiParam(name="Rep Penalty Range", id="repetition_penalty_range", kind=int),
-    AiParam(name="Min Length", id="min_length", kind=int),
+    AiParam(name="Min Length", id="min_tokens", kind=int),
     AiParam(name="Max Length", id="max_tokens", kind=int),
     AiParam(name="Eta C", id="eta_cutoff", kind=float),
     AiParam(name="Eps C", id="epsilon_cutoff", kind=float),
@@ -83,13 +83,14 @@ class AiStatusEmbed(Embed):
         self.add_field(name="Rep Penalty", value=gensettings.repetition_penalty)
         self.add_field(name="Rep Pen. Range", value=gensettings.repetition_penalty_range)
 
-        if gensettings.eta_cutoff > 0 or gensettings.epsilon_cutoff > 0:
+        if gensettings.eta_cutoff and gensettings.eta_cutoff > 0:
             self.add_field(name="Eta Cutoff", value=gensettings.eta_cutoff)
+        if gensettings.epsilon_cutoff and gensettings.epsilon_cutoff > 0:
             self.add_field(name="Eps Cutoff", value=gensettings.epsilon_cutoff)
 
         self.add_field(name="Max Length", value=gensettings.max_tokens)
         if verbose is True:
-            self.add_field(name="Min Length", value=gensettings.min_length)
+            self.add_field(name="Min Length", value=gensettings.min_tokens)
             if gensettings.penalty_alpha > 0:
                 self.add_field(name="Penalty Alpha", value=gensettings.penalty_alpha)
                 self.add_field(name="Num Beams", value=gensettings.num_beams)

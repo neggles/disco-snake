@@ -141,7 +141,7 @@ class Admin(commands.Cog, name=COG_NAME):
         ),
         reason: str = commands.Param(
             description="The reason for blacklisting the user.",
-            min_length=4,
+            min_tokens=4,
         ),
     ) -> None:
         """

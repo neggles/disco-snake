@@ -54,7 +54,7 @@ from ai.settings import (
     get_ai_settings,
 )
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
-from ai.types import AiResponse, LruDict
+from ai.types import AiResponse, LruDict, ModelInfo
 from ai.ui import AiParam, AiStatusEmbed, convert_param, set_choices
 from ai.utils import (
     MentionMixin,
@@ -70,9 +70,6 @@ from disco_snake.blacklist import Blacklist
 from disco_snake.bot import DiscoSnake
 from shimeji.chatbot import ChatBot
 from shimeji.model_provider import OobaGenRequest, OobaModel
-from shimeji.postprocessor import NewlinePrunerPostprocessor
-from shimeji.preprocessor import ContextPreprocessor
-from shimeji.util import BreakType, ContextEntry, TrimDir
 
 COG_UID = "ai"
 
@@ -162,6 +159,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         # we will populate these later during async init
         self.model_provider: OobaModel = None  # type: ignore
         self.model_provider_name: str = self.provider_config.provider
+        self.model_info: ModelInfo | None = None
         self.chatbot: ChatBot = None  # type: ignore
         self.logging_channel: Optional[TextChannel | DMChannel] = None
         self.tokenizer_type = self.provider_config.modeltype
@@ -205,7 +203,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     @property
     def context_size(self) -> int:
         if self.params.context_size < 0:
-            return self.lm_gensettings.truncation_length - (self.lm_gensettings.max_tokens or 0) - 32
+            return (
+                self.lm_gensettings.truncation_length
+                - (self.lm_gensettings.max_tokens or (self.lm_gensettings.truncation_length // 2))
+                - 32
+            )
         return self.params.context_size
 
     @property
@@ -222,16 +224,45 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             # no prompt tokens in disco mode
             self._n_prompt_tokens = 0
         if self._n_prompt_tokens is None:
-            prompt = self.get_prompt()
-            prompt_str = prompt if isinstance(prompt, str) else self.apply_chat_template(prompt)
-            encoded: BatchEncoding = self.tokenizer.batch_encode_plus([prompt_str], return_length=True)
-            n_tokens = encoded.get("length", [0]).pop(0) + 64
-            self._n_prompt_tokens = max(n_tokens, 512)
+            _, _, prompt_tokens = self._render_prompt_context()
+            self._n_prompt_tokens = prompt_tokens
         return self._n_prompt_tokens
 
     @property
     def chat_template(self) -> j2.Template | None:
         return self.tokenizer.get_chat_template()
+
+    def _count_tokens(self, text: str) -> int:
+        """
+        Count tokens for a rendered string using the configured tokenizer.
+        """
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer not initialized")
+        encoded: BatchEncoding = self.tokenizer.batch_encode_plus([text], return_length=True)
+        return encoded.get("length", [0]).pop(0)
+
+    def _normalize_chat_messages(
+        self, conversation: Any, *, default_role: str = "system"
+    ) -> list[dict[str, str]]:
+        """
+        Coerce prompt or conversation data into a flat list of chat messages.
+        """
+        if conversation is None:
+            return []
+        if hasattr(conversation, "model_dump"):
+            return self._normalize_chat_messages(conversation.model_dump(), default_role=default_role)
+        if isinstance(conversation, dict):
+            role = conversation.get("role", default_role).strip()
+            content = conversation.get("content", "")
+            return [{"role": role, "content": content.strip()}]
+        if isinstance(conversation, list):
+            messages: list[dict[str, str]] = []
+            for entry in conversation:
+                messages.extend(self._normalize_chat_messages(entry, default_role=default_role))
+            return messages
+        if isinstance(conversation, str):
+            return [{"role": default_role, "content": conversation.strip()}]
+        raise TypeError(f"Unsupported conversation type: {type(conversation)}")
 
     # @wraps(PreTrainedTokenizerBase.apply_chat_template)
     def apply_chat_template(
@@ -252,6 +283,45 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         except (j2.exceptions.TemplateError, AttributeError) as e:
             logger.exception(f"Error rendering chat template: {e}")
             raise e
+
+    def _render_prompt_context(
+        self, ctx: Optional[MessageInteraction | Message] = None
+    ) -> tuple[list[dict[str, str]], str, int]:
+        """
+        Render the configured prompt through the chat template and measure its token length.
+        """
+        prompt_data = self.get_prompt(ctx=ctx)
+        prompt_messages = self._normalize_chat_messages(prompt_data, default_role="system")
+        if len(prompt_messages) == 0:
+            return [], "", 0
+        prompt_text = self.apply_chat_template(prompt_messages)
+        prompt_tokens = self._count_tokens(prompt_text)
+        return prompt_messages, prompt_text, prompt_tokens
+
+    def _update_gensettings_from_model_info(self) -> None:
+        if self.model_info is None:
+            return
+        if self.lm_gensettings is None:
+            return
+        if self.model_info:
+            logger.info("Got model info from API server, updating length settings")
+            if self.model_info.parameters.max_seq_len < 2048:
+                raise ValueError("Model max_seq_len is too small (<2048 tokens), good luck...")
+            self.lm_gensettings.truncation_length = self.model_info.parameters.max_seq_len
+
+            if (not self.lm_gensettings.max_tokens) or self.lm_gensettings.max_tokens <= 0:
+                # max_tokens is not set or is explicitly set to auto, so set it to half of truncation length
+                self.lm_gensettings.max_tokens = self.lm_gensettings.truncation_length // 2
+            else:
+                # max_tokens was explicitly set, ensure it does not exceed truncation length/2
+                self.lm_gensettings.max_tokens = min(
+                    self.lm_gensettings.max_tokens,
+                    self.lm_gensettings.truncation_length // 2,
+                )
+            logger.info("New generation settings:")
+            logger.info(f"  truncation_length: {self.lm_gensettings.truncation_length}")
+            logger.info(f"  max_tokens: {self.lm_gensettings.max_tokens}")
+            logger.info(f"  context_size: {self.context_size}")
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -282,6 +352,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     api_v2=self.provider_config.api_v2,
                     debug=self.params.debug,
                 )
+                if model_info := self.model_provider.model_info:
+                    self.model_info = model_info
+                    self._update_gensettings_from_model_info()
             case _:
                 raise ValueError(f"Unknown model provider type: {self.model_provider_name}")
         logger.info("Model Provider initialized.")
@@ -290,7 +363,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             name=self.name,
             model_provider=self.model_provider,
             preprocessors=[],
-            postprocessors=[NewlinePrunerPostprocessor()],
+            postprocessors=[],
         )
         logger.info("ChatBot object initialized.")
 
@@ -454,7 +527,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     # retrieve the LM prompt and inject name, time, etc.
     def get_prompt(
-        self, ctx: Optional[MessageInteraction | Message] = None, ensure_str: bool = False
+        self,
+        ctx: MessageInteraction | Message | None = None,
+        return_str: bool = False,
     ) -> str | list[dict[str, str]]:
         if ctx is None:
             location_context = "and friends in a Discord server"
@@ -472,36 +547,35 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             "time_type": "time and date" if self.prompt.with_date else "time",
         }
 
-        if isinstance(self.prompt.system.full, str):
-            str_prompt = self.prompt.system.full
+        def apply_replacements(msg_dict: dict[str, str]) -> dict[str, str]:
+            content: str = msg_dict["content"]
             for token, replacement in replace_tokens.items():
-                str_prompt = str_prompt.replace(f"{{{token}}}", replacement)
-            return str_prompt
+                content = content.replace("{" + token + "}", replacement)
+            msg_dict["content"] = content
+            return msg_dict
 
-        prompt: list[str] | list[dict[str, str]] = []
-        prompt.append(self.prompt.system.full)
-        prompt.append(self.prompt.character.full)
+        sys_prompt = self.prompt.system.full
+        if isinstance(sys_prompt, str):
+            sys_prompt = [{"role": "system", "content": sys_prompt}]
 
-        if isinstance(prompt[0], dict):
+        char_prompt = self.prompt.character.full
+        if isinstance(char_prompt, str):
+            char_prompt = [{"role": "system", "content": char_prompt}]
 
-            def apply_fn(msg_dict: dict[str, str]) -> dict[str, str]:
-                content = msg_dict.get("content", "")
-                for token, replacement in replace_tokens.items():
-                    content = content.replace(f"{{{token}}}", replacement)
-                msg_dict["content"] = content
-                return msg_dict
+        # now both are list[dict[str, str]]
+        prompt: list[dict[str, str]] = []
 
-            prompt = list(map(apply_fn, prompt))
+        if sys_prompt:
+            sys_prompt = map(apply_replacements, sys_prompt)
+            prompt.extend(sys_prompt)
+        if char_prompt:
+            char_prompt = map(apply_replacements, char_prompt)
+            prompt.extend(char_prompt)
 
-        elif isinstance(prompt[0], str):
-            for entry in prompt:
-                for token, replacement in replace_tokens.items():
-                    entry = entry.replace(f"{{{token}}}", replacement)
-                prompt[prompt.index(entry)] = entry
-            if ensure_str:
-                return "\n".join(prompt)
-
-        return prompt if prompt else ""
+        if return_str is True:
+            return "\n".join([msg["content"] for msg in prompt])
+        else:
+            return prompt
 
     # get the last N messages in a channel, up to and including the message that triggered the response
     async def get_message_context(
@@ -649,65 +723,45 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     # assemble a prompt/context for the model
     async def process_context(self, conversation: list[str] | list[dict[str, str]], message: Message):
+        """
+        Apply the chat template to the prompt and history, trimming on whole-message
+        boundaries until the context token budget is reached.
+        """
         if self.prompt.disco_mode:
             logger.debug("Disco mode enabled, returning only the message that triggered the response")
             context = message.content
             context = re_mention.sub("", context)  # remove mentions
             return context.strip()
 
-        contextmgr = ContextPreprocessor(token_budget=self.context_size, tokenizer=self.tokenizer)
-        logger.debug(f"building context from {len(conversation)} messages")
+        prompt_messages, prompt_text, prompt_tokens = self._render_prompt_context(message)
+        # logger.debug(f"Prompt text length: {len(prompt_text)}")
+        # logger.debug(f"Prompt token count: {prompt_tokens}")
+        self._n_prompt_tokens = prompt_tokens
 
-        if isinstance(conversation[0], dict):
-            conversation = self.apply_chat_template(conversation).splitlines()  # type: ignore
-            logger.debug(f"applied chat template:\n{conversation}")
+        if prompt_tokens > self.context_size:
+            logger.warning("Prompt alone exceeds configured context size; sending prompt without history")
 
-        if isinstance(conversation, list):
-            # must be a list of strings by now (applied chat template)
-            conversation = "\n".join([x.strip() for x in conversation])  # type: ignore
+        history_messages = self._normalize_chat_messages(conversation, default_role="user")
+        if len(history_messages) == 0:
+            context = prompt_text
+            context = re_consecutive_newline.sub("\n", context)
+            return context.strip()
 
-        prompt_entry = ContextEntry(
-            text=self.get_prompt(message),
-            prefix="",
-            suffix="",
-            reserved_tokens=self.n_prompt_tokens,
-            insertion_order=1000,
-            insertion_position=0,
-            trim_direction=TrimDir.Never,
-            trim_type=BreakType.Newline,
-            insertion_type=BreakType.Newline,
-            forced_activation=True,
-            cascading_activation=False,
-            tokenizer=self.tokenizer,
-        )
-        contextmgr.add_entry(prompt_entry)
+        context_size = self.context_size
+        context_text = self.apply_chat_template(prompt_messages + history_messages[-1:])
 
-        conversation_entry = ContextEntry(
-            text=conversation,  # type: ignore  # it's a string by now
-            prefix="",
-            suffix="",
-            reserved_tokens=1024,
-            insertion_order=500,
-            insertion_position=-1,
-            trim_direction=TrimDir.Top,
-            trim_type=BreakType.Newline,
-            insertion_type=BreakType.Newline,
-            forced_activation=True,
-            cascading_activation=False,
-            tokenizer=self.tokenizer,
-        )
-        contextmgr.add_entry(conversation_entry)
+        for idx in range(len(history_messages) - 2, -1, -1):
+            candidate_messages = history_messages[idx:]
+            candidate_text = self.apply_chat_template(prompt_messages + candidate_messages)
+            candidate_tokens = self._count_tokens(candidate_text)
+            if candidate_tokens <= context_size:
+                context_text = candidate_text
+            else:
+                break
 
-        context = contextmgr.context(self.context_size)
-        context = [x.strip() for x in context.splitlines() if len(x.strip()) > 0]
-
-        while len(context) > 0 and (not context[0].strip().startswith("<|im_start|>")):
-            context = context[1:]  # trim off any leading text before the first im_start
-
-        context = "\n".join(context)
-        context = re_consecutive_newline.sub("\n", context)  # yeet all consecutive newlines (empty lines)
+        context = re_consecutive_newline.sub("\n", context_text)
         context = context.replace("|> ", "|>")  # remove any spurious whitespace from the roles
-        return context
+        return context.strip()
 
     # actual response logic
     async def generate_response(
@@ -762,9 +816,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             context = await self.process_context(conversation, message)
             context = context.rstrip()
             debug_data["context"] = context.splitlines()
-            debug_data["n_prompt_tokens"] = self.n_prompt_tokens
-            ctokens: BatchEncoding = self.tokenizer.batch_encode_plus([context], return_length=True)
-            debug_data["n_context_tokens"] = ctokens.get("length", [-1]).pop(0)
+            debug_data["n_prompt_tokens"] = self._n_prompt_tokens
+            debug_data["n_context_tokens"] = self._count_tokens(context)
 
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
@@ -871,6 +924,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 # scream into the void
                 response = response.replace("\\r", "").replace("\\n", "\n")
                 response = response.replace("\\u00a0", "\n")
+                # em-dashes can go, thanks
+                response = response.replace("—", " - ")
 
                 if self.prompt.disco_mode:
                     if response == "":

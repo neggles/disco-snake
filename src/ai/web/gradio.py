@@ -355,13 +355,13 @@ class GradioUi:
                         with gr.Row():
                             with gr.Column():
                                 gr.Markdown("### Input/output parameters")
-                                min_length = gr.Slider(
-                                    value=self.lm_gensettings.min_length,
+                                min_tokens = gr.Slider(
+                                    value=self.lm_gensettings.min_tokens,
                                     minimum=0,
                                     maximum=2000,
                                     step=1,
-                                    label="min_length",
-                                    elem_id="min_length",
+                                    label="min_tokens",
+                                    elem_id="min_tokens",
                                     info="Minimum generation length (tokens)",
                                 )
                                 max_tokens = gr.Slider(
@@ -400,7 +400,7 @@ class GradioUi:
                                     elem_id="truncation_length",
                                     info="Maximum length of the input to the model. For most models, this is 2048.",
                                 )
-                                min_length.input(fn=evt_set_param, inputs=min_length, api_name="min_length")
+                                min_tokens.input(fn=evt_set_param, inputs=min_tokens, api_name="min_tokens")
                                 max_tokens.input(fn=evt_set_param, inputs=max_tokens, api_name="max_tokens")
                                 ban_eos_token.input(
                                     fn=evt_set_param, inputs=ban_eos_token, api_name="ban_eos_token"
@@ -417,7 +417,7 @@ class GradioUi:
 
                                 self.dynamic_elements.extend(
                                     [
-                                        min_length,
+                                        min_tokens,
                                         max_tokens,
                                         ban_eos_token,
                                         add_bos_token,

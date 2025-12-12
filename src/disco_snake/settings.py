@@ -72,7 +72,7 @@ class BotSettings(JsonSettings):
     owner: str = Field("N/A")
     repo_url: str = Field("N/A")
     db_uri: PostgresDsn = Field()
-    ai_conf_name: Optional[str] = Field(None)
+    ai_conf_name: Optional[str] = None
 
     owner_id: int
     admin_ids: Annotated[list[int], Field()]
