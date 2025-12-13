@@ -137,17 +137,18 @@ class Admin(commands.Cog, name=COG_NAME):
         self,
         ctx: ApplicationCommandInteraction,
         user: disnake.User = commands.Param(
-            description="Clear messages from a specific user",
+            description="User to blacklist",
         ),
         reason: str = commands.Param(
             description="The reason for blacklisting the user.",
-            min_tokens=4,
+            min_length=4,
         ),
     ) -> None:
         """
-        Lets you add a user from not being able to use the bot.
-        :param interaction: The application command interaction.
+        Blocks a user from being able to use or interact with the bot in any way.
+        :param ctx: The application command interaction.
         :param user: The user that should be added to the blacklist.
+        :param reason: The reason for blacklisting the user (required).
         """
         await ctx.response.defer(ephemeral=True)
         try:

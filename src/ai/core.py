@@ -1252,14 +1252,20 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     # clean out some bad tokens from responses and fix up mentions
     def fixup_bot_user_tokens(self, response: str, message: Message) -> str:
         """
-        Fix <USER>, <BOT>, etc tokens in the response, and unescape any escaped markdown formatting
+        Fix <USER>, <BOT>, etc tokens in the response
         """
-        if hasattr(message.author, "nick"):
-            author_name = (
-                message.author.nick if message.author.nick is not None else message.author.global_name
-            )
+        if message.author.nick and message.author.nick is not None:
+            author_name = message.author.nick
+        elif message.author.global_name is not None:
+            author_name = message.author.global_name
+        elif message.author.name is not None:
+            author_name = message.author.name
         else:
-            author_name = message.author.global_name or message.author.name
+            author_name = str(message.author)
+
+        if not isinstance(author_name, str):
+            author_name = str(author_name)
+
         author_name = author_name.encode("utf-8").decode("ascii", errors="ignore").strip()  # type: ignore
         response = re_user_token.sub(f"@{author_name}", response)
         response = re_bot_token.sub(f"@{self.name}", response)
