@@ -243,7 +243,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return encoded.get("length", [0]).pop(0)
 
     def _normalize_chat_messages(
-        self, conversation: Any, *, default_role: str = "system"
+        self, conversation: Any, *, default_role: str = "user"
     ) -> list[dict[str, str]]:
         """
         Coerce prompt or conversation data into a flat list of chat messages.
@@ -489,6 +489,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         trigger: Optional[str] = None  # response trigger reason (tfw no StrEnum in 3.10)
         conversation = None  # message's conversation context
         append = None  # optional masked message to append to the response
+
+        if self.lm_lock.locked():
+            logger.info("Already processing a message, skipping this one to avoid overlap.")
+            return
 
         try:
             async with self.lm_lock:
