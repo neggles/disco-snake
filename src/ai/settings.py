@@ -168,7 +168,8 @@ class BotParameters(BaseModel):
     autoresponse: bool = False
     idle_enable: bool = False
     force_lowercase: bool = False
-    nicknames: list[str] = Field([])
+    nicknames: list[str] = Field(default_factory=list)
+    nicknames_quiet: list[str] = Field(default_factory=list)
     context_size: int = -1
     context_messages: int = 100
     logging_channel_id: Optional[int] = None

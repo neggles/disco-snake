@@ -143,6 +143,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         # Load config params up into top level properties
         self.params: BotParameters = self.config.params
         self.nicknames: list[str] = self.params.nicknames
+        self.nicknames_quiet: list[str] = self.params.nicknames_quiet
 
         self.prompt: Prompt = self.config.prompt
         self.max_retries = self.params.max_retries
@@ -896,6 +897,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         logger.warning(
                             "CoT response did not start with bot name after </think>, this is probably bad"
                         )
+
+                if any(response.startswith(f"{x}:") for x in self.nicknames + self.nicknames_quiet):
+                    response = response.split(":", 1)[1].lstrip()
 
                 # if bot did a "\nsomeusername:" cut it off
                 if len(re_linebreak_name.findall(response)) > 0:
