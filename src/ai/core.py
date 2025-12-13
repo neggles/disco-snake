@@ -107,8 +107,8 @@ re_detect_url = re.compile(
     re.M + re.I,
 )
 
-# find consecutive newlines (at least 2) optionally with spaces in between (blank lines)
-re_consecutive_newline = re.compile(r"(\n[\s\n]*\n\s*)", re.M + re.I)
+# find consecutive newlines (at least 3) optionally with spaces in between (blank lines)
+re_consecutive_newline = re.compile(r"(\n[\s\n]+\n\s*)", re.M + re.I)
 
 # capture mentions
 re_mention = re.compile(r"<@(\d+)>", re.I)
@@ -735,8 +735,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             return context.strip()
 
         prompt_messages, prompt_text, prompt_tokens = self._render_prompt_context(message)
-        # logger.debug(f"Prompt text length: {len(prompt_text)}")
-        # logger.debug(f"Prompt token count: {prompt_tokens}")
         self._n_prompt_tokens = prompt_tokens
 
         if prompt_tokens > self.context_size:
