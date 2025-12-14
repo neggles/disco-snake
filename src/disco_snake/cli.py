@@ -1,6 +1,5 @@
 import json
 import logging
-import sys
 from pathlib import Path
 
 import click
@@ -123,11 +122,8 @@ def start_bot(daemon: BotDaemon, config_path: Path | None = None):
 
     bot: DiscoSnake = daemon.bot
 
-    # have to use a different method on python 3.11 and up because of a change to how asyncio works
-    # not sure how to implement that with disnake, so for now, no uvloop on python 3.11 and up
-    if sys.version_info < (3, 11):
-        logger.info("installing uvloop...")
-        uvloop.install()
+    logger.info("installing uvloop...")
+    uvloop.install()
 
     logger.info("Starting disco-snake")
 
