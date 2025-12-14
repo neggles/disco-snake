@@ -199,15 +199,15 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return self.config.name.split(" ")[0]
 
     @property
-    def lm_gensettings(self) -> OobaGenRequest:
+    def lm_request(self) -> OobaGenRequest:
         return self.provider_config.gensettings
 
     @property
     def context_size(self) -> int:
         if self.params.context_size < 0:
             return (
-                self.lm_gensettings.truncation_length
-                - (self.lm_gensettings.max_tokens or (self.lm_gensettings.truncation_length // 2))
+                self.lm_request.truncation_length
+                - (self.lm_request.max_tokens or (self.lm_request.truncation_length // 2))
                 - 32
             )
         return self.params.context_size
@@ -266,7 +266,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             return [{"role": default_role, "content": conversation.strip()}]
         raise TypeError(f"Unsupported conversation type: {type(conversation)}")
 
-    # @wraps(PreTrainedTokenizerBase.apply_chat_template)
     def apply_chat_template(
         self,
         conversation: list[dict[str, str]] | list[list[dict[str, str]]],
@@ -303,26 +302,26 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     def _update_gensettings_from_model_info(self) -> None:
         if self.model_info is None:
             return
-        if self.lm_gensettings is None:
+        if self.lm_request is None:
             return
         if self.model_info:
             logger.info("Got model info from API server, updating length settings")
             if self.model_info.parameters.max_seq_len < 2048:
                 raise ValueError("Model max_seq_len is too small (<2048 tokens), good luck...")
-            self.lm_gensettings.truncation_length = self.model_info.parameters.max_seq_len
+            self.lm_request.truncation_length = self.model_info.parameters.max_seq_len
 
-            if (not self.lm_gensettings.max_tokens) or self.lm_gensettings.max_tokens <= 0:
+            if (not self.lm_request.max_tokens) or self.lm_request.max_tokens <= 0:
                 # max_tokens is not set or is explicitly set to auto, so set it to half of truncation length
-                self.lm_gensettings.max_tokens = self.lm_gensettings.truncation_length // 2
+                self.lm_request.max_tokens = self.lm_request.truncation_length // 2
             else:
                 # max_tokens was explicitly set, ensure it does not exceed truncation length/2
-                self.lm_gensettings.max_tokens = min(
-                    self.lm_gensettings.max_tokens,
-                    self.lm_gensettings.truncation_length // 2,
+                self.lm_request.max_tokens = min(
+                    self.lm_request.max_tokens,
+                    self.lm_request.truncation_length // 2,
                 )
             logger.info("New generation settings:")
-            logger.info(f"  truncation_length: {self.lm_gensettings.truncation_length}")
-            logger.info(f"  max_tokens: {self.lm_gensettings.max_tokens}")
+            logger.info(f"  truncation_length: {self.lm_request.truncation_length}")
+            logger.info(f"  max_tokens: {self.lm_request.max_tokens}")
             logger.info(f"  context_size: {self.context_size}")
 
     async def cog_load(self) -> None:
@@ -338,7 +337,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             local_files_only=True,
             trust_remote_code=True,
             use_fast=True,
-            model_max_length=self.lm_gensettings.truncation_length,
+            model_max_length=self.lm_request.truncation_length,
             chat_template=self.prompt.template_str,
         )
         logger.info("Tokenizer initialized.")
@@ -347,7 +346,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             case "ooba":
                 self.model_provider = OobaModel(
                     endpoint_url=self.provider_config.endpoint,
-                    default_args=self.lm_gensettings,
+                    default_args=self.lm_request,
                     api_key=self.provider_config.api_key,
                     auth_header=self.provider_config.auth_header,
                     tokenizer=self.tokenizer,
@@ -796,9 +795,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 "id": message.id,
                 "timestamp": msg_timestamp,
                 "guild_id": message.guild.id if message.guild else None,
-                "guild": message.guild.name if message.guild else "DM",
+                "guild": str(message.guild) if message.guild else None,
                 "author_id": message.author.id,
-                "author": f"{message.author}",
+                "author": str(message.author),
                 "channel_id": message.channel.id or None,
                 "channel": message.channel.name if not isinstance(message.channel, DMChannel) else "DM",
                 "author_name": f"{author_name}",
@@ -812,7 +811,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 debug_data["conversation"] = conversation
 
             try:
-                debug_data["parameters"] = self.lm_gensettings.dict()
+                debug_data["parameters"] = self.lm_request.model_dump(exclude_none=True)
             except Exception:
                 logger.exception("Failed to get gensettings")
 
@@ -834,6 +833,27 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         await message.add_reaction("❌")
                         return
 
+                    # save raw response for debugging
+                    debug_data["response_raw"] = response.splitlines(keepends=True)
+
+                    # check for <think> tag and trim
+                    if "</think>" in response:
+                        logger.debug("Found chain of thought in response")
+                        thoughts, response = response.rsplit("</think>", 1)
+                        # debug log thought lines
+                        thoughts = cleanup_thoughts([x.strip() for x in thoughts.splitlines()])
+                        debug_data["thoughts"] = thoughts
+
+                        logger.debug(f"Thoughts: {debug_data['thoughts']}")
+                        # strip whitespace from response
+                        response = response.strip().lstrip('"*_-`')
+                        if any(response.startswith(f"{x}:") for x in self.nicknames + self.nicknames_quiet):
+                            response = response.split(":", 1)[1].lstrip()
+                        else:
+                            logger.warning(
+                                "CoT response did not start with bot name after </think>, this is probably bad"
+                            )
+
                     bad_words = self.find_bad_words(response)
                     if any([response.lower() == x for x in self.bad_words]):
                         logger.info(f"Response {attempt} contained bad words: {response}\nRetrying...")
@@ -854,6 +874,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                             f"Response {attempt} contained bad words: {response}\nBad words: {bad_words}\nRetrying..."
                         )
                         continue
+
                 else:  # ran out of retries...
                     if resp_img is not None:
                         response = ""  # we have a pic to send, so send it without a comment
@@ -886,29 +907,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     except Exception:
                         logger.exception("Failed to generate image response")
                         pass
-
-                debug_data["response_raw"] = response.splitlines(keepends=True)
-                # check for <think> tag and trim
-                if "</think>" in response:
-                    logger.debug("Found chain of thought in response")
-                    thoughts, response = response.rsplit("</think>", 1)
-                    # debug log thought lines
-                    thoughts = cleanup_thoughts([x.strip() for x in thoughts.splitlines()])
-                    debug_data["thoughts"] = thoughts
-
-                    logger.debug(f"Thoughts: {debug_data['thoughts']}")
-                    # strip whitespace from response
-                    response = response.strip().lstrip('"*_-`')
-                    if any(response.startswith(f"{x}:") for x in self.nicknames + self.nicknames_quiet):
-                        response = response.split(":", 1)[1].lstrip()
-                    else:
-                        logger.warning(
-                            "CoT response did not start with bot name after </think>, this is probably bad"
-                        )
-
-                # if bot did a "\nsomeusername:" cut it off
-                if len(re_linebreak_name.findall(response)) > 0:
-                    response = response.splitlines()[0]
 
                 # detect if we're trying to send multiple messages and don't do that
                 rtemp = []
@@ -1504,14 +1502,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         embed.add_field(name="Parameter", value=f"{param.name}", inline=False)
 
         try:
-            if not hasattr(self.lm_gensettings, param.id):
+            if not hasattr(self.lm_request, param.id):
                 raise ValueError(f"Unknown parameter: {param} (got {param.id}, {param.kind})")
 
             # cast the value to the correct type using the class from the tuple
             new_value = param.kind(value)
             # save the old value and set the new one
-            old_value = getattr(self.lm_gensettings, param.id)
-            setattr(self.lm_gensettings, param.id, new_value)
+            old_value = getattr(self.lm_request, param.id)
+            setattr(self.lm_request, param.id, new_value)
 
             # add the old and new values to the embed
             embed.add_field(name="Old", value=f"{old_value}")
