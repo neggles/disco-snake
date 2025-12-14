@@ -985,11 +985,12 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             finally:
                 if self.debug:
                     dump_file = f"msg-{self.name.lower()}-{message.id}-{msg_timestamp}.json"
-                    if debug_data.get("trigger", None) == "DM":
+                    if debug_data.get("trigger", None) == "dm":
                         dump_file = self.debug_dir.joinpath("dm", dump_file)
                         dump_file.parent.mkdir(parents=True, exist_ok=True)
                     else:
                         dump_file = self.debug_dir.joinpath(dump_file)
+
                     with dump_file.open("w", encoding="utf-8") as f:
                         json.dump(debug_data, f, indent=4, skipkeys=True, default=str, ensure_ascii=False)
                     logger.debug(f"Dumped message debug data to {dump_file.name}")

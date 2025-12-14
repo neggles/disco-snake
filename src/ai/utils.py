@@ -35,7 +35,7 @@ def cleanup_thoughts(thoughts: list[str]) -> list[str]:
         if line != "":
             start_line = idx
             break
-    last_text_idx = n_lines
+    last_text_idx = n_lines - 1
     for idx in range(n_lines, -1, -1):
         if thoughts[idx] != "":
             last_text_idx = idx
