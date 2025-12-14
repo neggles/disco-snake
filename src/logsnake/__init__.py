@@ -55,14 +55,9 @@ __version__ = "1.7.0"
 
 # Python 2+3 compatibility settings for logger
 bytes_type = bytes
-if sys.version_info >= (3,):
-    unicode_type = str
-    basestring_type = str
-    xrange = range
-else:
-    # The names unicode and basestring don't exist in py3 so silence flake8.
-    unicode_type = unicode  # noqa
-    basestring_type = basestring  # noqa
+unicode_type = str
+basestring_type = str
+xrange = range
 
 # Formatter defaults
 DEFAULT_FORMAT = "%(color)s[%(levelname)1.1s %(asctime)s %(module)s:%(lineno)d]%(end_color)s %(message)s"
@@ -85,7 +80,7 @@ LOGZERO_INTERNAL_LOGGER_ATTR = "_is_logsnake_internal"
 LOGZERO_INTERNAL_HANDLER_IS_CUSTOM_LOGLEVEL = "_is_logsnake_internal_handler_custom_loglevel"
 
 # Logzero default logger
-logger = None
+logger = None  # type: ignore
 
 # Current state of the internal logging settings
 _loglevel = DEBUG
@@ -253,7 +248,7 @@ class LogFormatter(logging.Formatter):
             # byte strings wherever possible).
             record.message = _safe_unicode(message)
         except Exception as e:
-            record.message = "Bad message ({!r}): {!r}".format(e, record.__dict__)
+            record.message = f"Bad message ({e!r}): {record.__dict__!r}"
 
         record.asctime = self.formatTime(record, self.datefmt)
 
@@ -312,7 +307,7 @@ def to_unicode(value):
     if isinstance(value, _TO_UNICODE_TYPES):
         return value
     if not isinstance(value, bytes):
-        raise TypeError("Expected bytes, unicode, or None; got {!r}".format(type(value)))
+        raise TypeError(f"Expected bytes, unicode, or None; got {type(value)!r}")
     return value.decode("utf-8")
 
 
@@ -582,7 +577,7 @@ def log_function_call(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
         args_str = ", ".join([str(arg) for arg in args])
-        kwargs_str = ", ".join(["{}={}".format(key, kwargs[key]) for key in kwargs])
+        kwargs_str = ", ".join([f"{key}={kwargs[key]}" for key in kwargs])
         if args_str and kwargs_str:
             all_args_str = ", ".join([args_str, kwargs_str])
         else:

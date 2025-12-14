@@ -264,7 +264,7 @@ class OobaModel(ModelProvider):
 
         if isinstance(tokenizer, PreTrainedTokenizerBase):
             self.tokenizer: PreTrainedTokenizerBase = tokenizer
-        elif isinstance(tokenizer, (str, PathLike)):
+        elif isinstance(tokenizer, str | PathLike):
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)
         else:
             warn("No tokenizer provided; defaulting to Llama tokenizer.", UserWarning, stacklevel=2)

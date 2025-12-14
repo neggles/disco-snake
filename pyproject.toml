@@ -115,14 +115,12 @@ target-version = 'py312'
 
 [tool.ruff.lint]
 select = [
-    "E4",    # ruff defaults, pycodestyle errors
-    "E7",    # ^^
-    "E9",    # ^^
-    "F",     # ruff defaults, pyflakes rules
-    "B",     # flake8-bugbear
-    "UP031", # replace printf-style string formatting with f-strings or str.format()
-    "UP035", # update deprecated imports to their new locations
-    "UP007", # Use T | None instead of Optional[T]
+    "E4", # ruff defaults, pycodestyle errors
+    "E7", # ^^
+    "E9", # ^^
+    "F",  # ruff defaults, pyflakes rules
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade rules
 ]
 ignore = [
     "B008", # Do not warn about function calls in default arguments. disnake uses this for slash commands.

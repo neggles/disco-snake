@@ -116,7 +116,7 @@ def process_revision_directives(context: EnvironmentContext, revision, directive
         last_rev_id = int(head_revision)
         new_rev_id = last_rev_id + 1
     # fill zeros up to 3 digits: 1 -> 001
-    migration_script.rev_id = "{0:03}".format(new_rev_id)
+    migration_script.rev_id = f"{new_rev_id:03}"
 
 
 if context.is_offline_mode():

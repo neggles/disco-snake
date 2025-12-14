@@ -9,17 +9,12 @@ import importlib
 import json
 import logging
 import re
-import sys
 import traceback
 from collections import OrderedDict
 from datetime import UTC, date, datetime, time
 from inspect import istraceback
 
-if sys.version_info >= (3,):
-    tz = UTC
-else:
-    tz = None
-
+tz = UTC
 
 # skip natural LogRecord attributes
 # http://docs.python.org/library/logging.html#logrecord-attributes
@@ -70,7 +65,7 @@ class JsonEncoder(json.JSONEncoder):
     """
 
     def default(self, o):
-        if isinstance(o, (date, datetime, time)):
+        if isinstance(o, date | datetime | time):
             return self.format_datetime_obj(o)
 
         elif istraceback(o):
@@ -80,7 +75,7 @@ class JsonEncoder(json.JSONEncoder):
             return str(o)
 
         try:
-            return super(JsonEncoder, self).default(o)
+            return super().default(o)
 
         except TypeError:
             try:
