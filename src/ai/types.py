@@ -1,7 +1,8 @@
 from collections import OrderedDict
 from datetime import datetime
 from time import monotonic
-from typing import Any, Hashable, TypeAlias, Union
+from typing import Any, TypeAlias
+from collections.abc import Hashable
 
 import disnake
 from cachetools import TTLCache
@@ -9,11 +10,11 @@ from disnake import DMChannel, GroupChannel, Member, Message, TextChannel, Threa
 from PIL.Image import Image
 from pydantic import BaseModel, ConfigDict, Field
 
-ListOfUsers: TypeAlias = Union[list[Union[User, Member]], list[User], list[Member]]
+ListOfUsers: TypeAlias = list[User | Member] | list[User] | list[Member]
 
-MessageChannel: TypeAlias = Union[TextChannel, DMChannel, GroupChannel, Thread]
+MessageChannel: TypeAlias = TextChannel | DMChannel | GroupChannel | Thread
 
-ImageOrBytes: TypeAlias = Union[Image, bytes]
+ImageOrBytes: TypeAlias = Image | bytes
 
 
 class TimestampStore(TTLCache):

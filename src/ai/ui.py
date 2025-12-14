@@ -1,5 +1,6 @@
 import logging
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 from disnake import ApplicationCommandInteraction, Colour, Embed, Member, OptionChoice, User
 from pydantic import BaseModel
@@ -41,7 +42,7 @@ def available_params(ctx: ApplicationCommandInteraction) -> list[str]:
 
 
 def convert_param(ctx: ApplicationCommandInteraction, input: str) -> AiParam:
-    return next((param for param in settable_params if param.name == input or param.id == input))
+    return next(param for param in settable_params if param.name == input or param.id == input)
 
 
 class AiStatusEmbed(Embed):

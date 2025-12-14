@@ -3,7 +3,7 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from disnake import Guild, Member, Message, Role
@@ -98,9 +98,7 @@ class MentionMixin:
         return text
 
 
-def _stringify_mentions(
-    bot: DiscoSnake, text: str, guild: Optional[Guild] = None
-) -> Tuple[str, dict[str, str]]:
+def _stringify_mentions(bot: DiscoSnake, text: str, guild: Guild | None = None) -> tuple[str, dict[str, str]]:
     mentions = {}
     for mention in re_mention.finditer(text):
         user_mention = f"{mention.group(0)}"
@@ -128,7 +126,7 @@ def _restore_mentions(text: str, mentions: dict[str, str]) -> str:
     return text
 
 
-def _stringify_emoji(text: str) -> Tuple[str, dict[str, str]]:
+def _stringify_emoji(text: str) -> tuple[str, dict[str, str]]:
     emojis = {}
     for match in re_emoji.finditer(text):
         anim_flag, emoji_name, emoji_id = match.groups()
@@ -172,7 +170,7 @@ TZ_MAP = {
 }
 
 
-def get_lm_prompt_time(tz: Union[str, ZoneInfo] = ZoneInfo("Asia/Tokyo")) -> str:
+def get_lm_prompt_time(tz: str | ZoneInfo = ZoneInfo("Asia/Tokyo")) -> str:
     if not isinstance(tz, ZoneInfo):
         if tz not in TZ_MAP.keys():
             raise ValueError(f"Unmapped timezone: {tz}")
@@ -188,7 +186,7 @@ def get_date_suffixed(day: int, with_num: bool = True) -> str:
     return f"{day}{suffix}" if with_num else suffix
 
 
-def get_prompt_datetime(tz: Union[str, ZoneInfo] = ZoneInfo("Asia/Tokyo"), with_date: bool = False) -> str:
+def get_prompt_datetime(tz: str | ZoneInfo = ZoneInfo("Asia/Tokyo"), with_date: bool = False) -> str:
     if not isinstance(tz, ZoneInfo):
         if tz not in TZ_MAP.keys():
             raise ValueError(f"Unmapped timezone: {tz}")
@@ -205,14 +203,14 @@ def any_in_text(strings: list[str], text: str) -> bool:
     return any([s in text for s in strings])
 
 
-def member_in_role(member: Member, role: Union[Role, int]) -> bool:
+def member_in_role(member: Member, role: Role | int) -> bool:
     """Returns True if the user has the role"""
     if isinstance(role, Role):
         role = role.id
     return role in [x.id for x in member.roles]
 
 
-def member_in_any_role(member: Member, roles: list[Union[Role, int]]) -> bool:
+def member_in_any_role(member: Member, roles: list[Role | int]) -> bool:
     """Returns True if the user has any of the roles"""
     for role in roles:
         if member_in_role(member, role):

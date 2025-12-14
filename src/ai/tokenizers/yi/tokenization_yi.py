@@ -1,5 +1,5 @@
 from os import PathLike
-from typing import Any, Optional
+from typing import Any
 
 from transformers.models.llama.tokenization_llama import LlamaTokenizer
 from transformers.tokenization_utils import AddedToken
@@ -37,7 +37,7 @@ class YiTokenizer(LlamaTokenizer):
         bos_token: str | AddedToken = "<|startoftext|>",
         eos_token: str | AddedToken = "<|endoftext|>",
         pad_token: str | AddedToken = "<unk>",
-        sp_model_kwargs: Optional[dict[str, Any]] = None,
+        sp_model_kwargs: dict[str, Any] | None = None,
         add_bos_token: bool = True,
         add_eos_token: bool = False,
         clean_up_tokenization_spaces: bool = False,

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from transformers.tokenization_utils import PreTrainedTokenizerBase
 
@@ -69,7 +68,7 @@ class ContextPreprocessor(Preprocessor):
         return False
 
     # recursive function that searches for other entries that are activated
-    def cascade_lookup(self, entry: ContextEntry, nest: Optional[int] = 0):
+    def cascade_lookup(self, entry: ContextEntry, nest: int | None = 0):
         """Search for other entries that are activated by a given entry.
 
         :param entry: The entry to recursively search for other entries in.

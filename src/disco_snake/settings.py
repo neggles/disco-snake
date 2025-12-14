@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from functools import lru_cache
 from os import PathLike
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, PostgresDsn
@@ -72,7 +72,7 @@ class BotSettings(JsonSettings):
     owner: str = Field("N/A")
     repo_url: str = Field("N/A")
     db_uri: PostgresDsn = Field()
-    ai_conf_name: Optional[str] = None
+    ai_conf_name: str | None = None
 
     owner_id: int
     admin_ids: Annotated[list[int], Field()]
@@ -98,7 +98,7 @@ class BotSettings(JsonSettings):
 
 
 @lru_cache(maxsize=2)
-def get_settings(config_path: Optional[Path] = None) -> BotSettings:
+def get_settings(config_path: Path | None = None) -> BotSettings:
     if config_path is not None:
         if config_path.is_file():
             settings = BotSettings.model_validate_json(config_path.read_text())

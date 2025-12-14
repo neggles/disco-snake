@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Optional
+from typing import Annotated
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
@@ -24,7 +24,7 @@ BigIntPK = Annotated[
 
 # Timestamp with no default (nullable)
 Timestamp = Annotated[
-    Optional[datetime],
+    datetime | None,
     mapped_column(
         pg.TIMESTAMP(timezone=True, precision=2),
         nullable=True,

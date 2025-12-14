@@ -2,7 +2,7 @@
 import subprocess
 from enum import Enum
 from functools import wraps
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich import print
@@ -41,7 +41,7 @@ def cli(
         typer.Argument(help="Action to perform"),
     ],
     configs: Annotated[
-        Optional[list[ConfigName]],  # type: ignore
+        list[ConfigName] | None,  # type: ignore
         typer.Argument(
             help="List of instances to act on",
             show_choices=True,

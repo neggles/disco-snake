@@ -1,5 +1,4 @@
 from enum import IntEnum
-from typing import Optional
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
@@ -30,5 +29,5 @@ class LogMessage(Base):
     logger: Mapped[str] = mapped_column(sa.String, nullable=False)
     level: Mapped[LogLevel] = mapped_column(sa.Enum(LogLevel), nullable=False)
     message: Mapped[str] = mapped_column(sa.String, nullable=False)
-    trace: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
-    record: Mapped[Optional[dict]] = mapped_column(pg.JSONB, nullable=True)
+    trace: Mapped[str | None] = mapped_column(sa.String, nullable=True)
+    record: Mapped[dict | None] = mapped_column(pg.JSONB, nullable=True)

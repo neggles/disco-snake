@@ -8,7 +8,7 @@ from io import BytesIO
 from math import ceil, sqrt
 from pathlib import Path
 from random import choice, randint
-from typing import TYPE_CHECKING, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -93,7 +93,7 @@ class Imagen:
     SD_API_PATH = "/sdapi/v1/txt2img"
 
     def __init__(self, cog: "Ai") -> None:
-        self.ai: "Ai" = cog
+        self.ai: Ai = cog
         self.config: ImagenSettings = get_imagen_settings()
         self.params: ImagenParams = self.config.params
         self.timezone: str = self.params.timezone
@@ -136,7 +136,7 @@ class Imagen:
             prompt = self.lm_prompt.default_prompt
         return prompt, user_request
 
-    async def submit_lm_prompt(self, prompt: Optional[str] = None) -> str:
+    async def submit_lm_prompt(self, prompt: str | None = None) -> str:
         request = self.lm_prompt.get_request(prompt)
         payload = request.dict(exclude_none=True)
         logger.debug(f"Sending request: {json.dumps(payload, default=str, ensure_ascii=False)}")
@@ -188,7 +188,7 @@ class Imagen:
             # split tags, strip whitespace, remove banned tags, rejoin
             lm_tags_split = [x.strip().lower() for x in lm_tag_string.split(",") if len(x) > 3]
             for tag in lm_tags_split:
-                if any((re.search(x, tag, re.I) for x in self.sd_prompt.banned_tags)):
+                if any(re.search(x, tag, re.I) for x in self.sd_prompt.banned_tags):
                     logger.debug(f"Removing banned tag '{tag}'")
                     continue
                 if self.sd_prompt.cleanup_desc and re_eyes_hair.search(tag, re.I):
@@ -341,7 +341,7 @@ class Imagen:
 
 
 # picks a random image size from the above list, swapping width and height 50% of the time
-def get_image_dimensions() -> Tuple[int, int]:
+def get_image_dimensions() -> tuple[int, int]:
     """
     Pick a random image size from <this>.IMAGE_SIZE_OPTS, swap the width and height 50% of the time.
     Used to decide what resolution the diffusion model should generate at.
@@ -353,7 +353,7 @@ def get_image_dimensions() -> Tuple[int, int]:
         return (dims[1], dims[0])
 
 
-def get_time_tag(time: Optional[datetime] = None, tz=ZoneInfo("Asia/Tokyo")) -> str:
+def get_time_tag(time: datetime | None = None, tz=ZoneInfo("Asia/Tokyo")) -> str:
     """
     Get a natural language word for the time of day it is. We use this to prompt the diffusion model.
     """

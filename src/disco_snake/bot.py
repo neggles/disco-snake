@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from functools import partial as partial_func
 from pathlib import Path
 from traceback import print_exception
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 from disnake import (
@@ -97,7 +96,7 @@ class DiscoSnake(commands.Bot):
             channel = self.support_guild.rules_channel or self.support_guild.text_channels[0]
         return channel  # type: ignore
 
-    async def support_invite(self) -> Optional[Invite]:
+    async def support_invite(self) -> Invite | None:
         if self.support_channel is None:
             return None
         try:

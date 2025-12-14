@@ -4,12 +4,12 @@ import json
 import logging
 import re
 from asyncio import Lock
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from io import BytesIO
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Optional, Union
+from typing import Any
 
 import jinja2 as j2
 from disnake import (
@@ -127,7 +127,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     def __init__(self, bot: DiscoSnake, *args, **kwargs):
         self.bot: DiscoSnake = bot
         self.timezone = self.bot.timezone
-        self.last_response = datetime.now(timezone.utc) - timedelta(minutes=10)
+        self.last_response = datetime.now(UTC) - timedelta(minutes=10)
 
         # init the MentionMixin cache
         super().__init__(*args, **kwargs)
@@ -163,7 +163,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.model_provider_name: str = self.provider_config.provider
         self.model_info: ModelInfo | None = None
         self.chatbot: ChatBot = None  # type: ignore
-        self.logging_channel: Optional[TextChannel | DMChannel] = None
+        self.logging_channel: TextChannel | DMChannel | None = None
         self.tokenizer_type = self.provider_config.modeltype
         self.tokenizer: PreTrainedTokenizerBase = None  # type: ignore
         self.bad_words: list[str] = self.config.bad_words
@@ -191,7 +191,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self._emoji_cache: dict[int, Any] = {}  # type: ignore
         self._n_prompt_tokens: int = None  # type: ignore
         # other cached vars
-        self._chat_template: Optional[j2.Template] = None
+        self._chat_template: j2.Template | None = None
 
     # Getters for config object sub-properties
     @property
@@ -286,7 +286,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             raise e
 
     def _render_prompt_context(
-        self, ctx: Optional[MessageInteraction | Message] = None
+        self, ctx: MessageInteraction | Message | None = None
     ) -> tuple[list[dict[str, str]], str, int]:
         """
         Render the configured prompt through the chat template and measure its token length.
@@ -486,7 +486,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if content is None:
             return  # ignore empty messages
 
-        trigger: Optional[str] = None  # response trigger reason (tfw no StrEnum in 3.10)
+        trigger: str | None = None  # response trigger reason (tfw no StrEnum in 3.10)
         conversation = None  # message's conversation context
         append = None  # optional masked message to append to the response
 
@@ -527,7 +527,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 return  # ignore HTTP errors
             exc_class = e.__class__.__name__
             exc_desc = str(f"**``{exc_class}``**\n```{format_exc()}```")
-            err_filename = f"error-{datetime.now(timezone.utc)}.txt".replace(" ", "")
+            err_filename = f"error-{datetime.now(UTC)}.txt".replace(" ", "")
             self.debug_dir.joinpath(err_filename).write_text(exc_desc)
 
     # retrieve the LM prompt and inject name, time, etc.
@@ -587,8 +587,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self,
         message: Message,
         *,
-        guild_settings: Optional[GuildSettings] = None,
-        max_messages: Optional[int] = None,
+        guild_settings: GuildSettings | None = None,
+        max_messages: int | None = None,
     ) -> list[str] | list[dict[str, str]]:
         if max_messages is None:
             max_messages = self.params.context_messages
@@ -625,7 +625,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if msg.author.id in self.tos_reject_ids:
                 continue  # skip users who rejected the privacy policy
             if msg.content is not None:
-                if any((msg.content.startswith(x) for x in ["/", ", "])):
+                if any(msg.content.startswith(x) for x in ["/", ", "]):
                     continue  # skip messages that start with a command prefix or a comma-space
                 if "```" in msg.content:
                     continue  # skip messages with code blocks
@@ -771,8 +771,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self,
         conversation: list[str] | list[dict[str, str]],
         message: Message,
-        trigger: Optional[str] = None,
-        append: Optional[str] = None,
+        trigger: str | None = None,
+        append: str | None = None,
     ) -> str | None:
         async with message.channel.typing():
             debug_data: dict[str, Any] = {}
@@ -855,10 +855,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                             )
 
                     bad_words = self.find_bad_words(response)
-                    if any([response.lower() == x for x in self.bad_words]):
-                        logger.info(f"Response {attempt} contained bad words: {response}\nRetrying...")
+                    if bad_words:
+                        logger.info(f"Bad words in attempt #{attempt}: {bad_words}\nRetrying...")
                         continue
-                    if len(bad_words) == 0:
+                    else:
                         if response.lower().startswith("i'm sorry, but"):
                             logger.info(f"Response was a ChatGPT apology: {response}\nRetrying...")
                             continue
@@ -869,11 +869,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                             logger.info(f"Response contains a URL: {response}\nRetrying...")
                             continue
                         break  # no bad words, we're good, break out of the loop to avoid executing the else:
-                    else:
-                        logger.info(
-                            f"Response {attempt} contained bad words: {response}\nBad words: {bad_words}\nRetrying..."
-                        )
-                        continue
 
                 else:  # ran out of retries...
                     if resp_img is not None:
@@ -963,7 +958,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 if isinstance(sent, Message):
                     debug_data["response_id"] = sent.id
 
-                self.last_response = datetime.now(timezone.utc)
+                self.last_response = datetime.now(UTC)
 
                 # update timestamp for this channel in the image caption engine
                 if self.eyes.enabled and self.eyes.background:
@@ -1132,7 +1127,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 message: Message = messages.pop()
                 if message.author.bot is True:
                     return
-                idle_sec = (datetime.now(tz=timezone.utc) - message.created_at).total_seconds()
+                idle_sec = (datetime.now(tz=UTC) - message.created_at).total_seconds()
                 if idle_sec >= 2**31:
                     if self.get_msg_content_clean(message) is None:
                         return
@@ -1168,7 +1163,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self.tos_reject_ids = set([x.id for x in users])
 
     # Check if a user has accepted the ToS
-    async def user_accepted_tos(self, user: Union[User, Member, int]) -> Optional[bool]:  # type: ignore
+    async def user_accepted_tos(self, user: User | Member | int) -> bool | None:  # type: ignore
         """Checks if a user has accepted the ToS, rejected, or not completed the process.
         Returns True if accepted, False if rejected, None if not completed.
         """
@@ -1232,18 +1227,21 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
     # Get the chain of thought behind a message we sent
     async def get_response_thoughts(self, response_id: int) -> list[str] | None:
         """Get the chain of thought for a message ID"""
-        async with self.db_client.begin() as session:
-            query = select(AiResponseLog).where(AiResponseLog.response_id == response_id).limit(1)
-            result = await session.scalars(query)
-            response: AiResponseLog | None = result.first()
-            if response is None:
-                logger.debug(f"No chain of thought found for message ID {response_id}")
-                return None
-
-            return response.thoughts
+        try:
+            async with self.db_client.begin() as session:
+                query = select(AiResponseLog).where(AiResponseLog.response_id == response_id).limit(1)
+                result = await session.scalars(query)
+                response: AiResponseLog | None = result.first()
+                if response is None:
+                    logger.debug(f"No chain of thought found for message ID {response_id}")
+                    return None
+        except Exception:
+            logger.exception("Failed to get response log")
+            return None
+        return response.thoughts
 
     # clean up a message's content
-    def get_msg_content_clean(self, message: Message, content: Optional[str] = None) -> Optional[str]:
+    def get_msg_content_clean(self, message: Message, content: str | None = None) -> str | None:
         # if no content is provided, use the message's content
         content = content or message.content
         # if there's a codeblock in there, return None
@@ -1345,7 +1343,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return cache_entry
 
     # deal with fake nitro bullshit
-    def handle_stupid_fucking_embed(self, message: Message) -> Optional[str]:
+    def handle_stupid_fucking_embed(self, message: Message) -> str | None:
         """Check if a message is a stupid fucking spec-beaking fake nitro emote embed
         Returns the emote name if it is, otherwise returns None.
         """
@@ -1419,7 +1417,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         """
         # get the message content
         if isinstance(message, Message):
-            content: Optional[str] = self.get_msg_content_clean(message)  # type: ignore
+            content: str | None = self.get_msg_content_clean(message)  # type: ignore
         elif isinstance(message, str):
             content: str = message
         else:

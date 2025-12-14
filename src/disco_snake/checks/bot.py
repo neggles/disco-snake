@@ -1,5 +1,6 @@
 import logging
-from typing import Callable, TypeVar
+from typing import TypeVar
+from collections.abc import Callable
 
 from disnake.ext import commands
 

@@ -2,7 +2,7 @@ import asyncio
 import logging
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import gradio as gr
 from gradio.components import Component
@@ -65,7 +65,7 @@ class GradioUi:
         # Last imagen trigger/prompt/image
         self.img_last_request: str = ""
         self.img_last_tags: str = ""
-        self.img_last_image: Optional[Path] = None
+        self.img_last_image: Path | None = None
         pass
 
     @property

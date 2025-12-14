@@ -1,5 +1,4 @@
 from random import choice as random_choice
-from typing import Optional, Union
 
 from disnake import Colour, Embed, File, Member, User
 from disnake.ext.commands import (
@@ -54,7 +53,7 @@ DENIED_GIF_PATH = DATADIR_PATH.joinpath("misc", "magic-word-2.gif")
 
 
 class MissingPermissionsEmbed(Embed):
-    def __init__(self, author: Union[User, Member] = None, error: MissingPermissions = None):
+    def __init__(self, author: User | Member = None, error: MissingPermissions = None):
         super().__init__(
             title="ah ah ah!",
             description="you didn't say the magic word!",
@@ -72,8 +71,8 @@ class MissingPermissionsEmbed(Embed):
 class NotAdminEmbed(Embed):
     def __init__(
         self,
-        author: Union[User, Member] = None,
-        description: Optional[str] = None,
+        author: User | Member = None,
+        description: str | None = None,
     ):
         super().__init__(
             title="Ah ah ah, you didn't say the magic word!",
@@ -88,7 +87,7 @@ class NotAdminEmbed(Embed):
 
 
 class MissingRequiredArgumentEmbed(Embed):
-    def __init__(self, author: Union[User, Member] = None, error: MissingRequiredArgument = None):
+    def __init__(self, author: User | Member = None, error: MissingRequiredArgument = None):
         super().__init__(
             title="Error!",
             description="Missing required argument: " + error.param.name,
@@ -99,7 +98,7 @@ class MissingRequiredArgumentEmbed(Embed):
 
 
 class NotFoundEmbed(Embed):
-    def __init__(self, author: Union[User, Member] = None, error: CommandNotFound = None):
+    def __init__(self, author: User | Member = None, error: CommandNotFound = None):
         super().__init__(
             title="Error!",
             description=f"{error.args} not found!",

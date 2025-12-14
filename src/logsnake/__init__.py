@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This helper provides a versatile yet easy to use and beautiful logging setup.
 You can use it to log to the console and optionally to a logfile. This project
@@ -254,7 +253,7 @@ class LogFormatter(logging.Formatter):
             # byte strings wherever possible).
             record.message = _safe_unicode(message)
         except Exception as e:
-            record.message = "Bad message (%r): %r" % (e, record.__dict__)
+            record.message = "Bad message ({!r}): {!r}".format(e, record.__dict__)
 
         record.asctime = self.formatTime(record, self.datefmt)
 
@@ -264,7 +263,7 @@ class LogFormatter(logging.Formatter):
         else:
             record.color = record.end_color = ""
 
-        formatted = self._fmt % record.__dict__
+        formatted = self._fmt % record.__dict__  # type: ignore
 
         if record.exc_info:
             if not record.exc_text:
@@ -313,7 +312,7 @@ def to_unicode(value):
     if isinstance(value, _TO_UNICODE_TYPES):
         return value
     if not isinstance(value, bytes):
-        raise TypeError("Expected bytes, unicode, or None; got %r" % type(value))
+        raise TypeError("Expected bytes, unicode, or None; got {!r}".format(type(value)))
     return value.decode("utf-8")
 
 
@@ -325,7 +324,13 @@ def _safe_unicode(s):
 
 
 def setup_default_logger(
-    logfile=None, level=DEBUG, formatter=None, maxBytes=0, backupCount=0, disableStderrLogger=False
+    logfile: str = None,
+    level: int | str = DEBUG,
+    formatter: logging.Formatter | None = None,
+    maxBytes: int = 0,
+    backupCount: int = 0,
+    disableStderrLogger: bool = False,
+    **kwargs,
 ):
     """
     Deprecated. Use `logsnake.loglevel(..)`, `logsnake.logfile(..)`, etc.
@@ -354,8 +359,10 @@ def setup_default_logger(
         logfile=logfile,
         level=level,
         formatter=formatter,
+        maxBytes=maxBytes,
         backupCount=backupCount,
         disableStderrLogger=disableStderrLogger,
+        **kwargs,
     )
     return logger
 
@@ -385,6 +392,8 @@ def reset_default_logger():
 
 # Initially setup the default logger
 reset_default_logger()
+# override type hint since the logger is now guaranteed to be not None
+logger: logging.Logger
 
 
 def loglevel(level=DEBUG, update_custom_handlers=False):
@@ -563,7 +572,7 @@ def _get_json_formatter(json_ensure_ascii):
     ]
 
     def log_format(x):
-        return ["%({0:s})s".format(i) for i in x]
+        return [f"%({i:s})s" for i in x]
 
     custom_format = " ".join(log_format(supported_keys))
     return JsonFormatter(custom_format, json_ensure_ascii=json_ensure_ascii)
@@ -573,7 +582,7 @@ def log_function_call(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
         args_str = ", ".join([str(arg) for arg in args])
-        kwargs_str = ", ".join(["%s=%s" % (key, kwargs[key]) for key in kwargs])
+        kwargs_str = ", ".join(["{}={}".format(key, kwargs[key]) for key in kwargs])
         if args_str and kwargs_str:
             all_args_str = ", ".join([args_str, kwargs_str])
         else:

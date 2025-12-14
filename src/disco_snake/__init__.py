@@ -1,8 +1,6 @@
 try:
-    from ._version import (
-        version as __version__,
-        version_tuple,
-    )
+    from ._version import version as __version__
+    from ._version import version_tuple
 except ImportError:
     __version__ = "unknown (no version information available)"
     version_tuple = (0, 0, "unknown", "noinfo")
@@ -11,7 +9,6 @@ from argparse import ArgumentParser
 from functools import lru_cache
 from pathlib import Path
 from sys import argv
-from typing import Optional
 
 from helpers import get_package_root
 
@@ -28,7 +25,7 @@ __config_suffix = None
 
 
 @lru_cache(maxsize=1)
-def config_suffix(daemon_path: bool = False) -> Optional[str | Path]:
+def config_suffix(daemon_path: bool = False) -> str | Path | None:
     global __config_suffix
     """oh this? this is a war crime. don't look at it. please. i'm begging you.
 
@@ -69,7 +66,7 @@ def config_suffix(daemon_path: bool = False) -> Optional[str | Path]:
     return __config_suffix
 
 
-def per_config_name(name: str, extension: Optional[str] = None) -> str:
+def per_config_name(name: str, extension: str | None = None) -> str:
     """Append the config suffix to a name, if it exists."""
     if extension is None and "." in name:
         # if we don't have an extension, but the name has one, split it

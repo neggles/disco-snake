@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import sqlalchemy as sa
 from pydantic import BaseModel, Field
@@ -14,11 +14,11 @@ class AiMessageInfo(BaseModel):
     timestamp: datetime = Field(datetime.now())
     guild_id: int = Field(...)
     guild: str | dict[str, Any] = Field(...)
-    author_id: int = Field(...)
-    author: str | dict[str, Any] = Field(...)
-    channel_id: int = Field(...)
-    channel: str | dict[str, Any] = Field(...)
-    author_name: str = Field(...)
+    author_id: int | None = None
+    author: str | dict[str, Any] | None = None
+    channel_id: int | None = None
+    channel: str | dict[str, Any] | None = None
+    author_name: str | None = None
     trigger: str = Field(...)
     content: str = Field(...)
 
@@ -34,16 +34,16 @@ class AiResponseLog(Base):
     app_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False)
     instance: Mapped[str] = mapped_column(sa.String, nullable=False)
     timestamp: Mapped[CreateTimestamp]
-    message: Mapped[Optional[AiMessageInfo]] = mapped_column(pg.JSONB, nullable=True)
-    parameters: Mapped[Optional[dict[str, Any]]] = mapped_column(pg.JSONB, nullable=True)
-    conversation: Mapped[Optional[list[str]]] = mapped_column(pg.ARRAY(sa.String), nullable=True)
-    context: Mapped[Optional[list[str]]] = mapped_column(pg.ARRAY(sa.String), nullable=True)
-    response: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
-    response_raw: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
-    response_id: Mapped[Optional[int]] = mapped_column(sa.BigInteger, nullable=True, index=True, unique=True)
-    thoughts: Mapped[Optional[list[str]]] = mapped_column(pg.ARRAY(sa.String), nullable=True)
-    n_prompt_tokens: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
-    n_context_tokens: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
+    message: Mapped[AiMessageInfo | None] = mapped_column(pg.JSONB, nullable=True)
+    parameters: Mapped[dict[str, Any] | None] = mapped_column(pg.JSONB, nullable=True)
+    conversation: Mapped[list[str] | None] = mapped_column(pg.ARRAY(sa.String), nullable=True)
+    context: Mapped[list[str] | None] = mapped_column(pg.ARRAY(sa.String), nullable=True)
+    response: Mapped[str | None] = mapped_column(sa.String, nullable=True)
+    response_raw: Mapped[str | None] = mapped_column(sa.String, nullable=True)
+    response_id: Mapped[int | None] = mapped_column(sa.BigInteger, nullable=True, index=True, unique=True)
+    thoughts: Mapped[list[str] | None] = mapped_column(pg.ARRAY(sa.String), nullable=True)
+    n_prompt_tokens: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    n_context_tokens: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
 
     @classmethod
     def from_old_format(cls, log_obj: dict) -> "AiResponseLog":

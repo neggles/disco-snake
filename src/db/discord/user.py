@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import disnake
 import sqlalchemy as sa
@@ -23,7 +23,7 @@ class BlacklistEntry(Base):
     __table_args__ = (sa.PrimaryKeyConstraint("user_id"),)
 
     user_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    user: Mapped["DiscordUser"] = relationship()
+    user: Mapped[DiscordUser] = relationship()
     reason: Mapped[str] = mapped_column(sa.String(length=256), nullable=False)
     timestamp: Mapped[CreateTimestamp]
 
@@ -39,16 +39,16 @@ class DiscordUser(Base):
     username: Mapped[DiscordName]
     discriminator: Mapped[int] = mapped_column(sa.Integer, server_default="0")
 
-    avatar: Mapped[Optional[str]] = mapped_column(sa.String(length=512))
+    avatar: Mapped[str | None] = mapped_column(sa.String(length=512))
     bot: Mapped[bool] = mapped_column(sa.Boolean)
     system: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.false())
 
-    email: Mapped[Optional[str]] = mapped_column(sa.String(length=256), default=None)
-    verified: Mapped[Optional[bool]] = mapped_column(sa.Boolean, default=None)
+    email: Mapped[str | None] = mapped_column(sa.String(length=256), default=None)
+    verified: Mapped[bool | None] = mapped_column(sa.Boolean, default=None)
 
-    flags: Mapped[Optional[int]] = mapped_column(sa.Integer, default=None)
-    premium_type: Mapped[Optional[int]] = mapped_column(sa.Integer, default=None)
-    public_flags: Mapped[Optional[int]] = mapped_column(sa.Integer, default=None)
+    flags: Mapped[int | None] = mapped_column(sa.Integer, default=None)
+    premium_type: Mapped[int | None] = mapped_column(sa.Integer, default=None)
+    public_flags: Mapped[int | None] = mapped_column(sa.Integer, default=None)
 
     first_seen: Mapped[CreateTimestamp]
     last_updated: Mapped[UpdateTimestamp]
@@ -100,7 +100,7 @@ class DiscordUser(Base):
         self.discriminator = discriminator
 
     @classmethod
-    def from_discord(cls, user: disnake.User | disnake.Member) -> "DiscordUser":
+    def from_discord(cls, user: disnake.User | disnake.Member) -> DiscordUser:
         """Convert a disnake User or Member object to a DiscordUser object.
 
         :param user: :class:`disnake.User` | :class:`disnake.Member`

@@ -1,6 +1,7 @@
 from collections.abc import MutableMapping
 from datetime import datetime
-from typing import Any, ClassVar, Generator, Union
+from typing import Any, ClassVar
+from collections.abc import Generator
 
 import sqlalchemy as sa
 
@@ -24,7 +25,7 @@ class Blacklist(MutableMapping):
             raise KeyError(key)
         return entry
 
-    def __setitem__(self, key, value: Union[BlacklistEntry, str]):
+    def __setitem__(self, key, value: BlacklistEntry | str):
         """Add a discord user to the blacklist.
         Key must be their user ID, value must be a BlacklistEntry or reason string.
         """

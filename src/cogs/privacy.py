@@ -1,7 +1,6 @@
 # pyright: reportArgumentType=false
 # pyright: reportAssignmentType=false
 import logging
-from typing import Optional, Union
 
 from disnake import (
     ApplicationCommandInteraction,
@@ -48,10 +47,10 @@ def get_policy_text(bot: DiscoSnake) -> str:
 class PrivacyEmbed(Embed):
     def __init__(
         self,
-        author: Union[User, Member],
+        author: User | Member,
         user: DiscordUser,
-        support_guild: Optional[Guild] = None,
-        invite: Optional[Invite] = None,
+        support_guild: Guild | None = None,
+        invite: Invite | None = None,
     ):
         super().__init__(
             title="Privacy Policy",
@@ -75,7 +74,7 @@ class PrivacyEmbed(Embed):
 class PrivacyView(View):
     def __init__(self, user: DiscordUser):
         self.user: DiscordUser = user
-        self.message: Optional[Message] = None
+        self.message: Message | None = None
         super().__init__(timeout=180)
 
     @ui.button(label="Accept", style=ButtonStyle.green, custom_id=f"{COG_UID}:PrivacyView:accept")

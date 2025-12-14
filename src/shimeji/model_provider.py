@@ -5,7 +5,7 @@ import re
 from abc import ABC, abstractmethod
 from functools import wraps
 from os import PathLike
-from typing import Any, Optional
+from typing import Any
 from warnings import warn
 
 import aiohttp
@@ -203,7 +203,7 @@ class ModelProvider(ABC):
     @abstractmethod
     def response(
         self,
-        context: Optional[str],
+        context: str | None,
         gensettings: BaseModel | None = None,
         return_dict: bool = False,
     ) -> str | dict[str, Any]:
@@ -217,7 +217,7 @@ class ModelProvider(ABC):
 
     async def response_async(
         self,
-        context: Optional[str],
+        context: str | None,
         gensettings: dict | BaseModel | None = None,
         return_dict: bool = False,
     ) -> str | dict[str, Any]:

@@ -4,7 +4,7 @@ import re
 from base64 import b64encode
 from datetime import datetime
 from io import BytesIO
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from aiohttp import ClientError, ClientSession
@@ -43,13 +43,13 @@ class InfoResponse(BaseModel):
 
 class CaptionResponse(BaseModel):
     caption: str = Field(...)
-    info: Optional[InfoResponse] = None
-    error: Optional[str] = None
+    info: InfoResponse | None = None
+    error: str | None = None
 
 
 class DiscoEyes:
     def __init__(self, cog: "Ai") -> None:
-        self.cog: "Ai" = cog
+        self.cog: Ai = cog
         self.config: VisionConfig = cog.config.vision  # type: ignore
         self.timezone: ZoneInfo = cog.bot.timezone
         self.web_client: ClientSession = None  # type: ignore
@@ -99,7 +99,7 @@ class DiscoEyes:
         return self.config.host
 
     @property
-    def api_token(self) -> Optional[str]:
+    def api_token(self) -> str | None:
         return self.config.token
 
     @property
@@ -154,7 +154,7 @@ class DiscoEyes:
         logger.info(f"Received caption: {caption}")
         return response if return_obj else caption
 
-    async def perceive_url(self, url: str, id: Optional[int] = None) -> str | CaptionResponse | None:
+    async def perceive_url(self, url: str, id: int | None = None) -> str | CaptionResponse | None:
         if id is not None:
             image_caption = await self.db_client_get_caption(id)
             if image_caption is not None:
@@ -236,7 +236,7 @@ class DiscoEyes:
             return None
         return await self.submit_request(data)
 
-    async def _get_thumbnail(self, attachment: Attachment) -> Optional[Image.Image]:
+    async def _get_thumbnail(self, attachment: Attachment) -> Image.Image | None:
         if attachment.content_type is None:
             logger.debug("Attachment has no content type")
             return None
@@ -290,7 +290,7 @@ class DiscoEyes:
         logger.debug("Caption saved successfully")
         return caption_str
 
-    async def db_client_get_caption(self, image_id: int) -> Optional[ImageCaption]:
+    async def db_client_get_caption(self, image_id: int) -> ImageCaption | None:
         async with self.db_client.begin() as session:
             caption = await session.get(ImageCaption, image_id)
         return caption

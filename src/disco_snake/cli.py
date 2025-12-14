@@ -2,7 +2,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 import uvloop
@@ -92,7 +91,7 @@ class BotDaemon(FHSDaemon):
 )
 @click.version_option(package_name="disco-snake")
 @pass_daemon
-def cli(daemon: BotDaemon, config: Optional[Path] = None):
+def cli(daemon: BotDaemon, config: Path | None = None):
     """
     disco-snake discord bot CLI service controller.
 
@@ -115,7 +114,7 @@ def cli(daemon: BotDaemon, config: Optional[Path] = None):
     return start_bot(daemon, config_path)
 
 
-def start_bot(daemon: BotDaemon, config_path: Optional[Path] = None):
+def start_bot(daemon: BotDaemon, config_path: Path | None = None):
     if not hasattr(daemon, "bot"):
         daemon.bot = DiscoSnake(config_path=config_path)
 

@@ -1,6 +1,7 @@
 import logging
 from enum import Enum
-from typing import Annotated, Iterator
+from typing import Annotated
+from collections.abc import Iterator
 
 from pydantic import BaseModel, Field, RootModel
 from pydantic_settings import SettingsConfigDict

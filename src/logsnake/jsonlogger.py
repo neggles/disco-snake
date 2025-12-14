@@ -12,14 +12,11 @@ import re
 import sys
 import traceback
 from collections import OrderedDict
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from inspect import istraceback
-from typing import Type
 
 if sys.version_info >= (3,):
-    from datetime import timezone
-
-    tz = timezone.utc
+    tz = UTC
 else:
     tz = None
 
@@ -79,7 +76,7 @@ class JsonEncoder(json.JSONEncoder):
         elif istraceback(o):
             return "".join(traceback.format_tb(o)).strip()
 
-        elif issubclass(o, Exception) or isinstance(o, Exception) or isinstance(o, Type):
+        elif issubclass(o, Exception) or isinstance(o, Exception) or isinstance(o, type):
             return str(o)
 
         try:
@@ -206,7 +203,7 @@ class JsonFormatter(logging.Formatter):
 
     def serialize_log_record(self, log_record):
         """Returns the final representation of the log record."""
-        return "%s%s" % (self.prefix, self.jsonify_log_record(log_record))
+        return f"{self.prefix}{self.jsonify_log_record(log_record)}"
 
     def format(self, record):
         """Formats a log record and serializes to json"""

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,7 +29,7 @@ if False:
         id: Mapped[DiscordSnowflake] = mapped_column(primary_key=True)
         name: Mapped[str] = mapped_column(sa.String(length=100), nullable=False)
         member_count: Mapped[int] = mapped_column(sa.Integer, nullable=False)
-        description: Mapped[Optional[str]] = mapped_column(sa.String(length=1000))
+        description: Mapped[str | None] = mapped_column(sa.String(length=1000))
         created_at: Mapped[Timestamp]
         nsfw_level: Mapped[NSFWLevel] = mapped_column(sa.Enum(NSFWLevel), nullable=False)
 

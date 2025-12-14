@@ -1,14 +1,13 @@
 import logging
 import re
 from pathlib import Path
-from typing import Union
 
 
 def get_package_root() -> Path:
     return Path(__file__).parent.parent
 
 
-def parse_log_level(level: Union[str, int]) -> int:
+def parse_log_level(level: str | int) -> int:
     if isinstance(level, str):
         level = level.lower()
         if level.startswith(("deb", "ver")):

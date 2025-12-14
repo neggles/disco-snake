@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
@@ -14,10 +13,10 @@ class ImageCaption(Base):
 
     id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
     filename: Mapped[str] = mapped_column(sa.String, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(sa.String(length=1024))
+    description: Mapped[str | None] = mapped_column(sa.String(length=1024))
     size: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     url: Mapped[str] = mapped_column(sa.String, nullable=False)
-    proxy_url: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    proxy_url: Mapped[str | None] = mapped_column(sa.String, nullable=True)
     height: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     width: Mapped[int] = mapped_column(sa.Integer, nullable=False)
 

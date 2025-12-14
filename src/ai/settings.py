@@ -5,7 +5,8 @@ from enum import Enum
 from functools import cached_property
 from os import PathLike
 from pathlib import Path
-from typing import Annotated, Iterator, Optional
+from typing import Annotated
+from collections.abc import Iterator
 
 from pydantic import BaseModel, Field, RootModel, field_validator
 from pydantic_settings import SettingsConfigDict
@@ -49,7 +50,7 @@ class NamedSnowflake(BaseModel):
 
     id: int = Field(...)
     name: str = Field("")  # not actually used, just here so it can be in config
-    note: Optional[str] = None
+    note: str | None = None
 
 
 class SnowflakeList(RootModel):
@@ -67,7 +68,7 @@ class SnowflakeList(RootModel):
     def ids(self) -> list[int]:
         return [x.id for x in self.root]
 
-    def get_id(self, id: int) -> Optional[NamedSnowflake]:
+    def get_id(self, id: int) -> NamedSnowflake | None:
         for item in self.root:
             if item.id == id:
                 return item
@@ -92,8 +93,8 @@ class PermissionList(BaseModel):
 class ChannelSettings(NamedSnowflake):
     """Settings for a specific channel in a guild. Overrides guild settings."""
 
-    respond: Optional[ResponseMode] = None
-    bot_action: Optional[BotMode] = None
+    respond: ResponseMode | None = None
+    bot_action: BotMode | None = None
     imagen: bool = True
     idle_enable: bool = False
     idle_interval: int = Field(300)
@@ -106,7 +107,7 @@ class GuildSettings(NamedSnowflake):
     imagen: bool = True
     respond: ResponseMode = Field(ResponseMode.Mentioned)
     bot_action: BotMode = Field(BotMode.Siblings)
-    mention_role: Optional[int] = None
+    mention_role: int | None = None
     idle_enable: bool = False
     idle_interval: int = Field(300)
     channels: list[ChannelSettings] = Field([])
@@ -156,7 +157,7 @@ class GuildSettingsList(RootModel):
     def guild_ids(self) -> list[int]:
         return [x.id for x in self]
 
-    def get_id(self, guild_id: int) -> Optional[GuildSettings]:
+    def get_id(self, guild_id: int) -> GuildSettings | None:
         for guild in self.root:
             if guild.id == guild_id:
                 return guild
@@ -172,7 +173,7 @@ class BotParameters(BaseModel):
     nicknames_quiet: list[str] = Field(default_factory=list)
     context_size: int = -1
     context_messages: int = 100
-    logging_channel_id: Optional[int] = None
+    logging_channel_id: int | None = None
     debug: bool = False
     memory_enable: bool = False
     max_retries: int = 3
@@ -194,7 +195,7 @@ class BotParameters(BaseModel):
     def dm_user_ids(self) -> list[int]:
         return self.dm_users.ids
 
-    def get_guild_settings(self, guild_id: int) -> Optional[GuildSettings]:
+    def get_guild_settings(self, guild_id: int) -> GuildSettings | None:
         return self.guilds.get_id(guild_id)
 
     def get_idle_channels(self) -> list[int]:
@@ -332,8 +333,8 @@ class GradioConfig(BaseModel):
     bind_port: int = 7863
     enable_queue: bool = True
     width: str = "100%"
-    theme: Optional[str] = None
-    root_path: Optional[str] = None
+    theme: str | None = None
+    root_path: str | None = None
 
 
 class WebuiConfig(BaseModel):
@@ -341,7 +342,7 @@ class WebuiConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 7850
     secret: str = Field(...)
-    title: Optional[str] = Field(None, exclude=True)  # n.b. this is set dynamically, not in config
+    title: str | None = Field(None, exclude=True)  # n.b. this is set dynamically, not in config
 
 
 class LMApiConfig(BaseModel):
@@ -360,7 +361,7 @@ class VisionConfig(BaseModel):
     enabled: bool = False  # whether to caption images or not
     host: str = "http://localhost:7862"  # host for vision api
     route: str = "/api/v1/caption"  # route for vision api
-    token: Optional[str] = None  # bearer token for api
+    token: str | None = None  # bearer token for api
     background: bool = False  # whether to caption images proactively in the background
     channel_ttl: int = 90  # monitor channel for this many seconds after last response
 
@@ -371,7 +372,7 @@ class AiSettings(JsonSettings):
     params: BotParameters
     model_provider: LMApiConfig
     gradio: GradioConfig
-    vision: Optional[VisionConfig] = None
+    vision: VisionConfig | None = None
     analysis_header: str = "-# Analysis:"
     empty_react: str = "🤷‍♀️"
     strip: list[str] = Field([])
@@ -411,11 +412,11 @@ class ImagenApiParams(BaseModel):
     hr_denoise: float = 0.62
     hr_scale: float = 1.5
     hr_upscaler: str = "Latent"
-    checkpoint: Optional[str] = None
-    vae: Optional[str] = None
+    checkpoint: str | None = None
+    vae: str | None = None
     clip_skip: int = 2
-    overrides: Optional[dict] = None
-    alwayson_scripts: Optional[dict] = None
+    overrides: dict | None = None
+    alwayson_scripts: dict | None = None
 
     def get_request(self, prompt: str, negative: str, width: int = -1, height: int = -1):
         request_obj = {
@@ -481,7 +482,7 @@ class ImagenLMPrompt(BaseModel):
         prompt = prompt.strip()
         return prompt if len(prompt) > 0 else "a cute girl looking out her apartment window"
 
-    def wrap_prompt(self, user_message: Optional[str] = None) -> str:
+    def wrap_prompt(self, user_message: str | None = None) -> str:
         if user_message is None or len(user_message) == 0:
             user_message = self.default_prompt
         return "\n".join(self.template).format(prompt_tags=self.tag_string, user_message=user_message.strip())
@@ -489,7 +490,7 @@ class ImagenLMPrompt(BaseModel):
     def clean_tags(self, prompt: str) -> str:
         return prompt.replace(f"{self.tag_string},", "").strip()
 
-    def get_request(self, prompt: Optional[str] = None) -> OobaGenRequest:
+    def get_request(self, prompt: str | None = None) -> OobaGenRequest:
         gensettings = deepcopy(self.gensettings)
         if prompt is not None and prompt != "":
             gensettings.prompt = prompt
