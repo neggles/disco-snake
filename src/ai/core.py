@@ -9,7 +9,7 @@ from io import BytesIO
 from pathlib import Path
 from random import choice as random_choice
 from traceback import format_exc
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import jinja2 as j2
 from disnake import (
@@ -58,6 +58,7 @@ from ai.types import AiResponse, LruDict, ModelInfo
 from ai.ui import AiParam, AiStatusEmbed, convert_param, set_choices
 from ai.utils import (
     MentionMixin,
+    cleanup_thoughts,
     get_prompt_datetime,
     member_in_any_role,
 )
@@ -436,10 +437,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if message.author.bot is True:
             if self.last_trigger_was_bot(message) is True:
                 return  # ignore messages from bots if the last message we responded to was from a bot
-        if message.content.startswith("-") or message.content.startswith(", "):
-            return  # ignore messages that start with a dash or comma-space
-        if message.content.strip() == ".":
-            return  # ignore messages with only a period
+        if message.content.startswith(", "):
+            return  # ignore messages that start with a comma-space
+        if len(message.content.strip()) == 1:
+            return  # ignore messages with only a single character
         if "```" in message.content:
             return  # ignore messages with code blocks
 
@@ -633,7 +634,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if msg.author.id == self.bot.user.id:
                 if msg.content.startswith("This is an AI chatbot made by"):
                     continue  # this is a TOS message in a DM so lets skip it
-                if msg.content.startswith("-# Analysis:"):
+                if msg.content.startswith(self.config.analysis_header):
                     continue
                 if msg.embeds and msg.embeds[0].type == "rich":
                     continue
@@ -868,16 +869,19 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     # there is, so we should reply with the image
                     logger.info("i'm feeling creative, let's make an image...")
                     try:
-                        resp_img = await self.take_pic(message=description)
+                        resp_img, img_debug_data = await self.take_pic(message=message)
+                        debug_data.update(img_debug_data)
                         should_reply = True
-                    except Exception as e:
-                        raise Exception("Failed to generate image response") from e
+                    except Exception:
+                        logger.exception("Failed to generate image response")
+                        pass
 
                 # if we haven't described an image, but the user asked for one, send one anyway
                 elif self.imagen.should_take_pic(message.content):
                     logger.info("the people have spoken and they want catgirl selfies")
                     try:
-                        resp_img = await self.take_pic(message=message)
+                        resp_img, img_debug_data = await self.take_pic(message=message)
+                        debug_data.update(img_debug_data)
                         should_reply = True
                     except Exception:
                         logger.exception("Failed to generate image response")
@@ -889,19 +893,18 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     logger.debug("Found chain of thought in response")
                     thoughts, response = response.rsplit("</think>", 1)
                     # debug log thought lines
-                    debug_data["thoughts"] = [x.strip() for x in thoughts.splitlines() if x.strip() != ""]
+                    thoughts = cleanup_thoughts([x.strip() for x in thoughts.splitlines()])
+                    debug_data["thoughts"] = thoughts
+
                     logger.debug(f"Thoughts: {debug_data['thoughts']}")
                     # strip whitespace from response
                     response = response.strip().lstrip('"*_-`')
-                    if response.startswith(f"{self.name}:"):
-                        response = response[len(f"{self.name}:") :].strip()
+                    if any(response.startswith(f"{x}:") for x in self.nicknames + self.nicknames_quiet):
+                        response = response.split(":", 1)[1].lstrip()
                     else:
                         logger.warning(
                             "CoT response did not start with bot name after </think>, this is probably bad"
                         )
-
-                if any(response.startswith(f"{x}:") for x in self.nicknames + self.nicknames_quiet):
-                    response = response.split(":", 1)[1].lstrip()
 
                 # if bot did a "\nsomeusername:" cut it off
                 if len(re_linebreak_name.findall(response)) > 0:
@@ -926,7 +929,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 # Unescape markdown
                 response = re_unescape_md.sub(r"\1", response)
                 # Clean up multiple non-word characters at the end of the response
-                response = re_nonword_end.sub(r"\1", response)
+                # response = re_nonword_end.sub(r"\1", response)
                 # scream into the void
                 response = response.replace("\\r", "").replace("\\n", "\n")
                 response = response.replace("\\u00a0", "\n")
@@ -935,28 +938,30 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
                 if self.prompt.disco_mode:
                     if response == "":
-                        logger.warning("Response was empty in disco mode, giving up")
+                        logger.warning("Response was empty in disco mode...")
                     else:
                         logger.debug("Prepending prompt to response (disco mode)")
                         response = f"{context} {response}"
 
-                resp = AiResponse(ctx=message, content=response, is_reply=should_reply)
+                # construct AiResponse object, don't use `response` variable name to avoid confusion
+                resp = AiResponse(ctx=message, content=response, image=resp_img, is_reply=should_reply)
+                del response  # avoid confusion
 
-                if len(response) > 1900:
+                if len(resp.content) > 1900:
                     if self.prompt.disco_mode:
                         logger.debug("Overlength response in disco mode, will send as file")
-                        buf = BytesIO(response.encode("utf-8"))
+                        buf = BytesIO(resp.content.encode("utf-8"))
                         resp.file = File(buf, filename="story.txt")
                     else:
                         logger.debug("Response is too long, trimming...")
-                        response = response[:1900].strip() + "-"
+                        resp.content = resp.content[:1900].strip() + "-"
 
                 if append is not None and len(append.strip()) > 0:
-                    response = f"{response} < {append.strip()} >"
-                debug_data["response"] = response
+                    resp.content = f"{resp.content} < {append.strip()} >"
+                debug_data["response"] = resp.content
 
                 # Send response if not empty
-                sent = await self.send_response(resp)
+                resp, sent = await self.send_response(resp)
                 if isinstance(sent, Message):
                     debug_data["response_id"] = sent.id
 
@@ -1005,7 +1010,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 return response, None
 
         log_msg = "Response: "
-        if response.content is not None:
+        if response.content:
             if response.file:
                 # response was too long so we made it a file
                 response.content = " ".join(response.content.split(" ")[:20]) + "... <too long, attached>"
@@ -1031,7 +1036,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if not response.content and not response.file and not response.image:
             # empty response, just react
             logger.info(log_msg + " -- empty response, adding reaction only")
-            await response.ctx.add_reaction(self.config.empty_react)
+            await response.add_reaction(self.config.empty_react)
             return response, None
         else:
             logger.info(log_msg)
@@ -1098,12 +1103,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 return
 
             thoughts_file = None
-            thoughts_str = "\n".join(["-# Analysis:"] + [f"> {x}" for x in thoughts])
+            thoughts_str = "\n".join([self.config.analysis_header] + [f"> {x}" for x in thoughts])
 
             if len(thoughts_str) > 2000:
                 buf = BytesIO("\n".join(thoughts).encode("utf-8"))
                 thoughts_file = File(buf, filename=f"thoughts-{ctx.target.id}.txt")
-                thoughts_str = "-# Analysis:\n" + thoughts[0][:40] + "... (too long, attached)"
+                thoughts_str = (
+                    self.config.analysis_header + "\n" + thoughts[0][:40] + "... (too long, attached)"
+                )
 
             # thoughts_embed = Embed(title="Chain of Thought", description=thoughts_str, color=0x8D56EE)
             if thoughts_file:
@@ -1260,7 +1267,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         """
         Fix <USER>, <BOT>, etc tokens in the response
         """
-        if message.author.nick and message.author.nick is not None:
+        if hasattr(message.author, "nick") and message.author.nick is not None:
             author_name = message.author.nick
         elif message.author.global_name is not None:
             author_name = message.author.global_name
@@ -1407,7 +1414,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     logger.exception(f"Error processing image {attachment.url}")
 
     ## Image generation stuff
-    async def take_pic(self, message: Message | str) -> Optional[Tuple[File, dict]]:
+    async def take_pic(self, message: Message | str) -> tuple[File | None, dict[str, Any]]:
         """
         hold up, let me take a selfie
         """
@@ -1419,43 +1426,50 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         else:
             raise ValueError("take_pic got an unexpected message type (not str or Message)")
 
-        if content is None:
+        if not content:
             logger.debug("Message was empty after cleaning.")
-            return None
+            return None, {}
+
+        debug_data: dict = {}
 
         # lowercase the content
         content = content.lower().strip()
-
         # get the image description and remove newlines
         content = content.replace("\n", " ").replace(f"{self.name} ", "")
 
         # build the LLM prompt for the image
         lm_trigger = self.imagen.strip_take_pic(content)
         lm_prompt, user_request = self.imagen.get_lm_prompt(lm_trigger)
+        debug_data["imagen_llm_prompt"] = lm_prompt
         logger.info(f"LLM Request: {user_request}")
 
         # get the LLM to create tags for the image
         lm_tag_string = await self.imagen.submit_lm_prompt(lm_prompt)
         lm_tag_string = lm_tag_string.strip('",').lower()
+        debug_data["imagen_llm_tags"] = lm_tag_string
         logger.info(f"LLM Response: {lm_tag_string}")
 
         # build the SD API request
         sdapi_request = self.imagen.build_request(lm_tag_string, content)
-        logger.info(f"SD API Request: {json.dumps(sdapi_request)}")
+        debug_data["imagen_sdapi_request"] = json.dumps(sdapi_request)
+        logger.info(f"SD API Request: {sdapi_request!r}")
 
         # submit it
         try:
             result_path = await self.imagen.submit_request(sdapi_request)
+            debug_data["imagen_result_path"] = str(result_path)
+            logger.info(f"Image generated at {result_path}")
             # return a discord File object to upstream
             result_file = File(result_path, filename=result_path.name)
+
             if self.webui.config.enabled:
                 try:
                     self.webui.imagen_update(lm_trigger, lm_tag_string, result_path)
-                except Exception as e:
-                    logger.exception(e)
-            return result_file  # type: ignore  # bad type hint in disnake
+                except Exception:
+                    logger.exception("Failed to update webui with image generation data")
+            return result_file, debug_data  # type: ignore  # bad type hint in disnake
         except RuntimeError as e:
-            logger.exception(e)
+            logger.exception("Image generation failed")
             raise e
 
     ## UI stuff

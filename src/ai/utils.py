@@ -24,6 +24,35 @@ re_emoji = re.compile(r"<(a)?(:[^:]+:)(\d+)>", re.I)
 re_mention_resp = re.compile(r"(@\w+)\b", re.I)
 
 
+def cleanup_thoughts(thoughts: list[str]) -> list[str]:
+    """Cleans up a list of thought strings by stripping leading and trailing whitespace and removing <think> tags."""
+    thoughts = [x.strip() for x in thoughts]
+    n_lines = len(thoughts)
+    cleaned = []
+
+    start_line = 0
+    for idx, line in enumerate(thoughts):
+        if line != "":
+            start_line = idx
+            break
+    last_text_idx = n_lines
+    for idx in range(n_lines, -1, -1):
+        if thoughts[idx] != "":
+            last_text_idx = idx
+            break
+
+    for line in thoughts[start_line : last_text_idx + 1]:
+        line = line.strip()
+        if line.startswith("<think>") or line.endswith("</think>"):
+            if line := line.replace("<think>", "", 1).replace("</think>", "", 1).strip():
+                cleaned.append(line)
+            continue
+        else:
+            # keep empty lines in the middle
+            cleaned.append(line)
+    return cleaned
+
+
 def shorten_spaces(text: str) -> str:
     """
     Remove extra spaces from a string (e.g. "  hello  world  " -> " hello world ")

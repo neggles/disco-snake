@@ -1,14 +1,13 @@
-version: "3.8"
-
+---
 services:
   db:
     container_name: disco-db
     # if you don't care about the pgvector stuff, you can just use the official postgres image
     image: ghcr.io/neggles/disco-snake/pgvector:latest
     build:
-        context: ./docker/db
-        dockerfile: Dockerfile
-        target: pgvector
+      context: ./docker/db
+      dockerfile: Dockerfile
+      target: pgvector
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${PG_USER:-postgres}
@@ -29,7 +28,7 @@ services:
           create_host_path: true
     healthcheck:
       disable: false
-      test: ["CMD", "pg_isready", "-U", "${PG_USER}", "-h", "127.0.0.1" ]
+      test: ["CMD", "pg_isready", "-U", "${PG_USER}", "-h", "127.0.0.1"]
       start_period: 5s
       interval: 5s
       retries: 3
@@ -37,7 +36,7 @@ services:
 
   pgadmin4:
     container_name: disco-pgadmin
-    image: dpage/pgadmin4:7
+    image: dpage/pgadmin4:9
     restart: unless-stopped
     profiles:
       - pgadmin
@@ -47,7 +46,7 @@ services:
       PGADMIN_LISTEN_PORT: "5050"
       PGADMIN_CONFIG_SERVER_MODE: "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "30" # 10=DEBUG, 20=INFO, 30=WARN, 40=ERROR, 50=CRITICAL
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "30"
     volumes:
       - type: bind
         source: ./data/pgdata/pgadmin/
@@ -62,7 +61,7 @@ services:
         condition: service_healthy
     healthcheck:
       disable: false
-      test: [ "CMD", "nc", "-vz", "127.0.0.1", "5050" ]
+      test: ["CMD", "nc", "-vz", "127.0.0.1", "5050"]
       start_period: 5s
       interval: 5s
       retries: 3

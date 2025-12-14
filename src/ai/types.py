@@ -75,7 +75,7 @@ class AiResponseLog(BaseModel):
 
 class AiResponse(BaseModel):
     ctx: Message = Field(...)
-    content: str | None = None
+    content: str = ""
     image: disnake.File | None = None
     file: disnake.File | None = None
     is_reply: bool = False
