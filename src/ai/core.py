@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from asyncio import Lock
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from random import choice as random_choice
@@ -836,10 +836,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     # save raw response for debugging
                     debug_data["response_raw"] = response.splitlines(keepends=True)
 
-                    # check for <think> tag and trim
-                    if "</think>" in response:
+                    # check for think tag and trim
+                    if self.prompt.think_start in response:
                         logger.debug("Found chain of thought in response")
-                        thoughts, response = response.rsplit("</think>", 1)
+                        thoughts, response = response.rsplit(self.prompt.think_end, 1)
                         # debug log thought lines
                         thoughts = cleanup_thoughts([x.strip() for x in thoughts.splitlines()])
                         debug_data["thoughts"] = thoughts
@@ -849,10 +849,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         response = response.strip().lstrip('"*_-`')
                         if any(response.startswith(f"{x}:") for x in self.nicknames + self.nicknames_quiet):
                             response = response.split(":", 1)[1].lstrip()
-                        else:
-                            logger.warning(
-                                "CoT response did not start with bot name after </think>, this is probably bad"
-                            )
 
                     bad_words = self.find_bad_words(response)
                     if bad_words:
