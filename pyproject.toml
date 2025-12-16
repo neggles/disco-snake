@@ -24,7 +24,7 @@ dependencies = [
     "async_lru>=2.0.2",
     "colorama>=0.4.5",
     "daemonocle>=1.2.3",
-    "disnake>=2.8.1",
+    "disnake>=2.11.0",
     "ftfy>=6.1.1",
     "gradio>=3.32.0,<4.0.0",
     "hf-transfer",

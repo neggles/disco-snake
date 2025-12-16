@@ -22,7 +22,10 @@ from disnake import (
     Invite,
     Member,
     Message,
+    StatusDisplayType,
     TextChannel,
+)
+from disnake import (
     __version__ as DISNAKE_VERSION,
 )
 from disnake.ext import commands, tasks
@@ -348,8 +351,12 @@ class DiscoSnake(commands.Bot):
         """
         Set up the bot's status task
         """
-        activity_type = getattr(ActivityType, self.config.status_type, ActivityType.playing)
-        activity = Activity(name=random.choice(self.config.statuses), type=activity_type)
+        activity_type = ActivityType.__members__.get(self.config.status_type, ActivityType.custom)
+        activity = Activity(
+            name=random.choice(self.config.statuses),
+            type=activity_type,
+            status_display_type=StatusDisplayType.state,
+        )
         await self.change_presence(activity=activity)
 
     @status_task.before_loop
