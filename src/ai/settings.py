@@ -1,12 +1,12 @@
 # pyright: reportArgumentType=false
 import logging
+from collections.abc import Iterator
 from copy import deepcopy
 from enum import Enum
 from functools import cached_property
 from os import PathLike
 from pathlib import Path
 from typing import Annotated
-from collections.abc import Iterator
 
 from pydantic import BaseModel, Field, RootModel, field_validator
 from pydantic_settings import SettingsConfigDict
@@ -316,6 +316,8 @@ class Prompt(BaseModel):
     system: PromptElement = Field(...)
     character: PromptElement = Field(...)
 
+    think_start: str = Field("<think>")
+    think_end: str = Field("</think>")
     template_file: str = Field("chat_template.j2")
 
     @property
