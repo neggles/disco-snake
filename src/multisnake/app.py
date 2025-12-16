@@ -1,6 +1,7 @@
 # ruff: noqa: E402
 import subprocess
-from enum import Enum
+import time
+from enum import Enum, EnumType
 from functools import wraps
 from typing import Annotated
 
@@ -40,6 +41,16 @@ def cli(
         DaemonAction,
         typer.Argument(help="Action to perform"),
     ],
+    parallel: Annotated[
+        bool,
+        typer.Option(
+            "--parallel",
+            "-p",
+            help="Run actions in parallel",
+            is_flag=True,
+            show_default=True,
+        ),
+    ] = False,
     configs: Annotated[
         list[ConfigName] | None,  # type: ignore
         typer.Argument(
@@ -55,13 +66,24 @@ def cli(
         raise typer.Exit(1)
 
     if configs[0] == ConfigName.all:
-        configs = [config for config in ConfigName if config != ConfigName.all]
+        configs = [config for config in ConfigName if config != ConfigName["all"]]
 
-    config: Enum
+    config: EnumType
+    procs: dict[str, subprocess.Popen] = {}
     for config in configs:
         pprint(f"[lime]{action.name}[/] [bold cyan]{config.value}[/]...")
         cli_args = [action.value] if config.name == "default" else ["--config", config.name, action.value]
         proc = subprocess.Popen(["disco-snake", *cli_args])
-        proc.communicate()
+        if parallel:
+            procs[config.value] = proc
+            time.sleep(0.5)  # slight delay
+        else:
+            proc.communicate()
+
+    if parallel:
+        for config_val, proc in procs.items():
+            pprint(f"[lime]waiting for[/] [bold cyan]{config_val}[/] [lime]to complete...[/]")
+            proc.communicate()
+
     pprint("[bold green]Done![/]")
     pass

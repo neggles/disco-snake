@@ -1,7 +1,7 @@
 import logging
-from enum import Enum
-from typing import Annotated
 from collections.abc import Iterator
+from enum import Enum, EnumType
+from typing import Annotated
 
 from pydantic import BaseModel, Field, RootModel
 from pydantic_settings import SettingsConfigDict
@@ -26,7 +26,7 @@ class ConfigList(RootModel):
     def __getitem__(self, key) -> ConfigInfo:
         return self.root.__getitem__(key)
 
-    def get_enum(self) -> type[Enum]:
+    def get_enum(self) -> EnumType:
         """Create an enum from the list of settings"""
         # make a dict of config names to config values, backwards Because Click
         configs = {info.config: info.name for info in self.root}
@@ -49,4 +49,4 @@ class MultisnakeSettings(JsonSettings):
 
 
 settings: MultisnakeSettings = MultisnakeSettings()  # type: ignore
-ConfigName: type[Enum] = settings.configs.get_enum()
+ConfigName: EnumType = settings.configs.get_enum()
