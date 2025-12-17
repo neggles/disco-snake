@@ -1,53 +1,54 @@
+---
 # See https://pre-commit.com for more information
 ci:
-    autofix_prs: true
-    autoupdate_branch: "main"
-    autoupdate_commit_msg: "[pre-commit.ci] pre-commit autoupdate"
-    autoupdate_schedule: monthly
+  autofix_prs: true
+  autoupdate_branch: "main"
+  autoupdate_commit_msg: "[pre-commit.ci] pre-commit autoupdate"
+  autoupdate_schedule: monthly
 
 repos:
-    - repo: https://github.com/astral-sh/ruff-pre-commit
-      rev: v0.14.9
-      hooks:
-          # Run the linter.
-          - id: ruff
-            types_or: [python, pyi, jupyter]
-            args: [--fix, --exit-non-zero-on-fix]
-          # Run the formatter.
-          - id: ruff-format
-            types_or: [python, pyi, jupyter]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.9
+    hooks:
+      # Run the linter.
+      - id: ruff
+        types_or: [python, pyi, jupyter]
+        args: [--fix, --exit-non-zero-on-fix]
+      # Run the formatter.
+      - id: ruff-format
+        types_or: [python, pyi, jupyter]
 
-    - repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: v4.6.0
-      hooks:
-          - id: trailing-whitespace
-            exclude_types:
-                - "markdown"
-          - id: end-of-file-fixer
-          - id: check-toml
-          - id: check-yaml
-          - id: check-added-large-files
-            exclude: ^src/ai/tokenizers/.*$
-            args:
-                - "--maxkb=4096"
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude_types:
+          - "markdown"
+      - id: end-of-file-fixer
+      - id: check-toml
+      - id: check-yaml
+      - id: check-added-large-files
+        exclude: ^src/ai/tokenizers/.*$
+        args:
+          - "--maxkb=4096"
 
-    - repo: https://github.com/adrienverge/yamllint.git
-      rev: v1.37.1
-      hooks:
-          - id: yamllint
-            args: ["-d", "{extends: default, rules: {line-length: {max: 120}}}"]
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        args: ["-d", "{extends: relaxed, rules: {line-length: {max: 120}}}"]
 
-    - repo: https://github.com/cdce8p/python-typing-update
-      rev: v0.6.0
-      hooks:
-          # Run `python-typing-update` hook manually from time to time
-          # to update python typing syntax.
-          # Will require manual work, before submitting changes!
-          # pre-commit run --hook-stage manual python-typing-update --all-files
-          - id: python-typing-update
-            stages: [manual]
-            args:
-                - --py312-plus
-                - --force
-                - --keep-updates
-            files: ^(src|scripts)/.+\.py$
+  - repo: https://github.com/cdce8p/python-typing-update
+    rev: v0.6.0
+    hooks:
+      # Run `python-typing-update` hook manually from time to time
+      # to update python typing syntax.
+      # Will require manual work, before submitting changes!
+      # pre-commit run --hook-stage manual python-typing-update --all-files
+      - id: python-typing-update
+        stages: [manual]
+        args:
+          - --py312-plus
+          - --force
+          - --keep-updates
+        files: ^(src|scripts)/.+\.py$

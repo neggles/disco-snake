@@ -1,8 +1,8 @@
 from collections import OrderedDict
+from collections.abc import Hashable
 from datetime import datetime
 from time import monotonic
-from typing import Any, TypeAlias
-from collections.abc import Hashable
+from typing import Any
 
 import disnake
 from cachetools import TTLCache
@@ -10,11 +10,10 @@ from disnake import DMChannel, GroupChannel, Member, Message, TextChannel, Threa
 from PIL.Image import Image
 from pydantic import BaseModel, ConfigDict, Field
 
-ListOfUsers: TypeAlias = list[User | Member] | list[User] | list[Member]
-
-MessageChannel: TypeAlias = TextChannel | DMChannel | GroupChannel | Thread
-
-ImageOrBytes: TypeAlias = Image | bytes
+# Define type aliases for common types used in the AI module
+type ListOfUsers = list[User | Member] | list[User] | list[Member]
+type MessageChannel = TextChannel | DMChannel | GroupChannel | Thread
+type ImageOrBytes = Image | bytes
 
 
 class TimestampStore(TTLCache):

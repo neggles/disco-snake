@@ -125,12 +125,13 @@ required-version = ">=0.14.0"
 
 [tool.ruff.lint]
 select = [
-    "E4", # ruff defaults, pycodestyle errors
-    "E7", # ^^
-    "E9", # ^^
-    "F",  # ruff defaults, pyflakes rules
-    "B",  # flake8-bugbear
-    "UP", # pyupgrade rules
+    "E4",  # ruff defaults, pycodestyle errors
+    "E7",  # ^^
+    "E9",  # ^^
+    "F",   # ruff defaults, pyflakes rules
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade rules
+    "PTH", # flake8-use-pathlib
 ]
 ignore = [
     "B008", # Do not warn about function calls in default arguments. disnake uses this for slash commands.

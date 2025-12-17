@@ -1,18 +1,18 @@
 {
     "editor.insertSpaces": true,
     "editor.tabSize": 4,
-    "files.trimTrailingWhitespace": true,
-    "files.trimFinalNewlines": true,
     "editor.rulers": [100, 120],
     "editor.trimAutoWhitespace": true,
     "editor.formatOnSaveMode": "file",
 
+    "files.trimTrailingWhitespace": true,
+    "files.trimFinalNewlines": true,
     "files.associations": {
         ".vscode/*.json": "jsonc",
         "*.txt": "plaintext",
         "*.yaml": "yaml",
         "*.yml": "yaml",
-        "pyproject.toml": "toml"
+        "*.toml": "toml"
     },
 
     "search.exclude": {
@@ -48,13 +48,12 @@
         "editor.formatOnSaveMode": "file",
         "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.codeActionsOnSave": {
-            "source.organizeImports": "always"
+            "source.organizeImports.ruff": "always",
+            "source.fixAll.ruff": "explicit"
         }
     },
-    "python.analysis.autoFormatStrings": true,
 
     "[json]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
         "editor.detectIndentation": false,
         "editor.formatOnSaveMode": "file",
         "editor.formatOnSave": true,
@@ -64,7 +63,6 @@
         }
     },
     "[jsonc]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
         "editor.detectIndentation": false,
         "editor.formatOnSaveMode": "file",
         "editor.formatOnSave": true,
@@ -77,7 +75,6 @@
 
     "[toml]": {
         "editor.tabSize": 2,
-        "editor.detectIndentation": false,
         "editor.formatOnSave": true,
         "editor.formatOnSaveMode": "file",
         "editor.defaultFormatter": "tamasfe.even-better-toml",
@@ -95,7 +92,6 @@
     },
 
     "[yaml]": {
-        "editor.detectIndentation": false,
         "editor.tabSize": 2,
         "editor.formatOnSave": true,
         "editor.formatOnSaveMode": "file",
@@ -108,7 +104,6 @@
     "yaml.format.printWidth": 110,
 
     "[dockercompose]": {
-        "editor.detectIndentation": false,
         "editor.tabSize": 2,
         "editor.autoIndent": "advanced",
         "editor.quickSuggestions": {
@@ -117,6 +112,5 @@
             "strings": true
         }
     },
-    "docker.dockerComposeBuild": false,
     "containers.composeBuild": false
 }

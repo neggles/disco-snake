@@ -1,12 +1,14 @@
 import json
 from functools import lru_cache
-from typing import Any, TypeAlias
+from typing import Any
 
 from pydantic_core import to_jsonable_python
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import (
     Session as DbSession,
+)
+from sqlalchemy.orm import (
     sessionmaker,
 )
 
@@ -39,7 +41,7 @@ def get_engine() -> AsyncEngine:
 
 
 Session: async_sessionmaker[AsyncSession] = async_sessionmaker(get_engine(), expire_on_commit=False)
-SessionType: TypeAlias = async_sessionmaker[AsyncSession]
+type SessionType = async_sessionmaker[AsyncSession]
 
 SyncSession: sessionmaker[DbSession] = sessionmaker(get_sync_engine(), expire_on_commit=False)
-SyncSessionType: TypeAlias = sessionmaker[DbSession]
+type SyncSessionType = sessionmaker[DbSession]
