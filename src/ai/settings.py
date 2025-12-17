@@ -322,11 +322,17 @@ class Prompt(BaseModel):
 
     @property
     def template_str(self) -> str | None:
+        # check if template file exists directly under ai data dir
         tpl_path = AI_DATA_DIR.joinpath(self.template_file)
         if tpl_path.is_file():
             return tpl_path.read_text(encoding="utf-8")
-        else:
-            logger.warning(f"Template file {tpl_path} does not exist or is not a file")
+        # check if its under chat_templates subdir
+        tpl_path = AI_DATA_DIR.joinpath("chat_templates", self.template_file)
+        if tpl_path.is_file():
+            return tpl_path.read_text(encoding="utf-8")
+
+        logger.error(f"Template file {tpl_path} does not exist or is not a file")
+        return None
 
 
 class GradioConfig(BaseModel):
