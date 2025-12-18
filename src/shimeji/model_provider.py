@@ -102,7 +102,7 @@ class TabbyGenRequest(BaseModel):
     prompt: str | list[str]
     model: str | None = None
 
-    max_tokens: int | None = None
+    max_tokens: int | None = -1
     generate_window: int | None = None
 
     temperature: float | None = None
@@ -264,8 +264,10 @@ class OobaModel(ModelProvider):
 
         if isinstance(tokenizer, PreTrainedTokenizerBase):
             self.tokenizer: PreTrainedTokenizerBase = tokenizer
+            logger.info(f"Loaded tokenizer: {tokenizer!r}")
         elif isinstance(tokenizer, str | PathLike):
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)
+            logger.info(f"Loaded tokenizer: {tokenizer!r}")
         else:
             warn("No tokenizer provided; defaulting to Llama tokenizer.", UserWarning, stacklevel=2)
             self.tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
@@ -274,10 +276,14 @@ class OobaModel(ModelProvider):
         self._model_info: ModelInfo | None = None
 
     @property
-    def model_info(self) -> ModelInfo:
+    def model_info(self) -> ModelInfo | None:
         if self._model_info is None:
-            info_response = self._fetch_model_info()
-            self._model_info = ModelInfo.model_validate(info_response, strict=False)
+            try:
+                info_response = self._fetch_model_info()
+                self._model_info = ModelInfo.model_validate(info_response, strict=False)
+            except Exception:
+                logger.exception("Could not fetch model info")
+                self._model_info = None
         return self._model_info
 
     def _fetch_model_info(self) -> dict[str, Any]:

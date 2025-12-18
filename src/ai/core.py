@@ -207,7 +207,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         if self.params.context_size < 0:
             return (
                 self.lm_request.truncation_length
-                - (self.lm_request.max_tokens or (self.lm_request.truncation_length // 2))
+                - (
+                    self.lm_request.max_tokens
+                    if self.lm_request.max_tokens and self.lm_request.max_tokens > 0
+                    else (self.lm_request.truncation_length // 2)
+                )
                 - 32
             )
         return self.params.context_size
@@ -278,6 +282,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 conversation=conversation,
                 add_generation_prompt=self.prompt.add_generation_prompt,
                 enable_thinking=self.prompt.thinking,
+                thinking=self.prompt.thinking,
+                keep_cots=self.prompt.thinking,
                 tokenize=False,
                 **kwargs,
             )
@@ -300,10 +306,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         return prompt_messages, prompt_text, prompt_tokens
 
     def _update_gensettings_from_model_info(self) -> None:
-        if self.model_info is None:
-            return
-        if self.lm_request is None:
-            return
         if self.model_info:
             logger.info("Got model info from API server, updating length settings")
             if self.model_info.parameters.max_seq_len < 2048:
@@ -319,10 +321,14 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     self.lm_request.max_tokens,
                     self.lm_request.truncation_length // 2,
                 )
-            logger.info("New generation settings:")
-            logger.info(f"  truncation_length: {self.lm_request.truncation_length}")
-            logger.info(f"  max_tokens: {self.lm_request.max_tokens}")
-            logger.info(f"  context_size: {self.context_size}")
+        else:
+            # set max_tokens to -1 to indicate "however many fit"
+            self.lm_request.max_tokens = -1
+
+        logger.info("Dynamic generation settings:")
+        logger.info(f"  truncation_length: {self.lm_request.truncation_length}")
+        logger.info(f"  max_tokens: {self.lm_request.max_tokens}")
+        logger.info(f"  context_size: {self.context_size}")
 
     async def cog_load(self) -> None:
         logger.info("AI engine initializing, please wait...")
@@ -355,7 +361,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 )
                 if model_info := self.model_provider.model_info:
                     self.model_info = model_info
+                try:
                     self._update_gensettings_from_model_info()
+                except Exception:
+                    logger.exception("Error updating generation settings from model info")
             case _:
                 raise ValueError(f"Unknown model provider type: {self.model_provider_name}")
         logger.info("Model Provider initialized.")
@@ -843,12 +852,17 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         # debug log thought lines
                         thoughts = cleanup_thoughts([x.strip() for x in thoughts.splitlines()])
                         debug_data["thoughts"] = thoughts
-
                         logger.debug(f"Thoughts: {debug_data['thoughts']}")
-                        # strip whitespace from response
-                        response = response.strip().lstrip('"*_-`')
-                        if any(response.startswith(f"{x}:") for x in self.nicknames + self.nicknames_quiet):
-                            response = response.split(":", 1)[1].lstrip()
+
+                    rtemp = []
+                    # first, strip any leading lines that are empty, and trim the bot's name from the start of each line if present
+                    for line in response.splitlines():
+                        if line.lower().startswith(self.name.lower() + ":"):
+                            rtemp.append(line.split(":", 1)[1].lstrip())
+                        elif line.strip() != "" or len(rtemp) > 0:
+                            rtemp.append(line)
+                    response = "\n".join(rtemp)
+                    del rtemp
 
                     bad_words = self.find_bad_words(response)
                     if bad_words:
@@ -903,8 +917,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 rtemp = []
                 for line in response.splitlines():
                     if line.lower().startswith(self.name.lower() + ":"):
-                        break
-                    rtemp.append(line)
+                        rtemp.append(line.split(":", 1)[1].lstrip())
+                    else:
+                        rtemp.append(line)
                 response = "\n".join(rtemp)
                 del rtemp
 
@@ -912,9 +927,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 response = self.fixup_bot_user_tokens(response, message).lstrip()
                 # Clean response - trim left whitespace and fix emojis and pings
                 response = self.restore_mentions_emoji(text=response, message=message)
-                # check if we should force lowercase, only enforce if we are not yelling
-                if self.params.force_lowercase and (response.isupper() is False):
-                    response = response.lower()
                 # Unescape markdown
                 response = re_unescape_md.sub(r"\1", response)
                 # Clean up multiple non-word characters at the end of the response
