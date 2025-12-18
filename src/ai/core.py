@@ -143,8 +143,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         # Load config params up into top level properties
         self.params: BotParameters = self.config.params
-        self.nicknames: list[str] = self.params.nicknames
-        self.nicknames_quiet: list[str] = self.params.nicknames_quiet
 
         self.prompt: Prompt = self.config.prompt
         self.max_retries = self.params.max_retries
@@ -857,10 +855,17 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     rtemp = []
                     # first, strip any leading lines that are empty, and trim the bot's name from the start of each line if present
                     for line in response.splitlines():
-                        if line.lower().startswith(self.name.lower() + ":"):
-                            rtemp.append(line.split(":", 1)[1].lstrip())
-                        elif line.strip() != "" or len(rtemp) > 0:
+                        # trim bot name from start of line if present
+                        if self._starts_with_bot_name(line, ":"):
+                            line = line.split(":", 1)[1].lstrip()
+                        # if we're past the first non-empty line, keep all lines
+                        if len(rtemp) > 0:
                             rtemp.append(line)
+                            continue
+                        # otherwise, only keep non-empty lines
+                        if len(line.strip()) > 1:
+                            rtemp.append(line)
+                            continue
                     response = "\n".join(rtemp)
                     del rtemp
 
@@ -912,16 +917,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     except Exception:
                         logger.exception("Failed to generate image response")
                         pass
-
-                # detect if we're trying to send multiple messages and don't do that
-                rtemp = []
-                for line in response.splitlines():
-                    if line.lower().startswith(self.name.lower() + ":"):
-                        rtemp.append(line.split(":", 1)[1].lstrip())
-                    else:
-                        rtemp.append(line)
-                response = "\n".join(rtemp)
-                del rtemp
 
                 # replace "<USER>" with user mention, same for "<BOT>"
                 response = self.fixup_bot_user_tokens(response, message).lstrip()
@@ -1124,6 +1119,22 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.exception(e)
             raise e
 
+    # Get the chain of thought behind a message we sent
+    async def get_response_thoughts(self, response_id: int) -> list[str] | None:
+        """Get the chain of thought for a message ID"""
+        try:
+            async with self.db_client.begin() as session:
+                query = select(AiResponseLog).where(AiResponseLog.response_id == response_id).limit(1)
+                result = await session.scalars(query)
+                response: AiResponseLog | None = result.first()
+                if response is None:
+                    logger.debug(f"No chain of thought found for message ID {response_id}")
+                    return None
+        except Exception:
+            logger.exception("Failed to get response log")
+            return None
+        return response.thoughts
+
     # Idle loop, broken rn, need to factor on_message logic out into functions or smth
     @tasks.loop(seconds=21)
     async def idle_loop(self) -> None:
@@ -1232,22 +1243,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.exception("error checking tos")
             return False
 
-    # Get the chain of thought behind a message we sent
-    async def get_response_thoughts(self, response_id: int) -> list[str] | None:
-        """Get the chain of thought for a message ID"""
-        try:
-            async with self.db_client.begin() as session:
-                query = select(AiResponseLog).where(AiResponseLog.response_id == response_id).limit(1)
-                result = await session.scalars(query)
-                response: AiResponseLog | None = result.first()
-                if response is None:
-                    logger.debug(f"No chain of thought found for message ID {response_id}")
-                    return None
-        except Exception:
-            logger.exception("Failed to get response log")
-            return None
-        return response.thoughts
-
     # clean up a message's content
     def get_msg_content_clean(self, message: Message, content: str | None = None) -> str | None:
         # if no content is provided, use the message's content
@@ -1259,11 +1254,8 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         content = self.stringify_mentions_emoji(content, message=message)
         # eliminate any and all content between angle brackets <>
         content = re_angle_bracket.sub("", content)
-        # turn newlines into spaces. this is a cheap hack but the model doesn't handle newlines well
-        # content = content.replace("\n", " ")
-        # logger.debug(f"Cleaned message content: {content}")
-        # strip leading and trailing whitespace
-        content = content.strip()
+        # strip trailing whitespace
+        content = content.rstrip()
         # return the cleaned content, or None if it's empty
         return content if len(content) > 0 else None
 
@@ -1307,14 +1299,25 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.warning(f"Found bad words: {' | '.join(found_words)}")
         return found_words
 
+    # check if a line starts with the bot's name or a nickname, with an optional suffix
+    def _starts_with_bot_name(self, line: str, suffix: str = "") -> bool:
+        bot_names = set([self.name] + self.params.nicknames + self.params.nicknames_quiet)
+        line = line.lower().lstrip()
+        suffix = suffix.lower()
+        for name in bot_names:
+            if line.startswith(name.lower() + suffix):
+                return True
+        return False
+
     # check if the bot's name or a nickname is in the message
-    def name_in_text(self, text: str) -> bool:
-        return any(
-            [
-                bool(re.search(rf"\b({name})({name[-1]}*)\b", text, re.I + re.M))
-                for name in self.params.nicknames
-            ]
+    def _bot_name_in_text(self, text: str, with_quiet: bool = False) -> bool:
+        bot_names = set(
+            [self.name] + self.params.nicknames + (self.params.nicknames_quiet if with_quiet else [])
         )
+        for name in bot_names:
+            if re.search(rf"\b({name})({name[-1]}*)\b", text, re.I + re.M):
+                return True
+        return False
 
     # check if the bot was mentioned in a message
     def check_mention(self, message: Message) -> bool:
@@ -1323,7 +1326,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             return False
         if self.bot.user in message.mentions or message.guild.me in message.mentions:
             return True
-        if self.name_in_text(message.content):
+        if self._bot_name_in_text(message.content, with_quiet=False):
             return True
         return False
 
@@ -1338,7 +1341,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         if isinstance(message.channel, DMChannel):
             return True  # people can always break context in DMs
-        if message.author.id in list(self.ctxbreak.user_ids + self.bot.config.admin_ids):
+        if message.author.id in (self.ctxbreak.user_ids + self.bot.config.admin_ids):
             return True  # admins and ctxbreak users can always break context
         if member_in_any_role(message.author, self.ctxbreak.role_ids):  # type: ignore
             return True  # ctxbreak role havers can always break context
@@ -1381,42 +1384,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         await self.bot.wait_until_ready()
         self.debug_dir.joinpath("archive").mkdir(exist_ok=True, parents=True)
         logger.info("Archive loop running!")
-
-    ## listener to background caption images
-    @commands.Cog.listener("on_message")
-    async def background_caption(self, message: Message):
-        if not message.attachments and not message.embeds:
-            pass  # no attachments or embeds
-
-        # check if we're watching this channel
-        if not self.eyes.watching(message.channel):  # type: ignore
-            return  # not watching this channel (no recent activity)
-
-        for embed in message.embeds:
-            if embed.type == "image" and embed.thumbnail.height and embed.thumbnail.width:
-                try:
-                    if embed.thumbnail.height < 100 or embed.thumbnail.width < 100:
-                        continue  # too small to caption, probably an emoji, just skip it
-                    logger.debug(f"Captioning embed from {message.id=}")
-                    caption = await self.eyes.perceive_url(embed.thumbnail.url, message.id)  # type: ignore
-                    logger.info(f"Success: {message.id=}, {caption=}")
-                except Exception:
-                    logger.exception(f"Error processing image {embed.thumbnail.url}")
-            else:
-                continue
-            break  # only caption one image per embed. limitations of how i key the DB :/
-
-        for attachment in message.attachments:
-            if attachment.content_type is None:
-                logger.debug(f"got no content-type for attachment: '{attachment.filename}', skipping")
-                continue
-            if attachment.content_type.startswith("image"):  # type: ignore
-                try:
-                    logger.debug(f"Captioning attachment {attachment.id=} from {message.id=}")
-                    caption = await self.eyes.perceive_attachment(attachment)
-                    logger.info(f"Success: {attachment.id=}: {caption=}")
-                except Exception:
-                    logger.exception(f"Error processing image {attachment.url}")
 
     ## Image generation stuff
     async def take_pic(self, message: Message | str) -> tuple[File | None, dict[str, Any]]:
