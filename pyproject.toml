@@ -58,6 +58,7 @@ dependencies = [
     "httpx>=0.28.1",
     "ruamel-yaml>=0.18.16",
     "openai>=2.12.0",
+    "emoji>=2.15.0",
 ]
 
 [dependency-groups]
@@ -190,6 +191,7 @@ reportAttributeAccessIssue = false
 reportRedeclaration = false
 reportReturnType = false
 reportArgumentType = false
+pythonVersion = "3.12"
 
 # needs to be last for CI reasons
 [tool.setuptools_scm]

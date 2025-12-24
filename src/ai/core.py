@@ -59,6 +59,7 @@ from ai.ui import AiParam, AiStatusEmbed, convert_param, set_choices
 from ai.utils import (
     MentionMixin,
     cleanup_thoughts,
+    get_message_author_name,
     get_prompt_datetime,
     member_in_any_role,
 )
@@ -92,9 +93,7 @@ re_angle_bracket = re.compile(r"\<(.*)\>", re.M)
 re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
 re_bot_token = re.compile(r"(<bot>|{{bot}}|<char>|{{char}}|<assistant>|{{assistant}})", re.I)
 re_unescape_md = re.compile(r"\\([*_~`\"])")
-re_nonword = re.compile(r"[^a-zA-Z0-9]+", re.M + re.I)
-re_nonword_end = re.compile(r"([^a-zA-Z0-9])[^a-zA-Z0-9()]+$", re.M + re.I)
-re_firstword = re.compile(r"^\s*([a-zA-Z0-9]+)", re.M + re.I)
+re_nonword = re.compile(r"\W+", re.M + re.I)
 
 # find a line that looks like the bot talking for another user
 re_linebreak_name = re.compile(r"[\n\r]*(\S+):\s", re.I + re.M)
@@ -121,18 +120,13 @@ def re_match_lower(match: re.Match):
 
 
 class Ai(MentionMixin, commands.Cog, name=COG_UID):
-    _mention_cache: LruDict  # type: ignore
-    _emoji_cache: LruDict  # type: ignore
-
     def __init__(self, bot: DiscoSnake, *args, **kwargs):
         self.bot: DiscoSnake = bot
         self.timezone = self.bot.timezone
         self.last_response = datetime.now(UTC) - timedelta(minutes=10)
 
-        # init the MentionMixin cache
+        # init the MentionMixin cache and other stuff
         super().__init__(*args, **kwargs)
-        if self._mention_cache is None:
-            raise ValueError("Mention cache not initialized")
 
         # Load config file
         self.config = get_ai_settings()
@@ -185,8 +179,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
         # cache dicts and props
         self._trigger_cache: LruDict = LruDict(max_size=100)
-        self._mention_cache: dict[int, Any] = {}  # type: ignore
-        self._emoji_cache: dict[int, Any] = {}  # type: ignore
         self._n_prompt_tokens: int = None  # type: ignore
         # other cached vars
         self._chat_template: j2.Template | None = None
@@ -434,20 +426,21 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: Message):
+        # ignore messages from ourselves, blacklisted users, ToS rejecters, and bots (if the last trigger was a bot)
         if message.author.id == self.bot.user.id:
             return  # ignore messages from self
         if message.author.id in self.blacklist:
             return  # ignore messages from blacklisted users
         if message.author.id in self.tos_reject_ids:
             return  # ignore messages from users who have rejected the ToS
-        if message.author.bot is True:
-            if self.last_trigger_was_bot(message) is True:
-                return  # ignore messages from bots if the last message we responded to was from a bot
+        if message.author.bot is True and self.last_trigger_was_bot(message) is True:
+            return  # ignore consecutive messages from bots
+
         if message.content.startswith(", "):
             return  # ignore messages that start with a comma-space
         if len(message.content.strip()) == 1:
             return  # ignore messages with only a single character
-        if "```" in message.content:
+        if self.config.skip_codeblocks and "```" in message.content:
             return  # ignore messages with code blocks
 
         direct_message = isinstance(message.channel, DMChannel)
@@ -532,9 +525,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             logger.exception(e)
             if isinstance(e, HTTPException):
                 return  # ignore HTTP errors
+            msg_timestamp = message.created_at.astimezone(tz=self.bot.timezone)
             exc_class = e.__class__.__name__
             exc_desc = str(f"**``{exc_class}``**\n```{format_exc()}```")
-            err_filename = f"error-{datetime.now(UTC)}.txt".replace(" ", "")
+            err_filename = f"error-{msg_timestamp.strftime('%Y-%m-%d-%H:%M:%S%z')}.txt".replace(" ", "")
             self.debug_dir.joinpath(err_filename).write_text(exc_desc)
 
     # retrieve the LM prompt and inject name, time, etc.
@@ -621,7 +615,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             # default to siblings mode if we still don't have guild settings
             bot_mode = BotMode.Siblings
 
-        def wrap_message(content: str, role: str = "user") -> dict[str, str]:
+        def wrap_message(content: str, role: str = "user", name: str = "") -> dict[str, str]:
+            if role == "assistant" and not name:
+                name = f"{self.name}:"
+
+            if name and not content.startswith(name):
+                content = name.split(":")[0] + ": " + content.lstrip()
+
             return {"role": role.strip(), "content": content.strip()}
 
         skip = []  # cache for replies we've reordered
@@ -634,7 +634,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             if msg.content is not None:
                 if any(msg.content.startswith(x) for x in ["/", ", "]):
                     continue  # skip messages that start with a command prefix or a comma-space
-                if "```" in msg.content:
+                if self.config.skip_codeblocks and "```" in msg.content:
                     continue  # skip messages with code blocks
 
             if msg.author.id == self.bot.user.id:
@@ -643,6 +643,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 if msg.content.startswith(self.config.analysis_header):
                     continue
                 if msg.embeds and msg.embeds[0].type == "rich":
+                    # skip rich embeds from self (usually UI/command/analysis messages)
                     continue
             elif msg.author.bot is True:  # bots who aren't us
                 if bot_mode == BotMode.Strip:
@@ -659,19 +660,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 author_name = f"{self.name}:"
             else:
                 msg_role = "user"
-                author_name = None
-
-                if isinstance(msg.author, Member) and msg.author.nick is not None:
-                    # do a little cleanup
-                    if matches := re_firstword.match(msg.author.nick):
-                        clean_name = matches.group(1)
-                        author_name = f"{clean_name.strip()}:"
-
-                if author_name is None:
-                    if msg.author.display_name is not None:
-                        author_name = f"{msg.author.display_name.strip()}:"
-                    else:
-                        author_name = f"{msg.author.name.strip()}:"
+                author_name = get_message_author_name(msg, suffix=":")
 
             if len(msg.embeds) > 0:
                 nitro_bs = self.handle_stupid_fucking_embed(msg)
@@ -787,7 +776,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             response = ""
             resp_img = None
             should_reply = False
-            author_name = f"{message.author.name.strip()}:"
+            author_name = get_message_author_name(message, suffix=":")
 
             msg_timestamp = message.created_at.astimezone(tz=self.bot.timezone).strftime(
                 "%Y-%m-%d-%H:%M:%S%z"
@@ -806,9 +795,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 "author_id": message.author.id,
                 "author": str(message.author),
                 "channel_id": message.channel.id or None,
-                "channel": message.channel.name if not isinstance(message.channel, DMChannel) else "DM",
-                "author_name": f"{author_name}",
+                "channel": message.channel.name if message.channel.name else "DM",
                 "trigger": msg_trigger,
+                "author_name": author_name,
                 "content": message.content,
             }
             # make conversation be a top level key
@@ -829,6 +818,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
             debug_data["n_prompt_tokens"] = self._n_prompt_tokens
             debug_data["n_context_tokens"] = self._count_tokens(context)
 
+            bad_words = []
             try:
                 # Generate the response, and retry if it contains bad words (up to self.max_retries times)
                 for attempt in range(self.max_retries):
@@ -875,13 +865,13 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         continue
                     else:
                         if response.lower().startswith("i'm sorry, but"):
-                            logger.info(f"Response was a ChatGPT apology: {response}\nRetrying...")
+                            logger.info("Response was a ChatGPT apology, retrying...")
                             continue
                         if "as a language model" in response.lower():
-                            logger.info(f"Response admits to being an AI: {response}\nRetrying...")
+                            logger.info("Response admits to being an AI, retrying...")
                             continue
-                        if re_detect_url.search(response):
-                            logger.info(f"Response contains a URL: {response}\nRetrying...")
+                        if self.config.reject_urls and re_detect_url.search(response):
+                            logger.info("Response contains a URL, retrying...")
                             continue
                         break  # no bad words, we're good, break out of the loop to avoid executing the else:
 
@@ -889,9 +879,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     if resp_img is not None:
                         response = ""  # we have a pic to send, so send it without a comment
                     else:
-                        logger.warning(
-                            f"Final response contained bad words: {response}\nBad words: {bad_words}\nRetrying..."  # type: ignore  # bad_words must exist here
-                        )
+                        logger.warning(f"Final response contained bad words: {bad_words!r}, giving up.")
                         response = ""
 
                 # see if there's an image description in the response
@@ -918,14 +906,10 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                         logger.exception("Failed to generate image response")
                         pass
 
-                # replace "<USER>" with user mention, same for "<BOT>"
-                response = self.fixup_bot_user_tokens(response, message).lstrip()
                 # Clean response - trim left whitespace and fix emojis and pings
                 response = self.restore_mentions_emoji(text=response, message=message)
                 # Unescape markdown
                 response = re_unescape_md.sub(r"\1", response)
-                # Clean up multiple non-word characters at the end of the response
-                # response = re_nonword_end.sub(r"\1", response)
                 # scream into the void
                 response = response.replace("\\r", "").replace("\\n", "\n")
                 response = response.replace("\\u00a0", "\n")
@@ -972,7 +956,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     logger.debug("Updating webui")
                     self.webui.lm_update(
                         prompt=context,
-                        message=f"{author_name} {debug_data['message']['content']}",
+                        message=f"{author_name}: {message.content}",
                         response=str(debug_data["response_raw"]).lstrip(),
                     )
 
@@ -1258,29 +1242,6 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         content = content.rstrip()
         # return the cleaned content, or None if it's empty
         return content if len(content) > 0 else None
-
-    # clean out some bad tokens from responses and fix up mentions
-    def fixup_bot_user_tokens(self, response: str, message: Message) -> str:
-        """
-        Fix <USER>, <BOT>, etc tokens in the response
-        """
-        if hasattr(message.author, "nick") and message.author.nick is not None:
-            author_name = message.author.nick
-        elif message.author.global_name is not None:
-            author_name = message.author.global_name
-        elif message.author.name is not None:
-            author_name = message.author.name
-        else:
-            author_name = str(message.author)
-
-        if not isinstance(author_name, str):
-            author_name = str(author_name)
-
-        author_name = author_name.encode("utf-8").decode("ascii", errors="ignore").strip()  # type: ignore
-        response = re_user_token.sub(f"@{author_name}", response)
-        response = re_bot_token.sub(f"@{self.name}", response)
-        response = response.strip()
-        return response
 
     # search for bad words in a message
     def find_bad_words(self, input: str) -> list[str]:

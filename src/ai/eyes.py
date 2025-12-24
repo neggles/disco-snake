@@ -231,7 +231,7 @@ class DiscoEyes:
             data = await self._get_thumbnail(attachment)
         else:
             data = await attachment.read()
-        if not isinstance(data, ImageOrBytes):
+        if not isinstance(data, Image.Image | bytes):
             logger.debug("Attachment is not a bytes object")
             return None
         return await self.submit_request(data)

@@ -1,7 +1,6 @@
-from collections.abc import MutableMapping
+from collections.abc import Generator, MutableMapping
 from datetime import datetime
 from typing import Any, ClassVar
-from collections.abc import Generator
 
 import sqlalchemy as sa
 
@@ -11,7 +10,7 @@ from db.discord.user import BlacklistEntry
 
 class Blacklist(MutableMapping):
     db_client: ClassVar[SyncSessionType] = SyncSession
-    instance: ClassVar["Blacklist"] = None
+    instance: ClassVar["Blacklist"] = None  # type: ignore
 
     def __new__(cls) -> "Blacklist":
         if cls.instance is None:

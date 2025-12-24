@@ -270,8 +270,11 @@ class PromptElement(BaseModel):
     def full(self) -> str | list[dict[str, str]]:
         if self._prompt_path is not None:
             prompt_mtime = self._prompt_path.stat().st_mtime
-            if self._prompt_mtime is None or prompt_mtime > self._prompt_mtime:
-                logger.debug(f"Prompt file {self._prompt_path} has changed, reloading")
+            if self._prompt_mtime is None:
+                logger.debug(f"Loading prompt file '{self._prompt_path}'")
+                self._load_prompt_file()
+            elif prompt_mtime != self._prompt_mtime:
+                logger.debug(f"Reloading prompt file {self._prompt_path} (changed on disk)")
                 self._load_prompt_file()
             if self._prompt_str is None:
                 logger.warning(f"Prompt file {self._prompt_path} does not exist or is not a file")
@@ -320,19 +323,35 @@ class Prompt(BaseModel):
     think_end: str = Field("</think>")
     template_file: str = Field("chat_template.j2")
 
+    _template_mtime: float | None = None  # cache for prompt file mtime
+    _template_str: str | None = None  # cache for prompt string if file loaded
+
+    @cached_property
+    def _template_path(self) -> Path | None:
+        if self.template_file:
+            return AI_DATA_DIR.joinpath("chat_templates", self.template_file)
+        else:
+            return None
+
+    def _load_template(self) -> None:
+        if self._template_path is not None:
+            self._template_str = self._template_path.read_text(encoding="utf-8")
+            self._template_mtime = self._template_path.stat().st_mtime
+
     @property
     def template_str(self) -> str | None:
-        # check if template file exists directly under ai data dir
-        tpl_path = AI_DATA_DIR.joinpath(self.template_file)
-        if tpl_path.is_file():
-            return tpl_path.read_text(encoding="utf-8")
-        # check if its under chat_templates subdir
-        tpl_path = AI_DATA_DIR.joinpath("chat_templates", self.template_file)
-        if tpl_path.is_file():
-            return tpl_path.read_text(encoding="utf-8")
+        if self._template_path is None:
+            logger.warning(f"Chat template '{self.template_file}' could not be found")
+            return self._template_str
 
-        logger.error(f"Template file {tpl_path} does not exist or is not a file")
-        return None
+        if self._template_mtime is None:
+            logger.debug(f"Loading chat template '{self._template_path.name}'")
+            self._load_template()
+        elif self._template_path.stat().st_mtime != self._template_mtime:
+            logger.debug(f"Reloading chat template '{self._template_path.name}' (changed on disk)")
+            self._load_template()
+
+        return self._template_str
 
 
 class GradioConfig(BaseModel):
@@ -381,10 +400,14 @@ class AiSettings(JsonSettings):
     model_provider: LMApiConfig
     gradio: GradioConfig
     vision: VisionConfig | None = None
+    bad_words: list[str] = Field(default_factory=list)
+
     analysis_header: str = "-# Analysis:"
     empty_react: str = "🤷‍♀️"
-    strip: list[str] = Field([])
-    bad_words: list[str] = Field([])
+    regen_react: str = "🔄"
+    respond_react: str = "💬"
+    skip_codeblocks: bool = True
+    reject_urls: bool = False  # reject responses containing URLs
 
     model_config = SettingsConfigDict(
         json_file=[
