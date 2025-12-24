@@ -44,17 +44,3 @@ class AiResponseLog(Base):
     thoughts: Mapped[list[str] | None] = mapped_column(pg.ARRAY(sa.String), nullable=True)
     n_prompt_tokens: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     n_context_tokens: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
-
-    @classmethod
-    def from_old_format(cls, log_obj: dict) -> "AiResponseLog":
-        return cls(
-            app_id=log_obj["app_id"],
-            instance=log_obj["app"],
-            timestamp=datetime.fromisoformat(log_obj["timestamp"]),
-            message=AiMessageInfo.parse_obj(log_obj["message"]),
-            conversation=log_obj["conversation"],
-            parameters=log_obj["gensettings"],
-            context=log_obj["context"],
-            response=log_obj["response"],
-            response_raw=log_obj["response_raw"],
-        )
