@@ -772,7 +772,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 "author_id": message.author.id,
                 "author": str(message.author),
                 "channel_id": message.channel.id or None,
-                "channel": message.channel.name if hasattr(message.channel, "name") else "DM",
+                "channel": getattr(message.channel, "name", "DM"),
                 "trigger": msg_trigger,
                 "author_name": author_name,
                 "content": message.content,
