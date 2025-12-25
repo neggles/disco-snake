@@ -11,19 +11,13 @@ from typing import Annotated
 from pydantic import BaseModel, Field, RootModel, field_validator
 from pydantic_settings import SettingsConfigDict
 
-from disco_snake import LOG_FORMAT, LOGDIR_PATH, PACKAGE_ROOT, per_config_name
+from ai.constants import AI_DATA_DIR
+from ai.types import NamedSnowflake, SnowflakeList
+from disco_snake import per_config_name
 from disco_snake.settings import JsonSettings
 from shimeji.model_provider import OobaGenRequest
 
-AI_DATA_DIR = PACKAGE_ROOT.parent.joinpath("data", "ai")
-AI_LOG_DIR = LOGDIR_PATH
-AI_LOG_FORMAT = LOG_FORMAT
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-IMAGES_DIR = AI_DATA_DIR.joinpath(per_config_name("images"))
-IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ResponseMode(str, Enum):
@@ -43,36 +37,6 @@ class BotMode(str, Enum):
     Ignore = "ignore"  # Won't be triggered by bot messages but can still see them
     Siblings = "siblings"  # Will strip all bots except for listed siblings from the context
     All = "all"  # Will not strip any bots from the context (not recommended)
-
-
-class NamedSnowflake(BaseModel):
-    """A reference to a Discord object, with name and note for config file clarity"""
-
-    id: int = Field(...)
-    name: str = Field("")  # not actually used, just here so it can be in config
-    note: str | None = None
-
-
-class SnowflakeList(RootModel):
-    """A list of NamedSnowflake objects. Used for storing lists of users and roles."""
-
-    root: list[NamedSnowflake]
-
-    def __iter__(self) -> Iterator[NamedSnowflake]:  # type: ignore
-        return self.root.__iter__()
-
-    def __getitem__(self, key) -> NamedSnowflake:
-        return self.root.__getitem__(key)
-
-    @property
-    def ids(self) -> list[int]:
-        return [x.id for x in self.root]
-
-    def get_id(self, id: int) -> NamedSnowflake | None:
-        for item in self.root:
-            if item.id == id:
-                return item
-        return None
 
 
 class PermissionList(BaseModel):
@@ -208,7 +172,7 @@ class BotParameters(BaseModel):
         ]
 
 
-class ChatMessage(BaseModel):
+class PromptMessage(BaseModel):
     role: str = Field("user")
     content: str = Field(...)
 
@@ -223,22 +187,22 @@ class ChatMessage(BaseModel):
         return {"role": self.role, "content": self.content}
 
 
-def is_chat_msg(obj: object) -> bool:
-    if not isinstance(obj, ChatMessage) and not isinstance(obj, dict):
+def is_prompt_msg(obj: object) -> bool:
+    if not isinstance(obj, PromptMessage) and not isinstance(obj, dict):
         return False
-    if isinstance(obj, ChatMessage):
+    if isinstance(obj, PromptMessage):
         return True
     if isinstance(obj, dict) and "role" in obj and "content" in obj:
         return True
     return False
 
 
-def is_chat_msg_list(obj: object) -> bool:
+def is_prompt_msg_list(obj: object) -> bool:
     if not isinstance(obj, list):
         return False
     if len(obj) == 0:
         return False
-    if isinstance(obj[0], ChatMessage):
+    if isinstance(obj[0], PromptMessage):
         return True
     if isinstance(obj[0], dict) and "role" in obj[0] and "content" in obj[0]:
         return True
@@ -246,9 +210,9 @@ def is_chat_msg_list(obj: object) -> bool:
 
 
 class PromptElement(BaseModel):
-    prompt: list[ChatMessage] | ChatMessage | str | None = None
-    prefix: list[ChatMessage] | ChatMessage | None = None
-    suffix: list[ChatMessage] | ChatMessage | None = None
+    prompt: list[PromptMessage] | PromptMessage | str | None = None
+    prefix: list[PromptMessage] | PromptMessage | None = None
+    suffix: list[PromptMessage] | PromptMessage | None = None
     prompt_path: PathLike[str] | None = None
 
     _prompt_str: str | None = None  # cache for prompt string if file loaded
@@ -285,7 +249,7 @@ class PromptElement(BaseModel):
 
         if isinstance(self.prompt, list):
             messages = self.prompt.copy()
-        elif isinstance(self.prompt, ChatMessage):
+        elif isinstance(self.prompt, PromptMessage):
             messages = [self.prompt]
         else:
             messages = []
@@ -321,15 +285,15 @@ class Prompt(BaseModel):
 
     think_start: str = Field("<think>")
     think_end: str = Field("</think>")
-    template_file: str = Field("chat_template.j2")
+    template_path: str = Field("chat_template.j2")
 
     _template_mtime: float | None = None  # cache for prompt file mtime
     _template_str: str | None = None  # cache for prompt string if file loaded
 
     @cached_property
     def _template_path(self) -> Path | None:
-        if self.template_file:
-            return AI_DATA_DIR.joinpath("chat_templates", self.template_file)
+        if self.template_path:
+            return AI_DATA_DIR.joinpath("chat_templates", self.template_path)
         else:
             return None
 
@@ -341,7 +305,7 @@ class Prompt(BaseModel):
     @property
     def template_str(self) -> str | None:
         if self._template_path is None:
-            logger.warning(f"Chat template '{self.template_file}' could not be found")
+            logger.warning(f"Chat template '{self.template_path}' could not be found")
             return self._template_str
 
         if self._template_mtime is None:

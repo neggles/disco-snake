@@ -13,8 +13,10 @@ from PIL import Image
 from pydantic import BaseModel, Field
 from requests import get as requests_get
 
+from ai.constants import MAX_IMAGE_BYTES, MAX_IMAGE_EDGE
 from ai.settings import VisionConfig
-from ai.types import ImageOrBytes, MessageChannel, TimestampStore
+from ai.types import ImageOrBytes, MessageChannel
+from ai.utils import TimestampStore
 from db import ImageCaption, Session, SessionType
 
 if TYPE_CHECKING:
@@ -24,8 +26,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-IMAGE_MAX_BYTES = 20 * (2**20)
-IMAGE_MAX_PX = 768
 IMAGE_FORMATS = ["PNG", "WEBP", "JPEG", "GIF"]
 
 re_image_of = re.compile(
@@ -139,7 +139,7 @@ class DiscoEyes:
         async with self.api_client.post(self.config.route, json=payload) as resp:
             resp.raise_for_status()
             data = await resp.json(encoding="utf-8")
-        response = CaptionResponse.parse_obj(data)
+        response = CaptionResponse.model_validate(data)
 
         # Strip out "This is an image of" etc. from the caption
         caption = re_image_of.sub(r"\1", response.caption).rstrip(".")
@@ -214,7 +214,7 @@ class DiscoEyes:
         if attachment.content_type is None:
             logger.debug("Attachment has no content type")
             return None
-        if attachment.size > IMAGE_MAX_BYTES:
+        if attachment.size > MAX_IMAGE_BYTES:
             logger.debug(f"got attachment larger than 20MB: {attachment.size}, skipping")
             return None
         if not attachment.content_type.startswith("image/"):
@@ -223,11 +223,11 @@ class DiscoEyes:
 
         max_edge = max(attachment.width or 0, attachment.height or 0)
         if attachment.width is None or attachment.height is None:
-            if attachment.size > IMAGE_MAX_BYTES:
+            if attachment.size > MAX_IMAGE_BYTES:
                 logger.debug(f"got attachment larger than 20MB: {attachment.size}, skipping")
                 return None
             data = requests_get(attachment.url).content
-        elif max_edge > IMAGE_MAX_PX or max_edge == 0:
+        elif max_edge > MAX_IMAGE_EDGE or max_edge == 0:
             data = await self._get_thumbnail(attachment)
         else:
             data = await attachment.read()
@@ -250,14 +250,14 @@ class DiscoEyes:
             return None
 
         width, height = attachment.width, attachment.height
-        # scale max dimension to IMAGE_MAX_PX
+        # scale max dimension to MAX_IMAGE_EDGE
         is_portrait = height > width
         short, long = (width, height) if is_portrait else (height, width)
         # calculate new dimensions
-        if long > IMAGE_MAX_PX:
-            ratio = IMAGE_MAX_PX / long
+        if long > MAX_IMAGE_EDGE:
+            ratio = MAX_IMAGE_EDGE / long
             short = int(short * ratio)
-            long = IMAGE_MAX_PX
+            long = MAX_IMAGE_EDGE
         width, height = (short, long) if is_portrait else (long, short)
 
         # change cdn url to media url

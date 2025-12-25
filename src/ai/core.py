@@ -38,30 +38,37 @@ from sqlalchemy.orm import load_only
 from transformers import AutoTokenizer, BatchEncoding
 
 import logsnake
+from ai.constants import AI_DATA_DIR, AI_LOG_DIR, AI_LOG_FORMAT
 from ai.eyes import DiscoEyes
 from ai.imagen import Imagen
 from ai.settings import (
-    AI_DATA_DIR,
-    AI_LOG_DIR,
-    AI_LOG_FORMAT,
     BotMode,
     BotParameters,
     GuildSettings,
     GuildSettingsList,
     LMApiConfig,
-    NamedSnowflake,
     Prompt,
     get_ai_settings,
 )
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
-from ai.types import AiResponse, LruDict, ModelInfo
+from ai.types import AiResponse, ModelInfo, NamedSnowflake
 from ai.ui import AiParam, AiStatusEmbed, convert_param, set_choices
 from ai.utils import (
+    LruDict,
     MentionMixin,
     cleanup_thoughts,
     get_message_author_name,
     get_prompt_datetime,
     member_in_any_role,
+)
+from ai.utils.regex import (
+    re_angle_bracket,
+    re_consecutive_newline,
+    re_detect_url,
+    re_mention,
+    re_nonword,
+    re_start_expression,
+    re_unescape_md,
 )
 from ai.web import GradioUi
 from cogs.privacy import PrivacyEmbed, PrivacyView, get_policy_text
@@ -87,36 +94,6 @@ ai_logger = logsnake.setup_logger(
     propagate=True,
 )
 logger = logging.getLogger(__name__)
-
-
-re_angle_bracket = re.compile(r"\<(.*)\>", re.M)
-re_user_token = re.compile(r"(<USER>|<user>|{{user}})")
-re_bot_token = re.compile(r"(<bot>|{{bot}}|<char>|{{char}}|<assistant>|{{assistant}})", re.I)
-re_unescape_md = re.compile(r"\\([*_~`\"])")
-re_nonword = re.compile(r"\W+", re.M + re.I)
-
-# find a line that looks like the bot talking for another user
-re_linebreak_name = re.compile(r"[\n\r]*(\S+):\s", re.I + re.M)
-# find a line that starts with a star or a parenthesis, followed by a word, followed by a star or a parenthesis
-re_start_expression = re.compile(r"^\s*[(\*]\w+[)\*]\s*", re.I + re.M)
-# find a line that starts with a capital letter and an optional space, followed by a lowercase letter
-re_upper_first = re.compile(r"^([A-Z]\s?[^A-Z])")
-# find URLs
-re_detect_url = re.compile(
-    r"[(http(s)?):\/\/(www\.)?a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)",
-    re.M + re.I,
-)
-
-# find consecutive newlines (at least 3) optionally with spaces in between (blank lines)
-re_consecutive_newline = re.compile(r"(\n[\s\n]+\n\s*)", re.M + re.I)
-
-# capture mentions
-re_mention = re.compile(r"<@(\d+)>", re.I)
-
-
-def re_match_lower(match: re.Match):
-    """function for re.sub() to convert the first match to lowercase"""
-    return match.group(1).lower()
 
 
 class Ai(MentionMixin, commands.Cog, name=COG_UID):
@@ -795,7 +772,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                 "author_id": message.author.id,
                 "author": str(message.author),
                 "channel_id": message.channel.id or None,
-                "channel": message.channel.name if message.channel.name else "DM",
+                "channel": message.channel.name if hasattr(message.channel, "name") else "DM",
                 "trigger": msg_trigger,
                 "author_name": author_name,
                 "content": message.content,

@@ -1,6 +1,6 @@
 from ai import eyes, imagen, tokenizers, types, utils, web
+from ai.constants import AI_DATA_DIR, AI_LOG_DIR, AI_LOG_FORMAT
 from ai.core import Ai, setup
-from ai.settings import AI_DATA_DIR, AI_LOG_DIR, AI_LOG_FORMAT
 
 __all__ = [
     "Ai",

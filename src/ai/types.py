@@ -1,43 +1,46 @@
-from collections import OrderedDict
-from collections.abc import Hashable
+from collections.abc import Iterator
 from datetime import datetime
-from time import monotonic
 from typing import Any
 
 import disnake
-from cachetools import TTLCache
 from disnake import DMChannel, GroupChannel, Member, Message, TextChannel, Thread, User
 from PIL.Image import Image
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 # Define type aliases for common types used in the AI module
-type ListOfUsers = list[User | Member] | list[User] | list[Member]
+type UserList = list[User | Member] | list[User] | list[Member]
 type MessageChannel = TextChannel | DMChannel | GroupChannel | Thread
 type ImageOrBytes = Image | bytes
 
 
-class TimestampStore(TTLCache):
-    def __init__(self, maxsize=128, ttl=90) -> None:
-        super().__init__(maxsize, ttl, timer=monotonic)
+class NamedSnowflake(BaseModel):
+    """A reference to a Discord object, with name and note for config file clarity"""
 
-    def refresh(self, key: Hashable) -> None:
-        # update the timestamp for a key
-        self[key] = True
-
-    def active(self, key: Hashable) -> bool:
-        return self.get(key, False)
+    id: int = Field(...)
+    name: str = Field("")  # not actually used, just here so it can be in config
+    note: str | None = None
 
 
-class LruDict(OrderedDict):
-    def __init__(self, max_size=100, other=(), /, **kwds):
-        self.max_size = max_size
-        super().__init__(other, **kwds)
+class SnowflakeList(RootModel):
+    """A list of NamedSnowflake objects. Used for storing lists of users and roles."""
 
-    def __setitem__(self, key, value, *args, **kwargs):
-        # Call the superclass method, then prune the dictionary if it's too big.
-        super().__setitem__(key, value, *args, **kwargs)
-        if len(self) > self.max_size:
-            self.popitem(last=False)
+    root: list[NamedSnowflake]
+
+    def __iter__(self) -> Iterator[NamedSnowflake]:  # type: ignore
+        return self.root.__iter__()
+
+    def __getitem__(self, key) -> NamedSnowflake:
+        return self.root.__getitem__(key)
+
+    @property
+    def ids(self) -> list[int]:
+        return [x.id for x in self.root]
+
+    def get_id(self, id: int) -> NamedSnowflake | None:
+        for item in self.root:
+            if item.id == id:
+                return item
+        return None
 
 
 class AiMessageData(BaseModel):

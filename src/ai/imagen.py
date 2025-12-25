@@ -15,8 +15,8 @@ import aiohttp
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
+from ai.constants import AI_IMAGES_DIR
 from ai.settings import (
-    IMAGES_DIR,
     ImagenApiParams,
     ImagenLMPrompt,
     ImagenParams,
@@ -105,7 +105,7 @@ class Imagen:
         self.lm_prompt: ImagenLMPrompt = self.config.lm_prompt
         self.lm_api_host: str = self.ai.provider_config.endpoint.rstrip("/")
 
-        IMAGES_DIR.mkdir(exist_ok=True, parents=True)
+        AI_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
 
         self._lock = Lock()
 
@@ -287,7 +287,7 @@ class Imagen:
                         pnginfo.add_text("parameters", infotext)
 
                         # work out the path to save the image to, then save it and the job info
-                        imagefile_path = IMAGES_DIR.joinpath(
+                        imagefile_path = AI_IMAGES_DIR.joinpath(
                             f"{response['info']['job_timestamp']}_{response['info']['seed']}_{req_string}.png"
                         )
                         image.save(imagefile_path, format="PNG", pnginfo=pnginfo)
