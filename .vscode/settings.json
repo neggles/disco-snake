@@ -58,6 +58,7 @@
         "editor.formatOnSaveMode": "file",
         "editor.formatOnSave": true,
         "editor.tabSize": 2,
+        "editor.defaultFormatter": "vscode.json-language-features",
         "editor.codeActionsOnSave": {
             "source.fixAll.sortJSON": "never"
         }
@@ -67,6 +68,7 @@
         "editor.formatOnSaveMode": "file",
         "editor.formatOnSave": true,
         "editor.tabSize": 2,
+        "editor.defaultFormatter": "vscode.json-language-features",
         "editor.codeActionsOnSave": {
             "source.fixAll.sortJSON": "never"
         }

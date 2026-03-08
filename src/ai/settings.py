@@ -383,10 +383,6 @@ class AiSettings(JsonSettings):
     )
 
 
-def get_ai_settings() -> AiSettings:
-    return AiSettings()  # type: ignore
-
-
 ## Imagen settings
 class ImagenParams(BaseModel):
     enabled: bool

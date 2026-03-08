@@ -1,4 +1,3 @@
-# ruff: noqa: E712
 import asyncio
 import json
 import logging
@@ -42,13 +41,13 @@ from ai.constants import AI_DATA_DIR, AI_LOG_DIR, AI_LOG_FORMAT
 from ai.eyes import DiscoEyes
 from ai.imagen import Imagen
 from ai.settings import (
+    AiSettings,
     BotMode,
     BotParameters,
     GuildSettings,
     GuildSettingsList,
     LMApiConfig,
     Prompt,
-    get_ai_settings,
 )
 from ai.tokenizers import PreTrainedTokenizerBase, extract_tokenizer
 from ai.types import AiResponse, ModelInfo, NamedSnowflake
@@ -105,9 +104,11 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         # init the MentionMixin cache and other stuff
         super().__init__(*args, **kwargs)
 
-        # Load config file
-        self.config = get_ai_settings()
-        self.lm_lock = Lock()  # used to stop multiple responses from happening at once
+        # Load config file.
+        # custom pydantic settings class value autoloading confuses pylance, so ignore type here
+        self.config = AiSettings()  # type: ignore
+        # used to stop multiple responses from happening at once
+        self.lm_lock = Lock()
 
         # Parse config file
         self.provider_config: LMApiConfig = self.config.model_provider
@@ -158,6 +159,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         self._trigger_cache: LruDict = LruDict(max_size=100)
         self._n_prompt_tokens: int = None  # type: ignore
         # other cached vars
+        self._last_trigger_ctx_id: int | None = None
         self._chat_template: j2.Template | None = None
 
     # Getters for config object sub-properties
@@ -447,6 +449,9 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
                     # channel is enabled but we don't have permission to respond
                     logger.info(f"Got message in {message.channel} but don't have permission to respond.")
                     return
+            trigger_ctx = message.channel
+        else:
+            trigger_ctx = message.author
 
         if message.author.bot is True:
             # bots can't and don't need to accept the ToS
@@ -468,11 +473,15 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         append = None  # optional masked message to append to the response
 
         if self.lm_lock.locked():
-            logger.info("Already processing a message, skipping this one to avoid overlap.")
-            return
+            if trigger_ctx.id == self._last_trigger_ctx_id:
+                logger.info(f"Got second trigger in context {trigger_ctx}, skipping to avoid overlap.")
+                return
+            else:
+                logger.debug(f"LM is busy in another context, queueing response for {trigger_ctx}")
 
         try:
             async with self.lm_lock:
+                self._last_trigger_ctx_id = trigger_ctx.id
                 if direct_message:
                     logger.debug(f"DM from {message.author}: {content}")
                     trigger = "DM"
@@ -1135,7 +1144,7 @@ class Ai(MentionMixin, commands.Cog, name=COG_UID):
         async with self.db_client.begin() as session:
             query = (
                 select(DiscordUser)
-                .where(DiscordUser.tos_rejected == True)
+                .where(DiscordUser.tos_rejected)
                 .with_only_columns(DiscordUser.id, DiscordUser.tos_accepted, DiscordUser.tos_rejected)
             )
             results = await session.scalars(query)

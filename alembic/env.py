@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from db.base import Base
 from disco_snake.settings import BotSettings, get_settings
+from rattlesnake import models  # noqa: F401 to register models
 
 # acquire alembic.ini value dict
 config = context.config

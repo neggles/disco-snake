@@ -32,6 +32,15 @@ Timestamp = Annotated[
     ),
 ]
 
+# Timestamp with no default (non-nullable)
+RequiredTimestamp = Annotated[
+    datetime,
+    mapped_column(
+        pg.TIMESTAMP(timezone=True, precision=2),
+        nullable=False,
+    ),
+]
+
 # Timestamp with default (non-nullable, used for creation time)
 CreateTimestamp = Annotated[
     datetime,

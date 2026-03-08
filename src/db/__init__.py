@@ -31,8 +31,6 @@ __all__ = [
     "SyncSessionType",
     "Timestamp",
     "UpdateTimestamp",
-    "async_sessionmaker",
     "get_engine",
     "get_sync_engine",
-    "sessionmaker",
 ]

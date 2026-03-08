@@ -59,6 +59,9 @@ dependencies = [
     "typer>=0.15.0",
     "uvloop>=0.22.0;platform_system!='Windows'",
     "wrapt>=2.0.1",
+    "starlette>=0.46.1",
+    "httpx-ws>=0.8.2",
+    "sqlmodel>=0.0.31",
 ]
 
 [dependency-groups]
@@ -138,6 +141,7 @@ ignore = [
     "B008", # Do not warn about function calls in default arguments. disnake uses this for slash commands.
     "E501", # line too long (handled by line-length)
     "B905", # zip without explicit strict=
+    "F841", # local variable assigned but never used (handled by LSP)
 ]
 unfixable = [
     "B", # flake8-bugbear autofixes can be unsafe, so disable those autofixes

@@ -15,8 +15,6 @@ from db.discord import DiscordName, DiscordSnowflake
 if TYPE_CHECKING:
     from disnake.ext import commands
 
-    # from db.discord.guild import DiscordGuild, GuildMemberAssociation
-
 
 class BlacklistEntry(Base):
     __tablename__ = "user_blacklist"
@@ -61,17 +59,6 @@ class DiscordUser(Base):
         sa.select(BlacklistEntry.user_id).where(BlacklistEntry.user_id == id).exists()
     )
 
-    # guild_member_associations: Mapped[dict[int, GuildMemberAssociation]] = relationship(
-    #     back_populates="member",
-    #     collection_class=attribute_keyed_dict("guild_id"),
-    #     cascade="all, delete-orphan",
-    # )
-    # guilds: AssociationProxy[dict[int, DiscordGuild]] = association_proxy(
-    #     "guild_member_associations",
-    #     "guild",
-    #     creator=lambda guild: GuildMemberAssociation(guild=guild),
-    # )
-
     @hybrid_property
     def name(self) -> str:
         if self.discriminator == 0:
@@ -93,8 +80,9 @@ class DiscordUser(Base):
         :param discriminator: int:  (Default value = 0)
 
         """
-        if "#" in name:
-            username, discriminator = name.split("#")
+        username = name
+        if "#" in username:
+            username, discriminator = username.split("#")  # type: ignore
             discriminator = int(discriminator)
         self.username = username
         self.discriminator = discriminator
