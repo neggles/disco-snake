@@ -182,8 +182,11 @@ exclude = [
 [tool.pyright]
 include = ["src"]
 exclude = [
-    "**/__pycache__", # cache directories
-    "./typings",      # generated type stubs
+    "**/node_modules", # node modules
+    "**/.*",           # hidden files and directories
+    ".venv",           # virtualenv
+    "**/__pycache__",  # cache directories
+    "./typings",       # generated type stubs
 ]
 ignore = [
     "./.venv/**", # virtualenv
