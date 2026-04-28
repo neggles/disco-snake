@@ -62,6 +62,7 @@ dependencies = [
     "starlette>=0.46.1",
     "httpx-ws>=0.8.2",
     "sqlmodel>=0.0.31",
+    "pytest>=9.0.3",
 ]
 
 [dependency-groups]
@@ -70,6 +71,7 @@ dev = [
     "setuptools-scm>=8.0.0",
     "pre-commit>=3.0.0",
     "ipython>=8.0.0",
+    "pytest>=9.0.3",
 ]
 speed = [
     "aiodns>=3.6.1",
