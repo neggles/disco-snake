@@ -11,7 +11,7 @@ from db.base import Base, BigIntPK, CreateTimestamp
 
 class AiMessageInfo(BaseModel):
     id: int = Field(...)
-    timestamp: datetime = Field(datetime.now())
+    timestamp: datetime = Field(default_factory=datetime.now)
     guild_id: int = Field(...)
     guild: str | dict[str, Any] = Field(...)
     author_id: int | None = None
